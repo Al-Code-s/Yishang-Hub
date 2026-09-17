@@ -1,0 +1,76 @@
+[project]
+name = "yishang-platform-backend"
+version = "0.1.0"
+description = "意尚智造集成平台后端服务 (Django 5.2 LTS + DRF)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "django>=5.2,<5.3",
+    "djangorestframework>=3.16,<3.17",
+    "django-cors-headers>=4.7,<5",
+    "django-filter>=25.1,<26",
+    "drf-spectacular>=0.28,<0.29",
+    "celery>=5.5,<5.6",
+    "django-celery-beat>=2.8,<3",
+    "redis>=6.0,<7",
+    "openpyxl>=3.1,<4",
+    "argon2-cffi>=23.1,<26",
+    "python-dotenv>=1.1,<2",
+    "gunicorn>=23.0,<24",
+]
+
+[project.optional-dependencies]
+# Linux/Docker 生产驱动：需要 C 编译链与 MySQL 客户端头文件
+mysqlclient = ["mysqlclient>=2.2,<3"]
+# Windows 本地开发驱动：纯 Python 实现，无需编译工具链
+pymysql = ["PyMySQL[rsa]>=1.1,<2"]
+# S3 兼容对象存储（附件私有存储）；未配置 OBJECT_STORAGE_BUCKET 时不需要安装
+s3 = ["django-storages[s3]>=1.14,<2"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-django>=4.10,<5",
+    "pytest-cov>=6.1,<7",
+    "ruff>=0.11,<0.12",
+    "mypy>=1.15,<2",
+    "django-stubs>=5.2,<6",
+    "djangorestframework-stubs>=3.16,<4",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py", "tests_*.py", "*_tests.py"]
+testpaths = ["tests", "apps"]
+addopts = "-ra --strict-markers"
+markers = [
+    "mysql_only: 必须在 MySQL 上运行的用例（并发/锁/约束语义）",
+    "concurrency: 并发事务用例",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["migrations", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "DJ"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"config/settings/*.py" = ["F403", "F405"]
+"apps/*/migrations/*.py" = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "DJ"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+ignore_missing_imports = true
+warn_unused_ignores = false
+check_untyped_defs = true
+exclude = ["migrations/", ".venv/"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"

@@ -1,0 +1,301 @@
+/* 意尚智造集成平台全局样式：深蓝 / 科技蓝 / 白 / 浅灰，中文企业级管理后台。 */
+
+:root {
+  --ys-navy-900: #0b2545;
+  --ys-navy-800: #12395f;
+  --ys-navy-700: #1b4c7e;
+  --ys-blue-600: #1668dc;
+  --ys-blue-500: #2b7ce9;
+  --ys-blue-100: #e8f1fd;
+  --ys-gray-50: #f6f8fa;
+  --ys-gray-100: #eef1f5;
+  --ys-gray-200: #e2e6ec;
+  --ys-gray-500: #6b7684;
+  --ys-gray-700: #3c4653;
+  --ys-sidebar-width: 232px;
+  --ys-sidebar-width-collapsed: 64px;
+  --ys-header-height: 56px;
+  --ys-tabs-height: 40px;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  color: var(--ys-gray-700);
+  background: var(--ys-gray-50);
+}
+
+a {
+  color: var(--ys-blue-600);
+  text-decoration: none;
+}
+
+/* 通用页面容器 */
+.ys-page {
+  padding: 16px;
+}
+
+.ys-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ys-page__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ys-navy-900);
+}
+
+.ys-page__description {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ys-gray-500);
+  line-height: 1.6;
+}
+
+.ys-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid var(--ys-gray-200);
+  border-radius: 6px;
+}
+
+.ys-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ys-table-card {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--ys-gray-200);
+  border-radius: 6px;
+}
+
+.ys-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.ys-muted {
+  color: var(--ys-gray-500);
+  font-size: 12px;
+}
+
+.ys-mono {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.ys-definition {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--ys-gray-500);
+}
+
+.ys-definition dt {
+  color: var(--ys-gray-500);
+}
+
+.ys-definition dd {
+  margin: 0;
+  color: var(--ys-gray-700);
+}
+
+/* 登录页 */
+.ys-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(43, 124, 233, 0.35), transparent 55%),
+    linear-gradient(135deg, var(--ys-navy-900) 0%, var(--ys-navy-700) 55%, var(--ys-blue-600) 100%);
+}
+
+.ys-login__card {
+  width: 400px;
+  padding: 32px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(4, 18, 38, 0.35);
+}
+
+.ys-login__brand {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.ys-login__brand h1 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--ys-navy-900);
+}
+
+.ys-login__brand p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ys-gray-500);
+}
+
+/* 布局 */
+.ys-layout {
+  display: flex;
+  height: 100%;
+}
+
+.ys-layout__aside {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: var(--ys-sidebar-width);
+  background: var(--ys-navy-900);
+  transition: width 0.2s ease;
+}
+
+.ys-layout__aside--collapsed {
+  width: var(--ys-sidebar-width-collapsed);
+}
+
+.ys-layout__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--ys-header-height);
+  padding: 0 16px;
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ys-layout__brand-title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ys-layout__menu {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.ys-layout__menu .el-menu {
+  border-right: none;
+  background: transparent;
+}
+
+.ys-layout__menu .el-menu-item,
+.ys-layout__menu .el-sub-menu__title {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.ys-layout__menu .el-menu-item:hover,
+.ys-layout__menu .el-sub-menu__title:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.ys-layout__menu .el-menu-item.is-active {
+  color: #fff;
+  background: var(--ys-blue-600);
+}
+
+.ys-layout__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ys-layout__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ys-header-height);
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--ys-gray-200);
+}
+
+.ys-layout__header-left,
+.ys-layout__header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ys-layout__tabs {
+  height: var(--ys-tabs-height);
+  padding: 0 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--ys-gray-200);
+}
+
+.ys-layout__content {
+  flex: 1;
+  overflow: auto;
+  background: var(--ys-gray-50);
+}
+
+.ys-layout__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.ys-layout__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--ys-blue-600);
+  border-radius: 50%;
+}
+/* 采购页面：行编辑表格的辅助样式 */
+.ys-line-add {
+  margin-top: 8px;
+}
+
+.ys-line-hint {
+  color: var(--ys-gray-500);
+  font-size: 12px;
+}
+
+.ys-convert-form {
+  margin-top: 12px;
+}
+
+.ys-detail-hint {
+  margin-top: 12px;
+}

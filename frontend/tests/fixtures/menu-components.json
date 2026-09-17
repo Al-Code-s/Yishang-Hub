@@ -1,0 +1,331 @@
+[
+  {
+    "code": "workspace",
+    "path": "/workspace",
+    "component": "views/workspace/Index.vue",
+    "menu_type": "page",
+    "permission_code": "analytics.dashboard.view"
+  },
+  {
+    "code": "masterdata",
+    "path": "/masterdata",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "masterdata.material",
+    "path": "/masterdata/materials",
+    "component": "views/masterdata/MaterialList.vue",
+    "menu_type": "page",
+    "permission_code": "masterdata.material.view"
+  },
+  {
+    "code": "masterdata.material-category",
+    "path": "/masterdata/material-categories",
+    "component": "views/masterdata/MaterialCategoryList.vue",
+    "menu_type": "page",
+    "permission_code": "masterdata.material_category.view"
+  },
+  {
+    "code": "masterdata.style",
+    "path": "/masterdata/styles",
+    "component": "views/masterdata/StyleList.vue",
+    "menu_type": "page",
+    "permission_code": "masterdata.style.view"
+  },
+  {
+    "code": "masterdata.sku",
+    "path": "/masterdata/skus",
+    "component": "views/masterdata/SkuList.vue",
+    "menu_type": "page",
+    "permission_code": "masterdata.sku.view"
+  },
+  {
+    "code": "masterdata.color-size",
+    "path": "/masterdata/color-size",
+    "component": "views/masterdata/ColorSizeList.vue",
+    "menu_type": "page",
+    "permission_code": "masterdata.color.view"
+  },
+  {
+    "code": "masterdata.uom",
+    "path": "/masterdata/uoms",
+    "component": "views/masterdata/UomList.vue",
+    "menu_type": "page",
+    "permission_code": "masterdata.uom.view"
+  },
+  {
+    "code": "factory",
+    "path": "/factory",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "factory.company",
+    "path": "/factory/companies",
+    "component": "views/factory/CompanyList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.company.view"
+  },
+  {
+    "code": "factory.department",
+    "path": "/factory/departments",
+    "component": "views/factory/DepartmentList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.department.view"
+  },
+  {
+    "code": "factory.factory",
+    "path": "/factory/factories",
+    "component": "views/factory/FactoryList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.factory.view"
+  },
+  {
+    "code": "factory.workshop",
+    "path": "/factory/workshops",
+    "component": "views/factory/WorkshopList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.workshop.view"
+  },
+  {
+    "code": "factory.employee",
+    "path": "/factory/employees",
+    "component": "views/factory/EmployeeList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.employee.view"
+  },
+  {
+    "code": "factory.team",
+    "path": "/factory/teams",
+    "component": "views/factory/TeamList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.team.view"
+  },
+  {
+    "code": "factory.shift",
+    "path": "/factory/shifts",
+    "component": "views/factory/ShiftList.vue",
+    "menu_type": "page",
+    "permission_code": "factory.shift.view"
+  },
+  {
+    "code": "crm",
+    "path": "/crm",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "crm.customer",
+    "path": "/crm/customers",
+    "component": "views/crm/CustomerList.vue",
+    "menu_type": "page",
+    "permission_code": "crm.customer.view"
+  },
+  {
+    "code": "crm.customer-contact",
+    "path": "/crm/customer-contacts",
+    "component": "views/crm/CustomerContactList.vue",
+    "menu_type": "page",
+    "permission_code": "crm.customer_contact.view"
+  },
+  {
+    "code": "srm",
+    "path": "/srm",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "srm.supplier",
+    "path": "/srm/suppliers",
+    "component": "views/srm/SupplierList.vue",
+    "menu_type": "page",
+    "permission_code": "srm.supplier.view"
+  },
+  {
+    "code": "srm.supplier-contact",
+    "path": "/srm/supplier-contacts",
+    "component": "views/srm/SupplierContactList.vue",
+    "menu_type": "page",
+    "permission_code": "srm.supplier_contact.view"
+  },
+  {
+    "code": "srm.supplier-qualification",
+    "path": "/srm/supplier-qualifications",
+    "component": "views/srm/SupplierQualificationList.vue",
+    "menu_type": "page",
+    "permission_code": "srm.supplier_qualification.view"
+  },
+  {
+    "code": "procurement",
+    "path": "/procurement",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "procurement.requisition",
+    "path": "/procurement/requisitions",
+    "component": "views/procurement/RequisitionList.vue",
+    "menu_type": "page",
+    "permission_code": "procurement.requisition.view"
+  },
+  {
+    "code": "procurement.order",
+    "path": "/procurement/orders",
+    "component": "views/procurement/PurchaseOrderList.vue",
+    "menu_type": "page",
+    "permission_code": "procurement.order.view"
+  },
+  {
+    "code": "procurement.receipt",
+    "path": "/procurement/receipts",
+    "component": "views/procurement/GoodsReceiptList.vue",
+    "menu_type": "page",
+    "permission_code": "procurement.receipt.view"
+  },
+  {
+    "code": "wms",
+    "path": "/wms",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "wms.warehouse",
+    "path": "/wms/warehouses",
+    "component": "views/wms/WarehouseList.vue",
+    "menu_type": "page",
+    "permission_code": "wms.warehouse.view"
+  },
+  {
+    "code": "wms.inventory-balance",
+    "path": "/wms/inventory-balances",
+    "component": "views/wms/InventoryBalanceList.vue",
+    "menu_type": "page",
+    "permission_code": "wms.inventory.view"
+  },
+  {
+    "code": "wms.inventory-transaction",
+    "path": "/wms/inventory-transactions",
+    "component": "views/wms/InventoryTransactionList.vue",
+    "menu_type": "page",
+    "permission_code": "wms.inventory.view"
+  },
+  {
+    "code": "wms.inventory-document",
+    "path": "/wms/inventory-documents",
+    "component": "views/wms/InventoryDocumentList.vue",
+    "menu_type": "page",
+    "permission_code": "wms.document.view"
+  },
+  {
+    "code": "workflow",
+    "path": "/workflow",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "workflow.todo",
+    "path": "/workflow/todo",
+    "component": "views/workflow/TodoList.vue",
+    "menu_type": "page",
+    "permission_code": "workflow.instance.view"
+  },
+  {
+    "code": "workflow.my-requests",
+    "path": "/workflow/my-requests",
+    "component": "views/workflow/MyRequestList.vue",
+    "menu_type": "page",
+    "permission_code": "workflow.instance.view"
+  },
+  {
+    "code": "workflow.template",
+    "path": "/workflow/templates",
+    "component": "views/workflow/TemplateList.vue",
+    "menu_type": "page",
+    "permission_code": "workflow.template.view"
+  },
+  {
+    "code": "integration",
+    "path": "/integration",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "integration.outbox",
+    "path": "/integration/outbox",
+    "component": "views/integration/OutboxList.vue",
+    "menu_type": "page",
+    "permission_code": "integration.outbox.view"
+  },
+  {
+    "code": "system",
+    "path": "/system",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "system.user",
+    "path": "/system/users",
+    "component": "views/system/UserList.vue",
+    "menu_type": "page",
+    "permission_code": "identity.user.view"
+  },
+  {
+    "code": "system.role",
+    "path": "/system/roles",
+    "component": "views/system/RoleList.vue",
+    "menu_type": "page",
+    "permission_code": "identity.role.view"
+  },
+  {
+    "code": "system.permission",
+    "path": "/system/permissions",
+    "component": "views/system/PermissionList.vue",
+    "menu_type": "page",
+    "permission_code": "identity.permission.view"
+  },
+  {
+    "code": "system.dictionary",
+    "path": "/system/dictionaries",
+    "component": "views/system/DictionaryList.vue",
+    "menu_type": "page",
+    "permission_code": "core.dictionary.view"
+  },
+  {
+    "code": "system.code-rule",
+    "path": "/system/code-rules",
+    "component": "views/system/CodeRuleList.vue",
+    "menu_type": "page",
+    "permission_code": "core.code_rule.view"
+  },
+  {
+    "code": "system.audit",
+    "path": "/system/audit-logs",
+    "component": "views/system/AuditLogList.vue",
+    "menu_type": "page",
+    "permission_code": "core.audit.view"
+  },
+  {
+    "code": "system.notification",
+    "path": "/system/notifications",
+    "component": "views/system/NotificationList.vue",
+    "menu_type": "page",
+    "permission_code": "core.notification.view"
+  },
+  {
+    "code": "system.progress",
+    "path": "/system/progress",
+    "component": "views/system/ProgressView.vue",
+    "menu_type": "page",
+    "permission_code": "core.progress.view"
+  }
+]

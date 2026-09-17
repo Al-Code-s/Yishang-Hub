@@ -1,0 +1,27 @@
+# 前端构建 + Nginx 运行镜像
+#
+# ⚠️ 本文件【未在本轮环境中实际构建验证】（本机 Docker 守护进程不可达）。
+# 使用 nginx 非特权镜像，以非 root 用户运行，监听 8080。
+
+# ---------- 构建阶段 ----------
+FROM node:22-alpine AS build
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
+
+# ---------- 运行阶段 ----------
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+
+# 禁用默认站点配置，使用本项目的配置
+COPY deploy/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
+    CMD wget -q -O - http://127.0.0.1:8080/healthz || exit 1
