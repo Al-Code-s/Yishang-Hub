@@ -547,12 +547,6 @@ onMounted(load)
 </script>
 
 <style scoped>
-.ys-section-title {
-  margin: 16px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
 .ys-node-add {
   margin-top: 8px;
 }

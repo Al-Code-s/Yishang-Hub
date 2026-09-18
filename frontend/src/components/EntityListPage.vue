@@ -274,6 +274,8 @@ const props = withDefaults(
     }
     columns: ProTableColumn[]
     filters?: FilterDef[]
+    /** 查询条件初值（例如从其他页面带 run_id 跳转过来），重置时会回到这些初值 */
+    initialFilters?: Record<string, unknown>
     formFields?: FormFieldDef[]
     detailFields?: { prop: string; label: string }[]
     searchable?: boolean
@@ -312,6 +314,7 @@ const auth = useAuthStore()
 
 const list = useCrudList<{ id: number; version?: number } & Record<string, unknown>>({
   api: props.api as never,
+  defaultFilters: props.initialFilters,
   activeField: 'is_active',
   removable: props.removable,
   removeWarning: props.removeWarning,
@@ -374,6 +377,11 @@ function hasPermission(code: string): boolean {
 function renderCell(row: Record<string, unknown> | null, prop: string): string {
   if (!row) {
     return '-'
+  }
+  // 与 ProTable 一致：枚举值优先展示后端返回的中文标签（`<field>_display`）
+  const label = row[`${prop}_display`]
+  if (label !== null && label !== undefined && label !== '') {
+    return String(label)
   }
   const value = row[prop]
   if (value === null || value === undefined || value === '') {

@@ -2,6 +2,11 @@
 
 > 验收依据：任务书 19.3「完成标准」。**「页面已存在」不等于「已通过阶段验收」。**
 > 所有数字来自本轮**实际执行**的命令输出，原始记录见 `docs/test-report.md`。
+>
+> **最新核对（2026-09-18）**：权限点 **173** / 菜单 **56** / 数据模型 **86** / 数据表 **92** /
+> 迁移文件 **19**；自动化测试 **后端 312 + 前端 131** 通过。
+> 下面各小节里的数字是**该阶段验收当时的快照**，不回改；要「现在是多少」请看
+> `docs/user-guide.md` §2.3 与 `docs/test-report.md` §16。
 
 ## 一、阶段 0 验收
 
@@ -11,10 +16,10 @@
 | 20.1.3 需求追踪矩阵 | `docs/requirements-matrix.md` | 覆盖任务书全部章节，含实施边界标注 | ✅ |
 | 20.1.4 架构/数据模型/权限文档 | `architecture.md`、`data-model.md`、`permission-matrix.md` | 文档存在且与代码一致（权限表由注册表生成） | ✅ |
 | 20.1.5 初始化工程 | Vue 3 + TS + Vite 6；Django 5.2 + DRF | `npm run build` 成功；`manage.py check` 无问题 | ✅ |
-| 20.1.6 配置 MySQL/Redis/对象存储/Compose | 配置与 `compose.yaml` | MySQL 8.0.17 连通（阶段 0 快照 62 张表；**当前 71 张**，utf8mb4_0900_ai_ci，严格模式）；Redis 3.2.100 连通。**Compose 未启动验证** | ⚠️ 部分 |
+| 20.1.6 配置 MySQL/Redis/对象存储/Compose | 配置与 `compose.yaml` | MySQL 8.0.17 连通（阶段 0 快照 62 张表；**最新核对 92 张**，utf8mb4_0900_ai_ci，严格模式）；Redis 3.2.100 连通。**Compose 未启动验证** | ⚠️ 部分 |
 | 20.1.7 自定义 User 模型 | `identity.User` | `AUTH_USER_MODEL=identity.User`，首次迁移即启用 | ✅ |
 | 20.1.15 初始化与演示命令 | `bootstrap_system`、`seed_demo` | 幂等（重复执行不重复建）、`seed_demo` 拒绝生产环境 | ✅ |
-| 20.1.16 迁移/测试/检查/构建 | 见 `test-report.md` | 后端 112 通过；前端 60 通过；Ruff 通过；类型检查通过；构建成功 | ✅ |
+| 20.1.16 迁移/测试/检查/构建 | 见 `test-report.md` | 后端 112 通过；前端 60 通过（**该阶段当时快照**，最新为后端 307 / 前端 129，见上方「最新核对」）；Ruff 通过；类型检查通过；构建成功 | ✅ |
 | 20.1.17 更新进度文档 | `docs/progress.md` | 已更新 | ✅ |
 | 20.1.18 输出启动/验证步骤 | `README.md`、`deployment.md` | 含访问地址、启动命令、验证步骤、未完成项 | ✅ |
 
@@ -139,19 +144,96 @@
 
 > 重要：来料检验是**人工录入判定**，未接入任何检测设备；
 > 界面与文档均未把它写成自动检测结果（任务书 10.9 的口径）。
+## 五之二、阶段 2 销售模块验收（订单 / 占用 / 发货 / 退货检验）
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 页面可操作 | ✅ | `SalesOrderList.vue` / `SalesShipmentList.vue` / `SalesReturnList.vue`，`views-compile.spec.ts` 实际编译并加载 |
+| API 可访问 | ✅ | `/api/v1/sales/orders/`、`/api/v1/sales/shipments/`、`/api/v1/sales/returns/` 及 `submit` / `reserve` / `release` / `close` / `cancel` / `post` / `inspect` / `chain` 动作；真实数据链路见 `docs/test-report.md` §10.4 |
+| 数据持久化 | ✅ | MySQL 真实写入并读回：`SO-DEMO-0001` / `SH-DEMO-0001` / `SR-DEMO-0001` 及库存余额与流水 |
+| 权限生效 | ✅ | 未登录被拒；只读用户不能建单；无 `wms.inventory.reserve` 不能占用；**业务员不能判定退货**（`test_sales_clerk_cannot_inspect_returns`）；跨公司不可见 |
+| 状态迁移正确 | ✅ | 草稿 → 提交 → 批准 → 部分发货 → 已发货 → 关闭；支持驳回与取消；已过账发货单不可取消（只能冲销/退货） |
+| 异常处理明确 | ✅ | 统一错误码：`RESERVATION_REQUIRED`、`INSUFFICIENT_STOCK`、`OVER_RETURN`、`CUSTOMER_INACTIVE`、`ORDER_WAREHOUSE_REQUIRED`、`STOCK_SPLIT_ACROSS_DIMENSIONS` |
+| 关键操作可审计 | ✅ | 建单、提交、占用、释放、发货过账、退货过账、检验判定均 `record_audit` 并写 Outbox 事件（同事务） |
+| 跨模块结果正确 | ✅（本增量范围内） | 出库、入库、质量放行**只调用** `apps/wms/services/stock.py`；成品批次 `FG-2509-01`：入库 240 → 占用 60 → 发货 60 → 退货 6 待检 → 合格回库 6 → 可用 186，占用归零 |
+| 自动化测试实际执行 | ✅ | `tests/test_sales.py` 34 例；全量 `pytest tests -q --reuse-db` → `217 passed` |
+| 文档已更新 | ✅ | `docs/progress.md` §十、`docs/requirements-matrix.md` §一之五、`docs/inventory-rules.md` §十、`docs/data-model.md`、`docs/business-flows.md` §12.1、`docs/test-report.md` §十 |
+| 未完成内容明确列出 | ✅ | 见下方未实现清单与 `docs/assumptions.md` §四之四（A-19 ~ A-25） |
+
+**本增量明确的未实现项**（不得视为通过）：销售计划、颜色尺码矩阵批量录入、折扣、订单变更版本快照、
+分批发货界面细化、分销商、基础预测、应收与收款登记、跨维度自动拆分占用、多批次部分退货的批次分摊。
+
+**未执行的验证**：占用并发（同键并发只成功一次）**未做真实多连接压测**；Docker Compose、
+Celery Worker/Beat、Playwright、备份恢复、性能压测仍未执行（与第七节口径一致）。
+
+## 五之三、阶段 3 第一步验收（BOM 与工艺路线版本快照）
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 页面可操作 | ✅ | `views/planning/BomList.vue` / `RoutingList.vue`，位于「计划管理」目录下；`views-compile.spec.ts` 实际编译并加载；`npm run build` 产物含 `BomList-B_Xq9rdS.js` 与 `RoutingList-BoeDw3JC.js` |
+| API 可访问 | ✅ | `/api/v1/planning/boms/`、`/api/v1/planning/routings/` 及 `submit` / `obsolete` / `new-version` / `snapshot` / `set-active`；OpenAPI 共 14 个 planning 路径；真实数据链路见 `docs/test-report.md` §15.5 |
+| 数据持久化 | ✅ | MySQL 真实写入并读回：`BOM202609180001` v1（5 行明细，面料含损耗用量 `0.296800`）、`RT202609180001` v1（5 道工序） |
+| 权限生效 | ✅ | 匿名 403；只读用户不能新建；`planning.routing.*` **不授予** BOM 写权限；跨公司对象被拒；越权车间被拒 |
+| 状态迁移正确 | ✅ | `draft → submitted → approved / rejected`，可 `withdraw` 回草稿；**审核通过时同范围旧生效版本自动转 `obsolete`**；作废必填原因；审核中不许派生新版本或作废 |
+| 异常处理明确 | ✅ | `EMPTY_DOCUMENT`、`NORMAL_MATERIAL_DUPLICATED`、`SUBSTITUTE_TARGET_INVALID`、`ROUTING_STEP_REQUIRED`、`APPROVAL_TEMPLATE_NOT_FOUND`、`OPTIMISTIC_LOCK_CONFLICT` |
+| 关键操作可审计 | ✅ | 新建、修改、提交、审核回写、作废、派生新版本均 `record_audit`（`test_key_actions_are_audited`） |
+| 跨模块结果正确 | ✅（本增量范围内） | 只调用 `workflow` 审批与 `masterdata` / `factory` 主数据，**不触碰库存服务**；`build_bom_snapshot()` 与接口快照逐字段相等 |
+| 自动化测试实际执行 | ✅ | `tests/test_planning.py` 50 例；全量 `pytest tests -q --reuse-db` → `267 passed`；前端 `vitest` → `127 passed`；`ruff` / `vue-tsc` / `vite build` 通过 |
+| 文档已更新 | ✅ | `docs/progress.md` §十四、`docs/requirements-matrix.md` §一之六、`docs/data-model.md` §三 planning 与 §六 第 10 条、`docs/permission-matrix.md`（重生成 167 权限 / 54 菜单）、`docs/architecture.md` ADR-06~08、`docs/business-flows.md` §12.1、`docs/test-report.md` §15 |
+| 未完成内容明确列出 | ✅ | 见下方「未实现项」 |
+
+**本增量明确的未实现项**（不得视为通过）：MRP、MES 工单与报工、QMS 检验单、快照表落库、
+BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工位主数据的外键关联、
+`standard_hours` 参与任何计算。
+
+**未执行的验证**：「同一范围唯一生效版本」**未做独立连接的真实并发用例**
+（当前靠服务层 `select_for_update` + 服务层校验，MySQL 无部分唯一索引）；Docker Compose、
+`mysqlclient` 生产驱动、Celery Worker/Beat、Playwright、MySQL 8.4、性能压测与备份恢复仍未执行
+（与第七节口径一致）。
+
+## 五之四、阶段 3 第二步验收（MRP）
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 页面可操作 | ✅ | `views/planning/MrpRunList.vue`（运行表单 + 运行列表 + 详情抽屉三页签 + 归档）与 `MrpSuggestionList.vue`（建议列表 + 转采购申请 + 取消 + 净算过程），位于「计划管理」目录下（sort 78 / 79）；`views-compile.spec.ts` 实际编译并加载；`npm run build` 产物含 `MrpRunList-D1oXWkdZ.js`、`MrpSuggestionList-B8mYygLV.js` |
+| API 可访问 | ✅ | `/api/v1/planning/mrp-runs/`（`create` / `{id}/demands` / `{id}/supplies` / `{id}/suggestions` / `{id}/archive`）与 `/api/v1/planning/mrp-suggestions/`（`{id}/convert` / `{id}/cancel`）；真实 HTTP 链路 **29 项检查全部通过**（`docs/test-report.md` §16.5） |
+| 数据持久化 | ✅ | MySQL 真实写入并读回：`MRP202609180005`（7 需求行 / 3 供给行 / 5 建议）、转出 `PR202609180002`（草稿采购申请）、`DocumentLink` `MRP202609180005#2 → PR202609180002` |
+| 权限生效 | ✅ | 匿名 403；只有 `planning.mrp.view` 的用户不能运行；有 `convert` 但无 `procurement.requisition.create` 仍被拒；公司 / 仓库范围生效；`planning.mrp.*` 不授予其它模块权限 |
+| 状态迁移正确 | ✅ | 运行 `completed → archived`；建议 `open → converted / cancelled`；重复转单 409、过期建议 409、归档后转单 409、已取消转单 409、生产建议 409（均实测） |
+| 异常处理明确 | ✅ | `COMPANY_REQUIRED`、`INVALID_BUCKET`、`INVALID_HORIZON`、`BOM_CYCLE_DETECTED`、`BOM_TOO_DEEP`、`SUGGESTION_ALREADY_CONVERTED`、`SUGGESTION_STALE`、`SUGGESTION_NOT_OPEN`、`MRP_RUN_NOT_ACTIVE`、`MATERIAL_INACTIVE`、`PRODUCTION_ORDER_NOT_IMPLEMENTED`、`REASON_REQUIRED` |
+| 关键操作可审计 | ✅ | 运行创建、归档、建议转单、建议取消均写 `AuditLog`（数据库实测 5 条 MRP 相关记录，`reason` 落库） |
+| 跨模块结果正确 | ✅（本增量范围内） | 只**读** `wms` 可用库存与 `procurement` 在途（`test_mrp_is_read_only_for_inventory` 断言前后库存零变化）；转单调用 `procurement.services.create_requisition()` 生成**草稿**，并写 `integration.DocumentLink`（`generated_from`）；Outbox 事件与业务同事务（`planning.mrp.completed` / `planning.mrp.suggestion_converted`） |
+| 自动化测试实际执行 | ✅ | `tests/test_mrp.py` **32 例**；全量 `pytest backend/tests -q --reuse-db` → `301 passed`；前端 `vitest` → `129 passed`；`ruff` / `vue-tsc` / `vite build` 与 `scripts/smoke_check.ps1` 7 步全过 |
+| 文档已更新 | ✅ | `docs/progress.md` §十五、`docs/requirements-matrix.md` §一之七与 REQ-10.6-01~11、`docs/data-model.md` §三 planning（MRP 4 表）与 §八（18 个迁移）、`docs/permission-matrix.md`（重生成 173 权限 / 56 菜单）、`docs/architecture.md` ADR-09~12、`docs/business-flows.md` §12.1、`docs/assumptions.md` §四之六、`docs/test-report.md` §十六 |
+| 未完成内容明确列出 | ✅ | 见下方「未实现项」 |
+
+**本增量明确的未实现项**（不得视为通过）：
+
+- 采购提前期与批量规则（当前 `lot_for_lot`，不提前、不合并批量）；安全库存缓冲；
+- **在制供给恒为 0**（`in_progress_supply=not_implemented`，等 MES）；替代料不参与展开；
+- 需求来源仅销售订单（缺生产计划 / 预测 / 补货需求）；多工厂 / 多仓库独立净算；
+- **生产建议转单未实现**（`PRODUCTION_ORDER_NOT_IMPLEMENTED` 是刻意拒绝，不是缺陷）；MRP Excel 导出；
+- MRP 定时重算（Celery Beat）；MRP 成本卷算（阶段 7）。
+
+**未执行的验证**：
+
+- 真实多连接的**"同一建议并发转单"压测未执行**（当前靠 `select_for_update` + 状态机 + 行号唯一约束）；
+- Outbox 事件仍为 `pending`（Celery Worker / Beat 未启动，**未执行**消费侧验证）；
+- Playwright、浏览器截图级校验、高性能压测、备份恢复、MySQL 8.4 与 `mysqlclient` 驱动均未执行（与第七节口径一致）。
+
 ## 六、逐条对照 19.3 完成标准
 
 | 标准 | 阶段 0/1 情况 |
 | --- | --- |
-| 页面可操作 | ✅ 38 个业务页面 + 登录/403/404；`views-compile.spec.ts` 保证可编译 |
+| 页面可操作 | ✅ 41 个业务页面 + 登录/403/404；`views-compile.spec.ts` 保证可编译 |
 | API 可访问 | ✅ 19/19 HTTP 端到端验证通过 |
 | 数据持久化 | ✅ MySQL 实际写入并读回（新建物料 id=66，读回一致） |
 | 权限生效 | ✅ 未登录 403；跨角色 403；缺 CSRF 写操作 403 |
 | 状态迁移正确 | ✅ 审批状态机（提交/通过/驳回/撤回）有测试 |
 | 异常处理明确 | ✅ 统一错误结构；重复编码 400、分页超限 400、幂等冲突 409 |
 | 关键操作可审计 | ✅ 审计与业务同事务写入，且有实际断言 |
-| 跨模块结果正确 | ⚠️ 采购侧「申请 → 订单 → 收货 → 待检 → 放行 → 合格库存」已打通且幂等、可审计；但销售订单、MRP、MES 与销售发货未实现，因此「订单到交付」整条闭环**仍未打通** |
-| 自动化测试实际执行 | ✅ 后端 183 + 前端 66 + HTTP 19，均为真实输出 |
+| 跨模块结果正确 | ⚠️ 采购侧「申请 → 订单 → 收货 → 待检 → 放行 → 合格库存」、销售侧「订单 → 占用 → 发货 → 退货 → 检验」、**MRP 侧「销售订单 → 净算 → 采购建议 → 草稿采购申请」均已打通、幂等、可审计**；但 MES 与生产领料/报工/成品入库未实现，因此「订单到交付」整条闭环**仍未打通**（阶段 3 第三步） |
+| 自动化测试实际执行 | ✅ 后端 **307** + 前端 **129** + 真实 HTTP 链路 **29**（MRP）/ 19（阶段 0/1），均为真实输出 |
 | 文档已更新 | ✅ 16 份文档，含未执行清单 |
 | 未完成内容明确列出 | ✅ 见下节 |
 
@@ -168,7 +250,10 @@
 | 性能压测 | **未执行** | 阶段 7（需先确定部署资源） |
 | 寻源 / 报价 / 供应商评分 / 准入审批流程 | **未开始** | 阶段 2 剩余增量 |
 | 采购：询价比价、到货差异、退货、应付与付款登记、采购分析报表、单据打印 | **未开始** | 阶段 2 采购模块剩余增量（主体链路已完成） |
-| 销售单据、MRP、跨仓调拨与盘点 | **未开始** | 阶段 2 主体剩余（**统一库存服务与采购模块已完成**） |
+| 销售发货、退货与库存占用 | **已通过阶段验收** | 阶段 2 第四步，详见 §五之二 |
+| 销售计划、折扣、订单变更版本快照、分销商、基础预测、应收与收款登记、跨维度拆分占用 | **未开始** | 阶段 2 销售模块剩余增量 |
+| MRP 净算、缺料建议与采购建议转单 | **已通过阶段验收** | 阶段 3 第二步，详见 §五之四；**在制供给、提前期/批量规则、生产建议转 MES 工单未实现** |
+| 跨仓调拨与盘点、生产领料与工序报工、MES 工单 | **未开始** | 阶段 3 第三步（统一库存服务、采购模块、销售模块、MRP 已完成） |
 | 库存 / MRP / MES / QMS / EAM / EMS / EHS 等 | **未开始** | 阶段 2–6 |
 
 ## 八、验收结论
@@ -182,7 +267,23 @@
 - **阶段 2 采购模块：通过（含未实现项声明）** —— 采购申请、订单、收货、来料检验放行链路可用、有权限、可审计，
   35 条新用例（含多行逐行放行、幂等重放与枚举字典）；**询价比价、到货差异、退货、应付与付款登记、
   采购分析报表、单据打印、供应商准入审批流程未实现**，不得视为通过。
-- **不声称**已完成全部平台。阶段 2 的销售与供应商评价等能力尚未开始。
+- **阶段 2 销售模块：通过（含未实现项声明）** —— 销售订单、库存占用、发货出库、退货入库与检验判定链路可用、有权限、可审计，34 条新用例；
+  **销售计划、颜色尺码矩阵批量录入、折扣、订单变更版本快照、分销商、基础预测、应收与收款登记、
+  跨维度自动拆分占用、多批次部分退货的批次分摊未实现**，不得视为通过。
+- **阶段 3 第一步（BOM 与工艺路线版本快照）：通过（含未实现项声明）** —— 版本化工程数据、
+  审批后冻结、派生新版本不覆盖已审核版本、作废留痕、快照输出可用，有权限、可审计，50 条新用例；
+  **MES 工单与报工、QMS 检验单、快照落库、BOM 成本卷算未实现**，不得视为通过。
+- **阶段 3 第二步（MRP）：通过（含未实现项声明）** —— 时间分段净算、多层 BOM 展开与损耗、
+  循环 BOM 检查、缺料清单、采购 / 生产建议、供需追溯、计算快照、采购建议转**草稿**采购申请可用，
+  有权限、可审计、对库存只读，32 条新用例 + 29 项真实 HTTP 链路检查；
+  **在制供给、提前期与批量规则、替代料展开、生产建议转工单未实现**（生产建议转单返回明确错误码，不伪造工单），不得视为通过。
+- **不声称**已完成全部平台。阶段 2 的销售计划与预测、供应商评价，以及阶段 3 的 MES、QMS 尚未开始。
+- **界面样式增量：通过（含未执行项声明）** —— 左侧导航一级目录与二级页面按层级区分，
+  各视图重复手写的面板/区块标题/统计卡/代码块下沉为共享样式类（视图内重名定义 4 → 0），
+  新增 `side-menu.spec.ts`（10 项）与 `styles.spec.ts`（31 项）契约测试；
+  **浏览器截图级像素校验与暗色主题未执行**，不得视为通过。
+- **窄屏响应式增量：通过（含未执行项声明）** —— 侧边栏 ≤1200px 自动折叠（手动偏好优先、跨断点重置），表格改为容器内横向滚动，统计卡由固定 `:span` 栅格改为共享 flex 栅格，新增 `responsive.spec.ts` 15 条；
+  **≤768px 手机布局、触摸手势与真机观感未经人工确认**，不得视为通过。
 
 ## 九、下一阶段依赖（阶段 2 剩余部分）
 
@@ -194,7 +295,16 @@
    才能变为可动用的合格库存；待检/不合格库存出库被拒绝（任务书第十七章补充说明）。
 5. 供应商寻源/报价/评分需先确认权重模型与「无数据不记零分」的实现口径（任务书 10.4）。
 6. **已完成**：`dimension_key` 单列 UNIQUE 规范化键 + 并发测试（必测案例 6、7、8）。
-   **采购单据已接入该服务**（收货过账 → 待检，检验放行 → 合格）；下一步：销售单据接入，
-   并实现跨仓调拨在途与盘点范围冻结。
+   **采购单据与销售单据均已接入该服务**（收货过账 → 待检 / 检验放行 → 合格；销售发货出库、退货入库、检验放行）；
+   下一步：
+   实现跨仓调拨在途与盘点范围冻结。
 7. **已完成**：采购侧「实物到货 / 库存记账 / 质量放行」三者分离（`docs/business-flows.md` §12.1）。
    阶段 3 QMS 检验单落地后，`receipt.inspect` 的人工判定应升级为引用检验单结果，并保留人工录入兜底。
+8. **已完成**：阶段 3 第二步（MRP）已按「按日 / 按周两种分段 + 销售订单为唯一需求来源」实现，
+   派生需求按低层码只净算一次（必测案例 12 已覆盖）。**仍未处理**：采购提前期与批量规则、
+   安全库存、在制供给、替代料展开——这些依赖 MES 工单与供应商交期数据。
+   **开工前需确认**：是否需要多工厂 / 多仓库维度的独立净算（当前按公司 + 可选单仓过滤）。
+9. **阶段 3 第三步（MES 工单）** 下达时保存 `build_bom_snapshot()` / `build_routing_snapshot()`
+   的结果；落库前需把 `docs/data-model.md` 的 BOM 章节与工单快照字段对齐，避免结构漂移。
+10. **阶段 3 第四步（QMS 检验单）** 用工艺路线的 `is_quality_gate` 决定哪些工序必须产生检验记录，
+    并与 `procurement.receipt.inspect` 的升级路径共用同一检验单实体。

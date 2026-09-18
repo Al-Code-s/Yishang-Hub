@@ -1,5 +1,8 @@
-/* 意尚智造集成平台全局样式：深蓝 / 科技蓝 / 白 / 浅灰，中文企业级管理后台。 */
+/* 意尚智造集成平台全局样式
+   设计口径：深蓝 / 科技蓝 / 白 / 浅灰，中文企业级管理后台。
+   本文件同时覆盖 Element Plus 主题变量，使业务页面与导航视觉一致。 */
 
+/* ============================ 1. 设计令牌 ============================ */
 :root {
   --ys-navy-900: #0b2545;
   --ys-navy-800: #12395f;
@@ -10,16 +13,38 @@
   --ys-gray-50: #f6f8fa;
   --ys-gray-100: #eef1f5;
   --ys-gray-200: #e2e6ec;
+  --ys-gray-300: #d3d9e2;
   --ys-gray-500: #6b7684;
   --ys-gray-700: #3c4653;
+
+  --ys-sidebar-bg: linear-gradient(180deg, #0b2545 0%, #0d2b51 45%, #0e3159 100%);
   --ys-sidebar-width: 232px;
   --ys-sidebar-width-collapsed: 64px;
   --ys-header-height: 56px;
   --ys-tabs-height: 40px;
 
+  --ys-radius: 8px;
+  --ys-radius-lg: 12px;
+  --ys-shadow-card: 0 1px 2px rgba(16, 42, 74, 0.05), 0 1px 6px rgba(16, 42, 74, 0.04);
+  --ys-shadow-pop: 0 8px 24px rgba(11, 37, 69, 0.12);
+
+  /* Element Plus 主题变量：主色替换为品牌科技蓝，并补齐明暗梯度 */
+  --el-color-primary: #1668dc;
+  --el-color-primary-light-3: #5c95e7;
+  --el-color-primary-light-5: #8ab3ee;
+  --el-color-primary-light-7: #b9d2f5;
+  --el-color-primary-light-8: #d0e1f8;
+  --el-color-primary-light-9: #e7f0fb;
+  --el-color-primary-dark-2: #1253b0;
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-text-color-primary: #1f2937;
+  --el-text-color-regular: #3c4653;
+
   color-scheme: light;
 }
 
+/* ============================ 2. 基础重置 ============================ */
 * {
   box-sizing: border-box;
 }
@@ -37,6 +62,7 @@ body {
   font-size: 14px;
   color: var(--ys-gray-700);
   background: var(--ys-gray-50);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -44,7 +70,28 @@ a {
   text-decoration: none;
 }
 
-/* 通用页面容器 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(11, 37, 69, 0.18);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(11, 37, 69, 0.32);
+  background-clip: padding-box;
+}
+
+/* ======================= 3. 通用页面骨架 ======================= */
 .ys-page {
   padding: 16px;
 }
@@ -54,21 +101,42 @@ a {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .ys-page__title {
+  position: relative;
   margin: 0;
-  font-size: 18px;
+  padding-left: 11px;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--ys-navy-900);
 }
 
+.ys-page__title::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--ys-blue-500), var(--ys-blue-600));
+}
+
 .ys-page__description {
-  margin: 4px 0 0;
+  margin: 5px 0 0;
+  padding-left: 11px;
   font-size: 12px;
   color: var(--ys-gray-500);
   line-height: 1.6;
+}
+
+.ys-page__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ys-filter-bar {
@@ -76,11 +144,12 @@ a {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   margin-bottom: 12px;
   background: #fff;
   border: 1px solid var(--ys-gray-200);
-  border-radius: 6px;
+  border-radius: var(--ys-radius);
+  box-shadow: var(--ys-shadow-card);
 }
 
 .ys-toolbar {
@@ -90,11 +159,104 @@ a {
   margin-bottom: 12px;
 }
 
+/* 白色面板：视图里不要再手写「白底 + 边框 + 圆角」，统一用 .ys-panel */
+.ys-panel,
 .ys-table-card {
   padding: 16px;
   background: #fff;
   border: 1px solid var(--ys-gray-200);
+  border-radius: var(--ys-radius);
+  box-shadow: var(--ys-shadow-card);
+}
+
+/* 承载 el-tabs 的面板：上内边距交给 tab 头，避免出现双层留白 */
+.ys-panel--flush {
+  padding: 0 12px 12px;
+}
+
+/* 区块标题（详情抽屉、看板、配置页共用），与 .ys-page__title 同一套视觉语言 */
+.ys-section-title {
+  position: relative;
+  margin: 18px 0 12px;
+  padding-left: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ys-navy-900);
+}
+
+.ys-section-title::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--ys-blue-500), var(--ys-blue-600));
+}
+
+/* 统计卡片：标签 + 数值 + 可选说明，看板与运维页共用 */
+.ys-stat-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ys-stat-card {
+  flex: 1 1 168px;
+  min-width: 168px;
+  border-color: var(--ys-gray-200);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.ys-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(16, 42, 74, 0.1);
+}
+
+.ys-stat__label {
+  font-size: 12px;
+  color: var(--ys-gray-500);
+}
+
+.ys-stat__value {
+  margin: 6px 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ys-navy-900);
+}
+
+.ys-stat__hint {
+  font-size: 12px;
+  color: var(--ys-gray-500);
+}
+
+/* 双列区块：用 grid 代替 <el-row> + 固定 :span="12"，窄屏由第 9 节改单列 */
+.ys-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* 代码 / 报文 / 变更明细预览块 */
+.ys-code-block {
+  max-height: 320px;
+  padding: 12px;
+  margin: 0;
+  overflow: auto;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  background: var(--ys-gray-50);
+  border: 1px solid var(--ys-gray-200);
   border-radius: 6px;
+}
+
+.ys-ml-4 {
+  margin-left: 4px;
 }
 
 .ys-pagination {
@@ -129,43 +291,17 @@ a {
   color: var(--ys-gray-700);
 }
 
-/* 登录页 */
-.ys-login {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(43, 124, 233, 0.35), transparent 55%),
-    linear-gradient(135deg, var(--ys-navy-900) 0%, var(--ys-navy-700) 55%, var(--ys-blue-600) 100%);
+/* 表单接口错误提示（EntityListPage 等页面复用） */
+.ys-form-error {
+  margin-bottom: 12px;
+  border-radius: var(--ys-radius);
 }
 
-.ys-login__card {
-  width: 400px;
-  padding: 32px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 18px 48px rgba(4, 18, 38, 0.35);
+.ys-form-add {
+  margin-top: 4px;
 }
 
-.ys-login__brand {
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-.ys-login__brand h1 {
-  margin: 0;
-  font-size: 22px;
-  color: var(--ys-navy-900);
-}
-
-.ys-login__brand p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--ys-gray-500);
-}
-
-/* 布局 */
+/* ============================ 4. 主布局 ============================ */
 .ys-layout {
   display: flex;
   height: 100%;
@@ -176,7 +312,7 @@ a {
   flex-direction: column;
   flex-shrink: 0;
   width: var(--ys-sidebar-width);
-  background: var(--ys-navy-900);
+  background: var(--ys-sidebar-bg);
   transition: width 0.2s ease;
 }
 
@@ -189,44 +325,282 @@ a {
   align-items: center;
   gap: 10px;
   height: var(--ys-header-height);
-  padding: 0 16px;
+  flex-shrink: 0;
+  padding: 0 14px;
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 品牌标识：渐变方块 + 图标，形成「产品 logo」观感 */
+.ys-layout__brand > .el-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--ys-blue-500) 0%, #4c8ff0 100%);
+  box-shadow: 0 2px 8px rgba(43, 124, 233, 0.45);
 }
 
 .ys-layout__brand-title {
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.ys-layout__aside--collapsed .ys-layout__brand {
+  justify-content: center;
+  padding: 0;
 }
 
 .ys-layout__menu {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
 }
 
+.ys-layout__menu .el-scrollbar__thumb {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ---------------------- 4.1 侧边导航：层级区分 ----------------------
+   一级（depth 0）= 目录分组：小号、字重 600、字距放开、低对比度；
+   二级（depth 1）= 页面条目：常规字号、缩进 + 圆点，选中为蓝色渐变块。
+   Element Plus 的缩进由 --el-menu-level 计算，这里按层级显式覆写。 */
 .ys-layout__menu .el-menu {
   border-right: none;
   background: transparent;
+  padding: 4px 0 12px;
+  /* Element Plus 的行高来自这些变量（默认 56px，对侧边导航过高）。
+     在这里统一收窄，避免只覆盖 height 时其它派生样式仍按 56px 计算。 */
+  --el-menu-item-height: 40px;
+  --el-menu-sub-item-height: 36px;
+  --el-menu-base-level-padding: 12px;
+  --el-menu-item-font-size: 13px;
+  --el-menu-active-color: #fff;
 }
 
 .ys-layout__menu .el-menu-item,
 .ys-layout__menu .el-sub-menu__title {
-  color: rgba(255, 255, 255, 0.78);
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  line-height: 36px;
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
-.ys-layout__menu .el-menu-item:hover,
-.ys-layout__menu .el-sub-menu__title:hover {
+.ys-layout__menu .el-sub-menu__icon-arrow {
+  font-size: 11px;
+  opacity: 0.45;
+}
+
+/* 4.1.1 一级目录 */
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0 > .el-sub-menu__title,
+.ys-layout__menu .el-menu-item.ys-menu-node--d0 {
+  height: 40px;
+  margin: 2px 10px;
+  padding-left: 12px !important;
+  border-radius: var(--ys-radius);
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0 > .el-sub-menu__title .el-icon,
+.ys-layout__menu .el-menu-item.ys-menu-node--d0 .el-icon {
+  width: 16px;
+  margin-right: 10px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0 > .el-sub-menu__title:hover,
+.ys-layout__menu .el-menu-item.ys-menu-node--d0:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0.is-opened > .el-sub-menu__title {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0.is-opened > .el-sub-menu__title .el-icon {
+  color: var(--ys-blue-500);
+}
+
+/* 当前页面所属的一级目录：左侧竖条 + 提亮，作为「你在这里」的定位提示 */
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0.is-active > .el-sub-menu__title {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0.is-active > .el-sub-menu__title::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ys-blue-500);
+}
+
+.ys-layout__menu .el-sub-menu.ys-menu-group--d0.is-active > .el-sub-menu__title .el-icon {
+  color: var(--ys-blue-500);
+}
+
+.ys-layout__menu .el-menu-item.ys-menu-node--d0.is-active {
+  background: linear-gradient(90deg, var(--ys-blue-600) 0%, #2f7ee6 100%);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(22, 104, 220, 0.35);
+}
+
+.ys-layout__menu .el-menu-item.ys-menu-node--d0.is-active .el-icon {
+  color: #fff;
+}
+
+/* 一级分组之间的分隔线，让目录之间不连成一片 */
+.ys-layout__menu .ys-menu-group--d0 + .ys-menu-group--d0,
+.ys-layout__menu .ys-menu-group--d0 + .ys-menu-node--d0,
+.ys-layout__menu .ys-menu-node--d0 + .ys-menu-group--d0 {
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+/* 4.1.2 二级页面 */
+.ys-layout__menu .el-menu-item.ys-menu-node--d1,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d1 > .el-sub-menu__title {
+  margin: 2px 10px;
+  padding-left: 34px !important;
+  border-radius: var(--ys-radius);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 13px;
+}
+
+.ys-layout__menu .el-menu-item.ys-menu-node--d1::before,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d1 > .el-sub-menu__title::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 19px;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.34);
+  transition: background-color 0.18s ease, transform 0.18s ease;
+}
+
+.ys-layout__menu .el-menu-item.ys-menu-node--d1:hover,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d1 > .el-sub-menu__title:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
-.ys-layout__menu .el-menu-item.is-active {
-  color: #fff;
-  background: var(--ys-blue-600);
+.ys-layout__menu .el-menu-item.ys-menu-node--d1:hover::before,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d1 > .el-sub-menu__title:hover::before {
+  background: rgba(255, 255, 255, 0.75);
 }
 
+.ys-layout__menu .el-menu-item.ys-menu-node--d1.is-active,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d1.is-active > .el-sub-menu__title {
+  background: linear-gradient(90deg, var(--ys-blue-600) 0%, #2f7ee6 100%);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(22, 104, 220, 0.35);
+}
+
+.ys-layout__menu .el-menu-item.ys-menu-node--d1.is-active::before,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d1.is-active > .el-sub-menu__title::before {
+  background: #fff;
+  transform: scale(1.35);
+}
+
+/* 三级及更深（当前菜单未使用，保留规则避免后续样式回退） */
+.ys-layout__menu .el-menu-item.ys-menu-node--d2,
+.ys-layout__menu .el-sub-menu.ys-menu-group--d2 > .el-sub-menu__title {
+  margin: 2px 10px;
+  padding-left: 50px !important;
+  border-radius: var(--ys-radius);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+/* 展开的二级容器：深色底 + 圆角，把「同一目录下的页面」框成一组 */
+.ys-layout__menu .el-menu--inline {
+  margin: 0 10px 6px;
+  padding: 4px 0;
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: var(--ys-radius);
+}
+
+.ys-layout__menu .el-menu--inline .el-menu-item.ys-menu-node--d1 {
+  margin: 1px 4px;
+  padding-left: 26px !important;
+  font-size: 13px;
+}
+
+.ys-layout__menu .el-menu--inline .el-menu-item.ys-menu-node--d1::before {
+  left: 12px;
+}
+
+/* 4.1.3 折叠态：只留图标并居中 */
+.ys-layout__aside--collapsed .ys-layout__menu .el-menu-item,
+.ys-layout__aside--collapsed .ys-layout__menu .el-sub-menu__title {
+  justify-content: center;
+  margin: 2px 8px;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.ys-layout__aside--collapsed .ys-layout__menu .el-menu-item::before,
+.ys-layout__aside--collapsed .ys-layout__menu .el-sub-menu__icon-arrow {
+  display: none;
+}
+
+.ys-layout__aside--collapsed .ys-layout__menu .el-menu-item .el-icon,
+.ys-layout__aside--collapsed .ys-layout__menu .el-sub-menu__title .el-icon {
+  margin-right: 0;
+}
+
+/* 4.1.4 折叠后的弹出菜单（teleport 到 body，必须写成全局规则） */
+.el-menu--popup {
+  min-width: 176px;
+  padding: 6px;
+  border-radius: var(--ys-radius);
+  box-shadow: var(--ys-shadow-pop);
+}
+
+.el-menu--popup .el-menu-item,
+.el-menu--popup .el-sub-menu__title {
+  height: 36px;
+  line-height: 36px;
+  margin: 2px 0;
+  padding-left: 14px !important;
+  border-radius: 6px;
+  color: var(--ys-gray-700);
+  font-size: 13px;
+}
+
+.el-menu--popup .el-menu-item:hover,
+.el-menu--popup .el-sub-menu__title:hover {
+  background: var(--ys-blue-100);
+  color: var(--ys-blue-600);
+}
+
+.el-menu--popup .el-menu-item.is-active {
+  background: var(--ys-blue-600);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ======================= 5. 顶部栏与标签页 ======================= */
 .ys-layout__main {
   display: flex;
   flex: 1;
@@ -239,9 +613,12 @@ a {
   align-items: center;
   justify-content: space-between;
   height: var(--ys-header-height);
+  flex-shrink: 0;
   padding: 0 16px;
   background: #fff;
   border-bottom: 1px solid var(--ys-gray-200);
+  box-shadow: 0 1px 3px rgba(16, 42, 74, 0.05);
+  z-index: 10;
 }
 
 .ys-layout__header-left,
@@ -251,24 +628,48 @@ a {
   gap: 12px;
 }
 
-.ys-layout__tabs {
-  height: var(--ys-tabs-height);
-  padding: 0 12px;
-  background: #fff;
-  border-bottom: 1px solid var(--ys-gray-200);
+.ys-layout__header-left .el-button,
+.ys-layout__header-right .el-button {
+  color: var(--ys-gray-500);
 }
 
-.ys-layout__content {
-  flex: 1;
-  overflow: auto;
-  background: var(--ys-gray-50);
+.ys-layout__header-left .el-button:hover,
+.ys-layout__header-right .el-button:hover {
+  color: var(--ys-blue-600);
+}
+
+.ys-layout__header .el-breadcrumb {
+  font-size: 13px;
+}
+
+.ys-layout__header .el-breadcrumb__inner {
+  color: var(--ys-gray-500);
+  font-weight: 500;
+}
+
+.ys-layout__header .el-breadcrumb__item:last-child .el-breadcrumb__inner {
+  color: var(--ys-navy-900);
+  font-weight: 600;
+}
+
+.ys-layout__header .el-breadcrumb__separator {
+  color: var(--ys-gray-300);
 }
 
 .ys-layout__user {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
   cursor: pointer;
+  color: var(--ys-gray-700);
+  font-size: 13px;
+  transition: background-color 0.18s ease;
+}
+
+.ys-layout__user:hover {
+  background: var(--ys-gray-100);
 }
 
 .ys-layout__avatar {
@@ -277,12 +678,221 @@ a {
   justify-content: center;
   width: 30px;
   height: 30px;
+  flex-shrink: 0;
   font-size: 12px;
+  font-weight: 600;
   color: #fff;
-  background: var(--ys-blue-600);
+  background: linear-gradient(135deg, var(--ys-blue-500) 0%, var(--ys-navy-700) 100%);
   border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(22, 104, 220, 0.35);
 }
-/* 采购页面：行编辑表格的辅助样式 */
+
+/* 标签页：卡片式改成「选中块 + 下划线」的现代样式 */
+.ys-layout__tabs {
+  height: var(--ys-tabs-height);
+  flex-shrink: 0;
+  padding: 0 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--ys-gray-200);
+}
+
+.ys-layout__tabs .el-tabs__header {
+  margin: 0;
+  border-bottom: none;
+}
+
+.ys-layout__tabs .el-tabs__nav-wrap::after {
+  display: none;
+}
+
+.ys-layout__tabs .el-tabs--card > .el-tabs__header .el-tabs__nav,
+.ys-layout__tabs .el-tabs__nav {
+  border: none !important;
+}
+
+.ys-layout__tabs .el-tabs__item {
+  height: var(--ys-tabs-height);
+  line-height: var(--ys-tabs-height);
+  padding: 0 14px !important;
+  border: none !important;
+  font-size: 13px;
+  color: var(--ys-gray-500);
+}
+
+.ys-layout__tabs .el-tabs__item:hover {
+  color: var(--ys-blue-600);
+}
+
+.ys-layout__tabs .el-tabs__item.is-active {
+  color: var(--ys-blue-600);
+  font-weight: 600;
+  background: #fff;
+  box-shadow: inset 0 -2px 0 var(--ys-blue-600);
+}
+
+.ys-layout__tabs .el-tabs__item .is-icon-close {
+  margin-left: 6px;
+  border-radius: 50%;
+  transition: background-color 0.18s ease;
+}
+
+.ys-layout__tabs .el-tabs__item .is-icon-close:hover {
+  background: var(--ys-gray-200);
+}
+
+.ys-layout__content {
+  flex: 1;
+  overflow: auto;
+  background: var(--ys-gray-50);
+}
+
+/* ======================= 6. 组件细节统一 ======================= */
+.el-button {
+  font-weight: 500;
+}
+
+.el-button--primary:not(.is-link):not(.is-text) {
+  box-shadow: 0 1px 3px rgba(22, 104, 220, 0.28);
+}
+
+.el-table {
+  --el-table-header-bg-color: var(--ys-gray-100);
+  --el-table-header-text-color: var(--ys-gray-700);
+  --el-table-row-hover-bg-color: #f5f9ff;
+  --el-table-border-color: var(--ys-gray-200);
+  font-size: 13px;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+}
+
+.el-table .cell {
+  line-height: 22px;
+}
+
+.el-tag {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.el-dialog {
+  border-radius: var(--ys-radius-lg);
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  margin-right: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ys-gray-100);
+}
+
+.el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ys-navy-900);
+}
+
+.el-drawer__header {
+  margin-bottom: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ys-gray-100);
+  color: var(--ys-navy-900);
+  font-weight: 600;
+}
+
+.el-drawer__body {
+  padding-top: 16px;
+}
+
+.el-drawer__footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--ys-gray-100);
+}
+
+/* 抽屉里的描述列表：标签列加浅底色，长列表更易对齐阅读 */
+.el-drawer .el-descriptions__label {
+  width: 108px;
+  background: var(--ys-gray-50);
+}
+
+.el-card {
+  border-radius: var(--ys-radius);
+}
+
+.el-alert {
+  border-radius: var(--ys-radius);
+}
+
+.el-descriptions__label {
+  color: var(--ys-gray-500);
+}
+
+.el-pagination {
+  --el-pagination-font-size: 13px;
+}
+
+.el-empty__description p {
+  color: var(--ys-gray-500);
+  font-size: 13px;
+}
+
+/* ======================= 7. 登录页 ======================= */
+.ys-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(43, 124, 233, 0.35), transparent 55%),
+    linear-gradient(135deg, var(--ys-navy-900) 0%, var(--ys-navy-700) 55%, var(--ys-blue-600) 100%);
+}
+
+.ys-login__card {
+  width: 400px;
+  max-width: 100%;
+  padding: 34px 32px 28px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(4, 18, 38, 0.42);
+}
+
+.ys-login__brand {
+  margin-bottom: 22px;
+  text-align: center;
+}
+
+.ys-login__brand h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ys-navy-900);
+}
+
+.ys-login__brand p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ys-gray-500);
+}
+
+.ys-login__error {
+  margin-bottom: 16px;
+}
+
+.ys-login__submit {
+  width: 100%;
+  margin-top: 4px;
+  letter-spacing: 0.2em;
+}
+
+.ys-login__hint {
+  margin: 18px 0 0;
+  text-align: center;
+}
+
+/* ======================= 8. 业务页面辅助类 ======================= */
 .ys-line-add {
   margin-top: 8px;
 }
@@ -298,4 +908,103 @@ a {
 
 .ys-detail-hint {
   margin-top: 12px;
+}
+
+/* ======================= 9. 窄屏响应式 =======================
+   断点约定（`useAutoCollapse.ts` 的 NARROW_BREAKPOINT 必须与这里保持一致）：
+   - ≤1440px：表格改为容器内横向滚动，不再挤压列宽
+   - ≤1200px：侧边栏自动折叠；页面内边距与统计卡收窄
+   - ≤992px ：标题/操作区上下排列、统计卡与双列区块改为单列、弹窗与抽屉铺满
+
+   说明：Element Plus 的弹窗宽度是组件内联样式（`width: 600px` 之类），
+   普通选择器无法覆盖，因此这里必须用 `!important`，并已在注释中标明原因。
+*/
+
+/* 表格横向滚动：列多时让表格保持可读最小宽度，由容器滚动，而不是把每列压到不可读 */
+@media (max-width: 1440px) {
+  .ys-table-card {
+    overflow-x: auto;
+  }
+
+  .ys-table-card .el-table {
+    min-width: 720px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .ys-page {
+    padding: 12px;
+  }
+
+  .ys-page__header {
+    flex-wrap: wrap;
+  }
+
+  .ys-panel,
+  .ys-table-card {
+    padding: 12px;
+  }
+
+  .ys-filter-bar {
+    padding: 12px;
+  }
+
+  .ys-stat-card {
+    flex-basis: 140px;
+    min-width: 140px;
+  }
+
+  .ys-layout__header {
+    padding: 0 12px;
+  }
+
+  .ys-layout__breadcrumb {
+    max-width: 220px;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 992px) {
+  .ys-page {
+    padding: 10px;
+  }
+
+  .ys-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ys-page__header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  /* 统计卡改为整行铺满，避免窄屏下出现「半张卡」 */
+  .ys-stat-card {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .ys-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .ys-definition {
+    grid-template-columns: 84px 1fr;
+  }
+
+  /* 双列区块在窄屏改为单列 */
+  .ys-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Element Plus 弹窗/抽屉宽度是内联样式，必须 !important 才能覆盖 */
+  .el-dialog:not(.is-fullscreen) {
+    width: 92% !important;
+    max-width: 92% !important;
+  }
+
+  .el-drawer:not(.is-fullscreen) {
+    width: 92% !important;
+  }
 }

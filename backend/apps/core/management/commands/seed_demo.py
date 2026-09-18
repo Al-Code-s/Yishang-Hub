@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -90,9 +90,9 @@ DEPARTMENTS = (
     ("PROD", "生产部", None, "production", 20),
     ("PLAN", "计划科", "PROD", "production", 21),
     ("TECH", "技术科", "PROD", "production", 22),
-    ("PUR", "采购部", None, "supply", 30),
-    ("SALES", "销售部", None, "marketing", 40),
-    ("WH", "仓储部", None, "supply", 50),
+    ("PUR", "采购部", None, "procurement", 30),
+    ("SALES", "销售部", None, "sales", 40),
+    ("WH", "仓储部", None, "warehouse", 50),
     ("QC", "质量部", None, "quality", 60),
     ("EAM", "设备部", None, "equipment", 70),
     ("IT", "信息部", None, "management", 80),
@@ -108,14 +108,14 @@ FACTORIES = (
 
 WORKSHOPS = {
     "F01": (
-        ("CUT", "裁剪车间", "cutting", 10, ("CL01", "一号裁剪线", "cutting", "800")),
-        ("SEW", "缝制车间", "sewing", 20, ("SL01", "一号缝制线", "sewing", "1200")),
-        ("SEW2", "缝制二车间", "sewing", 30, ("SL02", "二号缝制线", "sewing", "1000")),
-        ("FIN", "整烫包装车间", "finishing", 40, ("FL01", "一号整烫线", "finishing", "1500")),
+        ("CUT", "裁剪车间", "cutting", 10, ("CL01", "一号裁剪线", "manual", "800")),
+        ("SEW", "缝制车间", "sewing", 20, ("SL01", "一号缝制线", "manual", "1200")),
+        ("SEW2", "缝制二车间", "sewing", 30, ("SL02", "二号缝制线", "manual", "1000")),
+        ("FIN", "整烫包装车间", "finishing", 40, ("FL01", "一号整烫线", "manual", "1500")),
     ),
     "F02": (
-        ("SEW", "缝制车间", "sewing", 10, ("SL01", "一号缝制线", "sewing", "900")),
-        ("FIN", "整烫包装车间", "finishing", 20, ("FL01", "一号整烫线", "finishing", "1100")),
+        ("SEW", "缝制车间", "sewing", 10, ("SL01", "一号缝制线", "manual", "900")),
+        ("FIN", "整烫包装车间", "finishing", 20, ("FL01", "一号整烫线", "manual", "1100")),
     ),
 }
 
@@ -137,21 +137,21 @@ SHIFTS = (
 )
 
 EMPLOYEES = (
-    ("E1001", "陈立", "男", "GM", "F01", "总经理", "management", "2016-03-01"),
-    ("E1002", "王慧", "女", "PROD", "F01", "生产经理", "management", "2017-06-12"),
-    ("E1003", "李文强", "男", "PLAN", "F01", "计划主管", "management", "2018-09-03"),
-    ("E1004", "赵敏", "女", "PUR", "F01", "采购主管", "management", "2018-04-16"),
-    ("E1005", "孙磊", "男", "SALES", "F01", "销售主管", "management", "2019-02-25"),
-    ("E1006", "周丽", "女", "WH", "F01", "仓储主管", "management", "2017-11-06"),
-    ("E1007", "吴刚", "男", "QC", "F01", "质量工程师", "professional", "2019-07-15"),
-    ("E1008", "郑涛", "男", "EAM", "F01", "设备维修工", "worker", "2020-05-18"),
-    ("E1009", "冯雪", "女", "PROD", "F01", "缝纫工", "worker", "2021-03-22"),
-    ("E1010", "许静", "女", "PROD", "F01", "裁剪工", "worker", "2021-08-09"),
-    ("E1011", "何俊", "男", "PROD", "F01", "整烫工", "worker", "2020-10-12"),
-    ("E1012", "马超", "男", "PROD", "F02", "缝纫工", "worker", "2022-04-01"),
-    ("E1013", "朱婷", "女", "QC", "F02", "质检员", "worker", "2022-06-20"),
-    ("E1014", "范伟", "男", "IT", "F01", "信息化专员", "professional", "2021-01-11"),
-    ("E1015", "钱进", "男", "PUR", "F01", "采购专员", "professional", "2021-05-10"),
+    ("E1001", "陈立", "male", "GM", "F01", "总经理", "full_time", "2016-03-01"),
+    ("E1002", "王慧", "female", "PROD", "F01", "生产经理", "full_time", "2017-06-12"),
+    ("E1003", "李文强", "male", "PLAN", "F01", "计划主管", "full_time", "2018-09-03"),
+    ("E1004", "赵敏", "female", "PUR", "F01", "采购主管", "full_time", "2018-04-16"),
+    ("E1005", "孙磊", "male", "SALES", "F01", "销售主管", "full_time", "2019-02-25"),
+    ("E1006", "周丽", "female", "WH", "F01", "仓储主管", "full_time", "2017-11-06"),
+    ("E1007", "吴刚", "male", "QC", "F01", "质量工程师", "full_time", "2019-07-15"),
+    ("E1008", "郑涛", "male", "EAM", "F01", "设备维修工", "full_time", "2020-05-18"),
+    ("E1009", "冯雪", "female", "PROD", "F01", "缝纫工", "full_time", "2021-03-22"),
+    ("E1010", "许静", "female", "PROD", "F01", "裁剪工", "full_time", "2021-08-09"),
+    ("E1011", "何俊", "male", "PROD", "F01", "整烫工", "full_time", "2020-10-12"),
+    ("E1012", "马超", "male", "PROD", "F02", "缝纫工", "full_time", "2022-04-01"),
+    ("E1013", "朱婷", "female", "QC", "F02", "质检员", "full_time", "2022-06-20"),
+    ("E1014", "范伟", "male", "IT", "F01", "信息化专员", "full_time", "2021-01-11"),
+    ("E1015", "钱进", "male", "PUR", "F01", "采购专员", "full_time", "2021-05-10"),
 )
 MATERIAL_CATEGORIES = (
     ("FB", "面料", "fabric", None, 10),
@@ -500,6 +500,19 @@ APPROVAL_TEMPLATES = (
         ),
     },
     {
+        # biz_type 必须与 apps.sales.services.BIZ_TYPE_ORDER 完全一致，
+        # 否则销售订单提交时找不到模板（服务层直接拒绝而不是静默跳过审批）
+        "code": "AP-SALES-ORDER",
+        "name": "销售订单审批",
+        "biz_type": "sales.order",
+        "description": "部门主管审批；金额≥5 万追加总经理审批，金额≥20 万追加财务复核。",
+        "nodes": (
+            {"seq": 1, "name": "部门主管审批", "role": "demo_dept_manager", "amount_min": None},
+            {"seq": 2, "name": "总经理审批", "role": "demo_gm", "amount_min": "50000"},
+            {"seq": 3, "name": "财务复核", "role": "demo_finance", "amount_min": "200000"},
+        ),
+    },
+    {
         # biz_type 必须与 apps.procurement.services.BIZ_TYPE_REQUISITION 完全一致，
         # 否则采购申请提交时找不到模板（服务层会直接拒绝而不是静默跳过审批）
         "code": "AP-PRC-REQ",
@@ -516,6 +529,27 @@ APPROVAL_TEMPLATES = (
         "name": "采购订单审批",
         "biz_type": "procurement.order",
         "description": "采购订单：部门主管审批（演示单节点）。",
+        "nodes": (
+            {"seq": 1, "name": "部门主管审批", "role": "demo_dept_manager", "amount_min": None},
+        ),
+    },
+    {
+        # biz_type 必须与 apps.planning.services.BIZ_TYPE_BOM 完全一致，
+        # 否则 BOM 提交时找不到模板（服务层直接拒绝而不是静默跳过审批）
+        "code": "AP-BOM",
+        "name": "BOM 变更审批",
+        "biz_type": "planning.bom",
+        "description": "BOM 版本审核：部门主管审批（演示单节点）。",
+        "nodes": (
+            {"seq": 1, "name": "部门主管审批", "role": "demo_dept_manager", "amount_min": None},
+        ),
+    },
+    {
+        # 对应 apps.planning.services.BIZ_TYPE_ROUTING
+        "code": "AP-ROUTING",
+        "name": "工艺路线审批",
+        "biz_type": "planning.routing",
+        "description": "工艺路线版本审核：部门主管审批（演示单节点）。",
         "nodes": (
             {"seq": 1, "name": "部门主管审批", "role": "demo_dept_manager", "amount_min": None},
         ),
@@ -566,6 +600,9 @@ class Command(BaseCommand):
             self._approval_templates()
             self._inventory()
             self._procurement()
+            self._sales()
+            self._engineering()
+            self._mrp()
 
         self._report()
         if self.created_passwords:
@@ -1207,6 +1244,310 @@ class Command(BaseCommand):
                     },
                 )
 
+    # -- 计划演示数据（BOM / 工艺路线） -----------------------------------
+    def _engineering(self) -> None:
+        """工程数据演示：BOM 与工艺路线 → 提交 → 审批通过（任务书 9.5）。
+
+        与采购 / 销售演示数据同样的约束：全部通过 `apps.planning.services` 完成，
+        演示数据不直接写单据表，也不修改已审核版本——需要变更时只能派生新版本。
+
+        幂等：按「款式 + 款式通用范围」是否已有版本判断，已存在则只按当前状态
+        继续推进到「已审核」，不会重复建单或产生重复版本。
+        """
+        from apps.planning import services as pl
+        from apps.planning.models import Bom, BomStatus, Routing, RoutingStatus
+        from apps.workflow import services as workflow_services
+        from apps.workflow.models import ApprovalInstance, InstanceStatus
+
+        actor = User.objects.filter(is_superuser=True).order_by("id").first()
+        if actor is None:
+            self.stdout.write(
+                self.style.WARNING("未找到超级管理员账号，跳过 BOM / 工艺路线演示数据。")
+            )
+            return
+
+        approver = User.objects.filter(username="dept_mgr", is_active=True).first()
+        if approver is None:
+            self.stdout.write(
+                self.style.WARNING(
+                    "未找到演示审批账号 dept_mgr，BOM / 工艺路线将停留在「审批中」。"
+                )
+            )
+
+        def approve(instance_id: int | None, document) -> bool:
+            if instance_id is None or approver is None:
+                return False
+            instance = ApprovalInstance.objects.filter(pk=instance_id).first()
+            if instance is None or instance.status != InstanceStatus.PENDING:
+                return False
+            workflow_services.approve_instance(approver, instance, comment="演示审批通过")
+            document.refresh_from_db()
+            return True
+
+        style = self.styles["YS-W-2401"]
+
+        # 1) BOM：面料 + 缝纫线 + 主唛织标 + 吊牌 + 胶袋（含损耗率）
+        bom = (
+            Bom.objects.filter(company=self.company, style=style, sku__isnull=True)
+            .order_by("-version_no")
+            .first()
+        )
+        if bom is None:
+            bom = pl.create_bom(
+                user=actor,
+                company=self.company,
+                style=style,
+                lines=[
+                    {
+                        "material": self.materials["FAB-001"],
+                        "quantity": Decimal("0.280000"),
+                        "loss_rate": Decimal("0.060000"),
+                        "position": "大身",
+                    },
+                    {
+                        "material": self.materials["ACC-001"],
+                        "quantity": Decimal("0.004000"),
+                        "loss_rate": Decimal("0.050000"),
+                        "position": "缝制",
+                    },
+                    {
+                        "material": self.materials["ACC-005"],
+                        "quantity": Decimal("1"),
+                        "loss_rate": Decimal("0.020000"),
+                        "is_key_material": True,
+                        "position": "领口",
+                    },
+                    {
+                        "material": self.materials["PKG-002"],
+                        "quantity": Decimal("1"),
+                        "loss_rate": Decimal("0.010000"),
+                    },
+                    {
+                        "material": self.materials["PKG-003"],
+                        "quantity": Decimal("1"),
+                        "loss_rate": Decimal("0.010000"),
+                    },
+                ],
+                effective_from=date.today(),
+                remark=DEMO_REMARK,
+            )
+            self._count("planning.Bom")
+        if bom.status == BomStatus.DRAFT:
+            bom = pl.submit_bom(bom, user=actor, comment="演示提交")
+        if bom.status == BomStatus.SUBMITTED:
+            approve(bom.approval_instance_id, bom)
+
+        # 2) 工艺路线：裁剪 → 缝制 → 整烫 → 检验（质检点）→ 包装
+        routing = (
+            Routing.objects.filter(company=self.company, style=style, sku__isnull=True)
+            .order_by("-version_no")
+            .first()
+        )
+        if routing is None:
+            routing = pl.create_routing(
+                user=actor,
+                company=self.company,
+                style=style,
+                steps=[
+                    {
+                        "sequence": 1,
+                        "name": "裁剪",
+                        "workshop": self.workshops["F01/CUT"],
+                        "workcenter": "一号裁剪线",
+                        "standard_hours": Decimal("0.080000"),
+                    },
+                    {
+                        "sequence": 2,
+                        "name": "缝制",
+                        "workshop": self.workshops["F01/SEW"],
+                        "workcenter": "一号缝制线",
+                        "standard_hours": Decimal("0.350000"),
+                    },
+                    {
+                        "sequence": 3,
+                        "name": "整烫",
+                        "workshop": self.workshops["F01/FIN"],
+                        "workcenter": "一号整烫线",
+                        "standard_hours": Decimal("0.060000"),
+                    },
+                    {
+                        "sequence": 4,
+                        "name": "检验",
+                        "workshop": self.workshops["F01/FIN"],
+                        "workcenter": "检验工位",
+                        "standard_hours": Decimal("0.050000"),
+                        "is_quality_gate": True,
+                    },
+                    {
+                        "sequence": 5,
+                        "name": "包装",
+                        "workshop": self.workshops["F01/FIN"],
+                        "workcenter": "包装工位",
+                        "standard_hours": Decimal("0.040000"),
+                    },
+                ],
+                effective_from=date.today(),
+                remark=DEMO_REMARK,
+            )
+            self._count("planning.Routing")
+        if routing.status == RoutingStatus.DRAFT:
+            routing = pl.submit_routing(routing, user=actor, comment="演示提交")
+        if routing.status == RoutingStatus.SUBMITTED:
+            approve(routing.approval_instance_id, routing)
+
+    # -- 审批推进（演示用） ----------------------------------------------
+    def _approve_fully(self, instance_id: int | None, document) -> bool:
+        """把审批实例推进到「已通过」。
+
+        演示模板带金额路由（销售订单 ≥5 万追加总经理、≥20 万追加财务复核），
+        只批一个节点会让单据停在「审批中」；这里按**节点上的审批角色**找演示账号逐个审批。
+        与其它演示数据一致：全程走 `apps.workflow.services`，不直接改审批表。
+        """
+        from apps.workflow import services as workflow_services
+        from apps.workflow.models import ApprovalInstance, InstanceStatus, StepStatus
+
+        role_users = {
+            "demo_dept_manager": "dept_mgr",
+            "demo_gm": "gm",
+            "demo_finance": "finance",
+        }
+        instance = ApprovalInstance.objects.filter(pk=instance_id).first()
+        for _ in range(10):
+            if instance is None or instance.status != InstanceStatus.PENDING:
+                break
+            step = instance.steps.filter(status=StepStatus.PENDING).order_by("seq").first()
+            if step is None:
+                break
+            username = role_users.get(getattr(step.approver_role, "code", ""), "dept_mgr")
+            approver = User.objects.filter(username=username, is_active=True).first()
+            if approver is None:
+                self.stdout.write(
+                    self.style.WARNING(f"缺少演示审批账号 {username}，审批实例将停留在当前节点。")
+                )
+                break
+            workflow_services.approve_instance(approver, instance, comment="演示审批通过")
+            instance.refresh_from_db()
+        document.refresh_from_db()
+        return instance is not None and instance.status == InstanceStatus.APPROVED
+
+    # -- MRP 演示数据 ----------------------------------------------------
+    def _mrp(self) -> None:
+        """MRP 演示数据：跑一次运算 + 把 1 条**采购建议**转成草稿采购申请（任务书 10.6）。
+
+        约束与其他增量一致：只调用 `apps.planning.mrp` 的公开服务，
+        不直接写 MRP 表、不伪造 MES 工单（生产建议本轮明确拒绝转单）。
+
+        幂等：演示需求单按固定单号复用；该公司已有 `completed` 运行则不再重复运算，
+        因此重复执行新建 0 条（需求单与运行都不会重复产生）。
+        """
+        from apps.planning import mrp as mrp_engine
+        from apps.planning.models import MrpRun, MrpRunStatus, MrpSuggestion, MrpSuggestionStatus
+
+        # 与库存 / 采购 / 销售 / BOM 演示数据一致：没有超级管理员说明业务单据尚未造出来，
+        # MRP 无可算需求，直接跳过（测试库不跑 bootstrap_system 时即属此情况）。
+        planner = User.objects.filter(is_superuser=True, is_active=True).order_by("id").first()
+        if planner is None:
+            self.stdout.write(
+                self.style.WARNING("未找到超级管理员账号，跳过 MRP 演示数据（请先执行 bootstrap_system）。")
+            )
+            return
+
+        # 需求来源：一张保持「已批准、未发货」的销售订单。
+        # 选一个有生效 BOM 的成品 SKU，这样 MRP 才能演示「成品生产建议 → 展开子件 → 采购建议」。
+        from apps.planning.models import Bom, BomStatus
+        from apps.sales import services as sales_services
+        from apps.sales.models import SalesOrder, SalesOrderStatus
+
+        bom = (
+            Bom.objects.filter(company=self.company, status=BomStatus.APPROVED, sku__isnull=True)
+            .order_by("-version_no")
+            .first()
+        )
+        plan_sku = (
+            Sku.objects.filter(company=self.company, style=bom.style).order_by("code").first()
+            if bom is not None
+            else None
+        )
+        if plan_sku is None:
+            self.stdout.write(
+                self.style.WARNING("没有「已审核 BOM + SKU」可用于演示需求，跳过 MRP 演示数据。")
+            )
+            return
+
+        order = SalesOrder.objects.filter(
+            company=self.company, order_no="SO-MRP-0001"
+        ).first()
+        if order is None:
+            order = sales_services.create_order(
+                user=planner,
+                company=self.company,
+                customer=Customer.objects.get(company=self.company, code="CUS-001"),
+                lines=[
+                    {
+                        "material_id": plan_sku.material_id,
+                        "sku_id": plan_sku.pk,
+                        "quantity": Decimal("300"),
+                        "price": Decimal("399"),
+                    }
+                ],
+                order_date=date.today(),
+                expected_date=date.today() + timedelta(days=14),
+                warehouse=Warehouse.objects.get(company=self.company, code="WH-FG-01"),
+                tax_rate=Decimal("13"),
+                remark=f"{DEMO_REMARK}：MRP 运算需求（保持未发货）",
+                order_no="SO-MRP-0001",
+            )
+            self._count("sales.SalesOrder")
+        if order.status == SalesOrderStatus.DRAFT:
+            order = sales_services.submit_order(order, user=planner, comment="演示提交")
+        if order.status == SalesOrderStatus.SUBMITTED:
+            self._approve_fully(order.approval_instance_id, order)
+        if order.status not in SalesOrderStatus.open_for_shipment():
+            self.stdout.write(
+                self.style.WARNING(
+                    f"MRP 演示需求单 {order.order_no} 当前状态为「{order.get_status_display()}」，"
+                    "本次运算可能没有需求。"
+                )
+            )
+
+        if MrpRun.objects.filter(
+            company=self.company, status=MrpRunStatus.COMPLETED
+        ).exists():
+            self.stdout.write("MRP 演示数据：已存在完成运行，跳过运算（幂等）。")
+            return
+
+        today = date.today()
+        run = mrp_engine.run_mrp(
+            company=self.company,
+            user=planner,
+            horizon_start=today,
+            horizon_end=today + timedelta(days=mrp_engine.DEFAULT_HORIZON_DAYS),
+            bucket="day",
+            remark=DEMO_REMARK,
+        )
+        self._count("planning.MrpRun")
+
+        suggestion = (
+            MrpSuggestion.objects.filter(
+                run=run, suggestion_type="purchase", status=MrpSuggestionStatus.OPEN
+            )
+            .order_by("line_no")
+            .first()
+        )
+        if suggestion is None:
+            self.stdout.write("MRP 演示数据：本次运算没有采购建议，跳过转单演示。")
+            return
+        # convert_suggestion 会在锁内重新取一次建议（select_for_update），因此必须使用
+        # 返回值：传入的 suggestion 实例是转单前的快照，读了会拿到空的 converted_document_no。
+        converted = mrp_engine.convert_suggestion(
+            suggestion, user=planner, remark=f"{DEMO_REMARK}：采购建议转草稿采购申请"
+        )
+        self._count("procurement.PurchaseRequisition")
+        self.stdout.write(
+            f"MRP 演示数据：运行 {run.run_no}，已把第 {converted.line_no} 条采购建议"
+            f"转为草稿采购申请 {converted.converted_document_no}（仍走采购审批）。"
+        )
+
     # -- 采购演示数据 ----------------------------------------------------
     def _procurement(self) -> None:
         """采购闭环演示数据：申请 → 审批 → 订单 → 到货 → 待检 → 检验放行。
@@ -1353,6 +1694,158 @@ class Command(BaseCommand):
                 result="qualified",
                 remark="演示：外观、幅宽、克重与色差符合标准，判定合格放行",
                 idempotency_key="seed-demo-receipt-inspect-rc-demo-0001",
+            )
+
+    # -- 销售演示数据 ----------------------------------------------------
+    def _sales(self) -> None:
+        """销售闭环演示数据：销售订单 → 审批 → 库存占用 → 发货出库 → 退货待检 → 检验判定。
+
+        与其它演示数据同样的约束：全部通过 `apps.sales.services` 与统一库存服务完成，
+        不直接写单据、不直接改库存余额。幂等：固定单号 + 状态推进，重复执行既不会
+        重复建单，也不会重复扣减库存。
+        """
+        from apps.sales import services as sal
+        from apps.sales.models import (
+            ReturnDisposition,
+            ReturnStatus,
+            SalesOrder,
+            SalesOrderStatus,
+            SalesReturn,
+            SalesShipment,
+            ShipmentStatus,
+        )
+        from apps.workflow import services as workflow_services
+        from apps.workflow.models import ApprovalInstance, InstanceStatus
+
+        actor = User.objects.filter(is_superuser=True).order_by("id").first()
+        if actor is None:
+            self.stdout.write(
+                self.style.WARNING(
+                    "未找到超级管理员账号，跳过销售演示数据（请先执行 bootstrap_system）。"
+                )
+            )
+            return
+
+        approver = User.objects.filter(username="dept_mgr", is_active=True).first()
+        if approver is None:
+            self.stdout.write(
+                self.style.WARNING("未找到演示审批账号 dept_mgr，销售订单将停留在「审批中」。")
+            )
+
+        def approve(instance_id: int | None, document) -> bool:
+            if instance_id is None or approver is None:
+                return False
+            instance = ApprovalInstance.objects.filter(pk=instance_id).first()
+            if instance is None or instance.status != InstanceStatus.PENDING:
+                return False
+            workflow_services.approve_instance(approver, instance, comment="演示审批通过")
+            document.refresh_from_db()
+            return True
+
+        customer = Customer.objects.get(company=self.company, code="CUS-001")
+        warehouse = Warehouse.objects.get(company=self.company, code="WH-FG-01")
+        finished = (
+            Material.objects.filter(company=self.company, category__code="FG")
+            .order_by("code")
+            .first()
+        )
+        if finished is None:
+            self.stdout.write(self.style.WARNING("未找到成品 SKU 物料，跳过销售演示数据。"))
+            return
+        sku = Sku.objects.filter(material=finished).first()
+
+        # 1) 销售订单（成品 SKU，颜色 / 尺码通过 SKU 关联）
+        order = SalesOrder.objects.filter(
+            company=self.company, order_no="SO-DEMO-0001"
+        ).first()
+        if order is None:
+            order = sal.create_order(
+                user=actor,
+                company=self.company,
+                customer=customer,
+                lines=[
+                    {
+                        "material_id": finished.id,
+                        "sku_id": getattr(sku, "id", None),
+                        "quantity": Decimal("60"),
+                        "price": Decimal("399"),
+                    }
+                ],
+                order_date=date.today(),
+                expected_date=date.today(),
+                priority="normal",
+                warehouse=warehouse,
+                tax_rate=Decimal("13"),
+                payment_terms="月结 30 天",
+                delivery_address=customer.address,
+                remark=f"{DEMO_REMARK}：订单到交付链路（订单 → 占用 → 发货 → 退货 → 检验）",
+                order_no="SO-DEMO-0001",
+            )
+            self._count("sales.SalesOrder")
+        if order.status == SalesOrderStatus.DRAFT:
+            order = sal.submit_order(order, user=actor, comment="演示提交")
+        if order.status == SalesOrderStatus.SUBMITTED:
+            approve(order.approval_instance_id, order)
+
+        # 2) 库存占用：只改可用量，不改实存量（幂等）
+        if order.status in SalesOrderStatus.open_for_shipment():
+            sal.reserve_order_stock(order, user=actor, reason="演示：订单备货占用")
+
+        # 3) 发货出库：必须由本订单占用覆盖
+        shipment = SalesShipment.objects.filter(
+            company=self.company, sales_order=order, shipment_no="SH-DEMO-0001"
+        ).first()
+        if shipment is None and order.status in SalesOrderStatus.open_for_shipment():
+            order_line = order.lines.order_by("line_no").first()
+            shipment = sal.create_shipment(
+                user=actor,
+                order=order,
+                warehouse=warehouse,
+                lines=[{"order_line": order_line, "quantity": Decimal("60")}],
+                receiver_name=customer.primary_contact_name,
+                receiver_phone=customer.primary_contact_phone,
+                delivery_address=customer.address,
+                carrier="顺丰速运",
+                tracking_no="SF-DEMO-0001",
+                shipment_no="SH-DEMO-0001",
+                remark=f"{DEMO_REMARK}：整单发货",
+            )
+            self._count("sales.SalesShipment")
+        if shipment is not None and shipment.status == ShipmentStatus.DRAFT:
+            shipment = sal.post_shipment(
+                shipment, user=actor, idempotency_key="seed-demo-sales-ship-0001"
+            )
+
+        # 4) 客户退货 → 收货过账进「待检」→ 人工检验判定（合格回库）
+        if shipment is None or shipment.status != ShipmentStatus.POSTED:
+            return
+        return_doc = SalesReturn.objects.filter(
+            company=self.company, return_no="SR-DEMO-0001"
+        ).first()
+        if return_doc is None:
+            order_line = order.lines.order_by("line_no").first()
+            return_doc = sal.create_return(
+                user=actor,
+                order=order,
+                warehouse=warehouse,
+                lines=[{"order_line": order_line, "quantity": Decimal("6")}],
+                shipment=shipment,
+                reason="客户反馈 2 件尺码偏小、4 件存在色差",
+                return_no="SR-DEMO-0001",
+                remark=f"{DEMO_REMARK}：退货先验收再判定质量状态",
+            )
+            self._count("sales.SalesReturn")
+        if return_doc.status == ReturnStatus.DRAFT:
+            return_doc = sal.post_return(
+                return_doc, user=actor, idempotency_key="seed-demo-sales-return-0001"
+            )
+        if return_doc.status == ReturnStatus.POSTED:
+            sal.inspect_return(
+                return_doc,
+                user=actor,
+                result=ReturnDisposition.QUALIFIED,
+                remark="复检：外观与尺寸符合标准，转合格库存（演示为人工判定，非自动检测）",
+                idempotency_key="seed-demo-sales-return-inspect-0001",
             )
 
     def _count(self, label: str, amount: int = 1) -> None:

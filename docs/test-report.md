@@ -1,7 +1,7 @@
 # 测试报告（docs/test-report.md）
 
 > 本文件只记录**实际执行过**的命令与输出。未执行的项一律写「未执行」，不写成通过。
-> 执行时间：2026-09-17　执行机器：Windows 10/11 开发机（本地 MySQL 8.0.17 + Redis 3.2）
+> 执行时间：2026-09-17 ～ 2026-09-18　执行机器：Windows 10/11 开发机（本地 MySQL 8.0.17 + Redis 3.2）
 
 ## 一、测试环境
 
@@ -510,11 +510,779 @@ vitest 63 → **66**；权限点 124 → **139**；菜单 43 → **47**；业务
   MySQL 8.4 版本验证：状态与第五节一致，**仍未执行**。
 - 采购侧：询价比价、到货差异、退货、应付与付款登记**未实现**，因此**无可执行用例**（未执行不等于通过）。
 
-## 十、结论
+## 十、阶段 2 第四步复验记录（销售模块增量，本轮）
 
-阶段 0、阶段 1 的**已实现部分**以及阶段 2 已完成的三个增量
-（第一步：客户与供应商主数据；库存核心：统一库存服务；第三步：采购模块）通过了本报告列出的全部检查：
-后端 182 项、前端 66 项自动化测试通过，前后端构建通过，静态检查通过，迁移无漂移。
+本轮新增 `apps/sales/`（销售订单 / 发货 / 退货）以及 `apps/wms` 的**库存占用**能力。
+库存占用**不写库存流水**（流水只记实存量增减），只维护「实存 / 冻结 / 占用 / 可用」中的占用量；
+发货出库、退货入库、检验放行**全部调用统一库存服务** `apps/wms/services/stock.py`，
+没有第二套库存逻辑，也没有在 View / Serializer 里写库存代码。
 
-「通过」仅指上述已执行项。未执行项见第五节、§7.5、§8.3 与 §9.3，
+### 10.1 后端
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 系统检查 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移一致性 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 静态检查 | `ruff check apps config tests` | `All checks passed!` |
+| 自动化测试 | `pytest tests -q --reuse-db` | `217 passed`（原 183 + 新增 `tests/test_sales.py` 34 例） |
+
+新增迁移（已实际执行 `migrate`，非只生成文件）：
+
+| 迁移 | 内容 |
+| --- | --- |
+| `apps/wms/migrations/0003_stockreservation.py` | `wms_stockreservation` 表：`request_key` 单列唯一（幂等的最终保障）+ 3 个检查约束 + 2 个索引 |
+| `apps/sales/migrations/0001_initial.py` | 销售订单 / 订单行 / 发货单 / 发货行 / 退货单 / 退货行共 6 张表 |
+
+### 10.2 前端
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 6 passed (6)` / `Tests 69 passed (69)` |
+| 生产构建 | `npm run build` | `✓ built in 14.39s` |
+
+新增页面 `SalesOrderList.vue` / `SalesShipmentList.vue` / `SalesReturnList.vue`；
+`tests/fixtures/menu-components.json` 由后端权限注册表重新导出（51 项），
+`router.spec.ts` 逐项校验页面菜单组件可被前端解析（路由用例 31 → 45）。
+
+### 10.3 新增用例清单（34 条，全部通过）
+
+| 分组 | 用例 | 覆盖的真实风险 |
+| --- | --- | --- |
+| 权限与数据范围 | `test_sales_endpoints_require_authentication`、`test_view_only_user_cannot_create_order`、`test_user_without_reserve_permission_cannot_reserve`、`test_sales_clerk_cannot_inspect_returns`、`test_orders_are_company_scoped` | 未登录拒绝；只读用户不能建单；无占用权限不能占用；**业务员不能自行判定退货**（职责分离）；跨公司不可见 |
+| 订单与金额 | `test_order_amount_is_computed_by_backend`、`test_order_rejects_non_positive_quantity`、`test_suspended_customer_cannot_be_used` | 金额由后端算，前端传入被忽略；数量必须为正；停用客户不可下单 |
+| 审批回写 | `test_order_submit_then_approve_writes_back_status`、`test_order_approval_rejection_writes_back_rejected` | 显式回调写回业务状态（不是 signals） |
+| 库存占用 | `test_reserve_requires_approved_order`、`test_reserve_moves_available_to_reserved_without_touching_on_hand`、`test_reserve_is_idempotent`、`test_reserve_rejects_insufficient_available`、`test_reserve_rejects_quarantine_stock`、`test_reserve_uses_matching_batch_dimension`、`test_release_order_stock_returns_available`、`test_cancel_order_releases_open_reservations`、`test_order_without_warehouse_cannot_reserve` | 未批准不可占用；**占用只改可用量、不动实存量**；同键重放不重复占；可用不足拒绝；待检库存不可占用；按批次维度占用；释放归还可用量；取消订单自动释放未结占用；订单无仓库时拒占用 |
+| 发货 | `test_shipment_requires_reservation`、`test_shipment_quantity_cannot_exceed_remaining`、`test_shipment_post_consumes_reservation_and_decrements_on_hand`、`test_shipment_post_is_idempotent` | 未占用不允许发货；不允许超发；过账消耗占用并减实存；过账幂等不重复扣减 |
+| 退货与检验 | `test_return_requires_posted_shipment`、`test_return_quantity_cannot_exceed_shipped`、`test_return_must_be_posted_before_inspect`、`test_inspect_requires_remark`、`test_return_post_lands_in_quarantine`、`test_return_inherits_original_batch`、`test_inspect_qualified_returns_stock_to_qualified`、`test_inspect_rejected_keeps_stock_unusable`、`test_repeated_inspect_is_rejected` | 退货必须基于已过账发货；不允许超退；未收货不能判定；判定必须填说明；**退货先入待检**；批次继承原发货维度；合格回库可再用；不合格留在仓内不可动用；不能重复判定 |
+| 链路与字典 | `test_chain_endpoint_lists_related_documents`、`test_meta_exposes_sales_enums` | `chain` 接口返回关联库存单据（任务书 12.1）；`/api/v1/meta/` 暴露 6 个销售枚举键 |
+
+### 10.4 真实数据链路验证（直连开发库，非测试框架）
+
+`seed_demo` 新增的 `_sales()` 全部经服务层执行，读取开发库真实数据核对：
+
+```text
+订单 SO-DEMO-0001 shipped 23940.0000 27052.2000
+  行 1 YS-M-2401-NV-170A 60.000000 已发 60.000000 已退 6.000000 可退 54.000000
+发货 SH-DEMO-0001 posted 出库单据 15
+退货 SR-DEMO-0001 inspected qualified [('FG-2509-01', 42, '6.000000')]
+  余额 42 FG-2509-01 qualified 实存 186.000000 占用 0.000000 可用 186.000000
+未结占用 0
+```
+
+即成品批次 `FG-2509-01`：入库 240 → 占用 60 → 发货出库 60 → 退货 6 进待检 → 检验合格回库 6，
+最终实存与可用均为 186，占用归零，与库存流水一致。
+
+### 10.5 本轮修复的真实缺陷
+
+1. 销售视图的过账动作把幂等结果写进了 `_replayed`，响应头 `Idempotency-Replayed` 实际丢失 →
+   已改为 `replayed` 并在用例中固化（重放语义对客户端可见）。
+2. 内置角色 `quality_inspector` 缺少 `wms.document.create` / `wms.document.post`，
+   而质量放行要经统一库存服务创建并过账质量转换单 → **质检员实际无法完成放行**
+   （采购来料检验同样受影响）。已补齐权限并重跑 `bootstrap_system`（9 → 11 个权限点）。
+3. `frontend/src/utils/decimal.ts` 的 `places` 参数被收窄为字面量类型导致 `vue-tsc` 报 TS2322 →
+   显式声明为 `number`。
+
+### 10.6 本轮仍未执行的测试
+
+- **并发多连接实测未执行**：占用的并发保障是 `request_key` 单列唯一约束 + `select_for_update()`
+  加锁顺序（余额 → 占用），但没有用真实多进程 / 多连接压测验证「同键并发占用只成功一次」，
+  与第五节、§8.1 的口径一致，**不得据用例断言等同于并发压测通过**。
+- Docker Compose、Celery Worker/Beat、Playwright、备份恢复、性能压测、MySQL 8.4：
+  状态与第五节一致，**仍未执行**。
+- 销售侧未实现能力因此**无可执行用例**（未执行 ≠ 通过）：销售计划、颜色尺码矩阵批量录入、
+  折扣、订单变更版本快照、分销商、基础预测、应收与收款登记、跨维度自动拆分占用、
+  多批次部分退货的批次分摊。
+
+## 十二、界面样式增量复验记录（本轮）
+
+本轮只改前端样式与导航组件（后端零改动），新增侧边导航层级区分的契约测试。
+
+### 12.1 前端检查（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 7 passed (7)` / `Tests 79 passed (79)` |
+| 生产构建 | `npm run build` | `✓ built in 12.48s` |
+
+新增 `tests/side-menu.spec.ts`（10 条，全部通过）：
+
+| 用例 | 覆盖点 |
+| --- | --- |
+| 一级目录渲染为 `ys-menu-group--d0`、二级页面渲染为 `ys-menu-node--d1` | DOM 层级 class 真实区分，且二级不会带一级 class |
+| 展开的子菜单容器带 `el-menu--inline`，二级条目位于其中 | 分组容器结构 |
+| 一级与二级在样式表中有不同的排版规则 | 用 **postcss 真实解析**样式表，断言一级 12px / 字重 600 / 有字距，二级 13px / 有缩进，且两者字号不同 |
+| 只有二级条目带圆点标记，一级目录不带 | 层级标记不被误用 |
+| 二级选中态是高亮块、一级展开态是分组底色 | 选中态可区分 |
+| 展开的子菜单容器有独立底色 | 「同一目录下的页面」成组 |
+| 折叠态有专门规则 | 折叠时不残留圆点/箭头 |
+| 样式表能被真实 CSS 解析器完整解析 | 语法合法性（112 组花括号配平） |
+| 菜单行高由侧边栏变量统一收窄 | 断言 `--el-menu-item-height: 40px` / `--el-menu-sub-item-height: 36px`，以及一级 40px / 二级 36px 的显式高度，防止回到 Element 默认 56px |
+| 当前页面所属的一级目录有定位提示 | 父级目录的 `is-active` 状态有左侧竖条与提亮规则（`::after`），并与展开态一致 |
+
+### 12.2 开发服务器实际下发校验
+
+```
+$ Invoke-WebRequest http://127.0.0.1:5173/src/styles/index.css
+status=200  len=18144
+  ys-menu-group--d0        => True
+  ys-menu-node--d1         => True
+  --el-color-primary: #1668dc => True
+  el-menu--inline          => True
+```
+
+### 12.3 本轮未执行
+
+- **浏览器截图级像素校验未执行**：浏览器自动化被安全策略拒绝（自动审核失败，非人工拒绝），
+  因此最终观感未经我截图确认，仅以「DOM 层级 class + postcss 解析 + 开发服务器下发」替代。
+  观感确认需人工在浏览器打开 `http://127.0.0.1:5173/` 查看。
+- 响应式（窄屏/平板）与暗色主题未实现，因此无可执行用例。
+
+## 十三、视图样式统一复验记录（本轮）
+
+> 说明：第十二节记录的是「侧边导航层级区分」当轮的输出（当时为 7 文件 / 79 项），本节**不改写**该记录，
+> 只追加紧随其后的「视图样式统一」增量的真实输出，两者互不覆盖。
+
+本轮只改前端样式与视图模板（后端零改动）：把各视图重复手写的白色面板、区块标题、统计卡、
+代码块下沉为 `frontend/src/styles/index.css` 的共享类，并新增契约测试防止再次分叉。
+
+### 13.1 前端检查（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 8 passed (8)` / `Tests 110 passed (110)` |
+| 生产构建 | `npm run build` | `✓ built in 12.02s` |
+
+`npm run test` 的分文件输出：
+
+```text
+ RUN  v3.0.5 E:/github/Yishang-Hub/frontend
+
+ ✓ tests/styles.spec.ts (31 tests) 9ms
+ ✓ tests/decimal.spec.ts (10 tests) 8ms
+ ✓ tests/http-error.spec.ts (2 tests) 3ms
+ ✓ tests/format.spec.ts (5 tests) 40ms
+ ✓ tests/router.spec.ts (45 tests) 7ms
+ ✓ tests/side-menu.spec.ts (10 tests) 91ms
+ ✓ tests/pro-table.spec.ts (4 tests) 525ms
+ ✓ tests/views-compile.spec.ts (3 tests) 5770ms
+
+ Test Files  8 passed (8)
+      Tests  110 passed (110)
+```
+
+### 13.2 新增用例清单（`tests/styles.spec.ts`，31 条，全部通过）
+
+| 用例 | 覆盖点 |
+| --- | --- |
+| 共享类在全局样式中有定义（22 条，每类一条 `it.each`） | 类清单与样式表一致，删掉某个类会导致失败 |
+| 任何 .vue 的 scoped 样式都不得重新定义共享类 | **防止再次分叉**（当前 offenders 断言为 `[]`） |
+| 面板类使用同一份视觉令牌 | `.ys-panel` 与 `.ys-table-card` 的圆角、边框、阴影完全一致 |
+| 区块标题带主色竖条、统计数值用品牌深蓝 | `.ys-section-title::before`、`font-weight: 600`、`var(--ys-navy-900)` |
+| 5 个页面确实改用了共享类且不再手写同款 | 逐文件断言模板含共享类、scoped 样式不含同名定义 |
+
+### 13.3 样式表与重名度量（真实输出）
+
+```text
+.tmp/checkcss.py    -> BOM False / CRLF 0 / bytes 20702 / braces 129 = 129
+.tmp/scan_styles.py -> vue files with style block: 16
+                       distinct .ys- selectors in view styles: 17
+                       selectors defined in more than one file: 0
+```
+
+改造前 `.ys-section-title` 有 4 份不同定义，改造后视图内重名共享类为 **0**。
+
+`styles.spec.ts` 共 31 条的构成：22（每个共享类一条）+ 1（仓库中存在带 scoped 样式的组件）
++ 1（禁止视图重定义共享类）+ 1（`.ys-panel` 与 `.ys-table-card` 视觉令牌一致）
++ 1（区块标题竖条 / 字重 600 / 统计数值品牌深蓝）+ 5（5 个页面已改用共享类）。
+
+### 13.4 一键冒烟（`scripts/smoke_check.ps1`）
+
+下列为各步骤**关键输出行的汇总**（非终端逐行原始输出，每行均取自实际执行结果）：
+
+```text
+$ powershell -ExecutionPolicy Bypass -File scripts\smoke_check.ps1
+=== django check ===                System check identified no issues (0 silenced).
+=== makemigrations --check ===      No changes detected
+=== ruff check ===                  All checks passed!
+=== pytest ===                      217 passed in 81.12s
+=== vue-tsc 类型检查 ===            退出码 0
+=== vitest ===                      Test Files 8 passed (8) / Tests 110 passed (110)
+=== vite build ===                  ✓ built in 15.44s
+
+全部检查通过。
+```
+
+退出码 0，**7 个步骤全部通过**。
+
+### 13.5 本轮未执行
+
+- **浏览器截图级像素校验未执行**：浏览器自动化被安全策略拒绝（自动审核失败，非人工拒绝），
+  因此最终观感未经截图确认，仅以「DOM/模板断言 + postcss 解析样式表 + 生产构建」替代。
+  观感确认需人工在浏览器打开 `http://127.0.0.1:5173/` 查看。
+- 窄屏响应式与暗色主题未实现，因此无可执行用例。
+
+## 十四、窄屏响应式复验记录（本轮）
+
+> 本节只追加本轮（窄屏响应式）的真实输出，**不改写**第十二、十三节的历史记录。
+
+本轮只改前端布局与样式（后端零改动）：新增 `src/composables/useAutoCollapse.ts`，
+侧边栏改为窄屏自动折叠；统计卡由 `el-row` + 固定 `:span` 改为共享 flex 栅格；
+「列多时表格横向滚动」写进样式表。
+
+### 14.1 前端检查（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 9 passed (9)` / `Tests 125 passed (125)` |
+| 生产构建 | `npm run build` | `✓ built in 11.65s` |
+
+`npm run test` 的分文件输出：
+
+```text
+ RUN  v3.0.5 E:/github/Yishang-Hub/frontend
+
+ ✓ tests/styles.spec.ts (31 tests) 13ms
+ ✓ tests/decimal.spec.ts (10 tests) 11ms
+ ✓ tests/http-error.spec.ts (2 tests) 5ms
+ ✓ tests/responsive.spec.ts (15 tests) 41ms
+ ✓ tests/format.spec.ts (5 tests) 24ms
+ ✓ tests/router.spec.ts (45 tests) 7ms
+ ✓ tests/side-menu.spec.ts (10 tests) 88ms
+ ✓ tests/pro-table.spec.ts (4 tests) 435ms
+ ✓ tests/views-compile.spec.ts (3 tests) 5146ms
+
+ Test Files  9 passed (9)
+      Tests  125 passed (125)
+```
+
+### 14.2 新增用例清单（`tests/responsive.spec.ts`，15 条，全部通过）
+
+| 分组 | 用例 | 覆盖的真实风险 |
+| --- | --- | --- |
+| 断点 | JS 断点常量与样式表 1200px 断点一致 | **改一边忘另一边**：`NARROW_BREAKPOINT` 与 `@media` 失配会让「自动折叠」和视觉断点错位 |
+| 断点 | ≤1440px 表格横向滚动（`overflow-x: auto` + `min-width: 720px`） | 列多时不再把每列压到不可读 |
+| 断点 | ≤1200px 页面/面板内边距与统计卡最小宽收窄 | 窄屏留白过大挤占内容 |
+| 断点 | ≤992px 标题竖排、统计卡整行、`.ys-grid-2` 单列 | 固定 `:span` 在窄屏会压出「半张卡」 |
+| 断点 | ≤992px 弹窗/抽屉 `width: 92% !important` | Element 内联宽度无法用普通选择器覆盖 |
+| 默认值 | `.ys-grid-2` 默认双列、`.ys-stat-card` 默认 `flex: 1 1 168px` | 默认值被误删后窄屏规则会失去对照基准 |
+| 折叠 | 宽屏默认展开 | 回归检查 |
+| 折叠 | 窄屏默认折叠，且用户可手动展开 | 自动折叠不能变成「用户无法展开」 |
+| 折叠 | 视口变窄时自动折叠 | 拖窗口即生效，不需要刷新页面 |
+| 折叠 | 视口跨断点后清除手动偏好 | 窗口拉宽后侧边栏不应停在收起状态 |
+| 折叠 | 卸载后不再响应 resize | 离开页面后仍改状态会留下隐蔽的状态泄漏 |
+| 视图 | `OutboxList.vue` 不再含 `<el-row` / `:span=` | 防止改回固定栅格 |
+| 视图 | `ProgressView.vue` 改用 `.ys-stat-cards` 与 `.ys-grid-2` | 同上 |
+| 视图 | `BasicLayout.vue` 使用 `useAutoCollapse`，无固定 `collapsed = ref(false)` | 防止把自动折叠改回写死 |
+
+### 14.3 一键冒烟（`scripts/smoke_check.ps1`，真实输出汇总）
+
+```text
+=== django check ===            System check identified no issues (0 silenced).
+=== makemigrations --check ===  No changes detected
+=== ruff check ===              All checks passed!
+=== pytest ===                  217 passed in 76.26s (0:01:16)
+=== vue-tsc 类型检查 ===        退出码 0
+=== vitest ===                  Test Files 9 passed (9) / Tests 125 passed (125)
+=== vite build ===              ✓ built in 11.25s
+
+全部检查通过。
+```
+
+退出码 0，**7 个步骤全部通过**。
+
+### 14.4 本轮未执行
+
+- **浏览器截图级像素校验未执行**：浏览器自动化被安全策略拒绝（自动审核失败，非人工拒绝），
+  拖拽窗口时的折叠平滑度、≤768px 手机竖屏观感**均未经我实测**，需人工在浏览器确认。
+- 未做「筛选栏折叠面板」、暗色主题、触摸手势与横竖屏旋转验证。
+
+## 十五、阶段 3 第一步复验记录（BOM 与工艺路线版本快照，本轮）
+
+> 本节只追加本轮真实输出，**不改写**前面各节的历史记录。本轮改动全部是新文件 +
+> 少量接线（`LOCAL_APPS`、`config/urls.py`、权限注册表、`bootstrap_system`、`seed_demo`、`MetaView`），
+> **不触碰库存服务与阶段 2 已验收代码**。
+
+### 15.1 后端（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| Django 系统检查 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移一致性 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 静态检查 | `ruff check apps config tests` | 首跑 **失败**（4 处，见 §15.3）；修复后 `All checks passed!` |
+| 全量测试 | `pytest tests -q --reuse-db` | `267 passed in 105.84s (0:01:45)` |
+| 计划模块测试 | `pytest tests/test_planning.py -q --reuse-db` | `50 passed in 21.40s` |
+
+`pytest` 分文件构成（`tests/` 目录）：本轮新增 `test_planning.py`（50 条），
+阶段 2 及之前的全部用例保持不变（234 → 全量 267 条），说明本轮**未破坏既有行为**。
+
+### 15.2 前端（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 9 passed (9)` / `Tests 127 passed (127)` |
+| 生产构建 | `npm run build` | `✓ built in 13.14s` |
+
+`npm run test` 分文件输出：
+
+```text
+ ✓ tests/styles.spec.ts (31 tests) 10ms
+ ✓ tests/decimal.spec.ts (10 tests) 12ms
+ ✓ tests/http-error.spec.ts (2 tests) 4ms
+ ✓ tests/responsive.spec.ts (15 tests) 40ms
+ ✓ tests/format.spec.ts (5 tests) 27ms
+ ✓ tests/router.spec.ts (47 tests) 8ms
+ ✓ tests/side-menu.spec.ts (10 tests) 93ms
+ ✓ tests/pro-table.spec.ts (4 tests) 490ms
+ ✓ tests/views-compile.spec.ts (3 tests) 5765ms
+ Test Files  9 passed (9)
+      Tests  127 passed (127)
+```
+
+`tests/router.spec.ts` 由 45 → 47 条：`frontend/tests/fixtures/menu-components.json` 已用
+`.tmp/menufixture.py` 按最新后端菜单重新生成（54 条），新增的
+`views/planning/BomList.vue`、`views/planning/RoutingList.vue` 会被
+`views-compile.spec.ts` 逐个编译（能捕获"菜单登记了组件但文件不存在/编译不过"）。
+
+生产构建产物包含 `dist/assets/BomList-B_Xq9rdS.js`（15.38 kB）与
+`dist/assets/RoutingList-BoeDw3JC.js`（14.65 kB），两个页面已进入按路由分割的产物。
+
+### 15.3 一键冒烟（`scripts/smoke_check.ps1`，真实输出汇总）
+
+首次执行（**真实失败，不是假定通过**）：
+
+```text
+=== django check ===                System check identified no issues (0 silenced).
+=== makemigrations --check ===      No changes detected
+=== ruff check ===                  tests\test_planning.py:17:1: I001 Import block is un-sorted or un-formatted
+                                    tests\test_planning.py:24:34: F401 `StateConflict` imported but unused
+                                    tests\test_planning.py:26:49: F401 `RoleScopeGrant` imported but unused
+                                    tests\test_planning.py:508:5: SIM117 Use a single `with` statement ...
+                                    Found 4 errors.
+!! ruff check 失败（退出码 1）
+=== pytest ===                      267 passed in 105.84s (0:01:45)
+=== vue-tsc 类型检查 ===            退出码 0
+=== vitest ===                      Test Files 9 passed (9) / Tests 127 passed (127)
+=== vite build ===                  ✓ built in 13.14s
+
+以下检查失败：ruff check
+```
+
+修复内容（只改 `backend/tests/test_planning.py`，**不放松检查规则**）：
+
+1. `from apps.factory.models import Workshop` 移到 `apps.identity` 之前（isort 顺序）。
+2. 删除未使用的 `StateConflict`、`RoleScopeGrant` 导入。
+3. 嵌套 `with pytest.raises(IntegrityError): with transaction.atomic():` 合并为
+   `with pytest.raises(IntegrityError), transaction.atomic():`。
+4. 修完重跑 `ruff check apps config tests` → `All checks passed!`，
+   重跑 `pytest tests/test_planning.py` → `50 passed in 21.40s`。
+
+> 说明：这次失败是**冒烟脚本的价值体现**——单元测试全绿（267 passed）时 ruff 仍能发现
+> 导入顺序与残留导入。修复后全量测试与静态检查同时通过，未通过"忽略规则"绕过。
+
+修复后**再次执行完整冒烟**（最终状态，真实输出汇总）：
+
+```text
+=== django check ===            System check identified no issues (0 silenced).
+=== makemigrations --check ===  No changes detected
+=== ruff check ===              All checks passed!
+=== pytest ===                  267 passed in 94.82s (0:01:34)
+=== vue-tsc 类型检查 ===        退出码 0
+=== vitest ===                  Test Files 9 passed (9) / Tests 127 passed (127)
+=== vite build ===              ✓ built in 10.65s
+
+全部检查通过。
+```
+
+退出码 0，**7 个步骤全部通过**。
+
+### 15.4 新增用例清单（`tests/test_planning.py`，48 个函数 / 50 条用例，全部通过）
+
+| 分组 | 用例（节选，共 48 个函数） | 覆盖的真实风险 |
+| --- | --- | --- |
+| 权限与范围 | `test_planning_endpoints_require_authentication`、`test_view_only_user_cannot_create_bom`、`test_routing_permission_does_not_grant_bom_write`、`test_cross_company_objects_are_rejected`、`test_routing_step_workshop_outside_scope_is_rejected` | 匿名 403；只读不能写；**工艺权限不得顺带授予 BOM 写权限**；跨公司/越权车间必须被拒 |
+| 明细校验 | `test_create_bom_persists_lines_and_computes_gross_quantity`、`test_client_supplied_gross_quantity_is_ignored`、`test_bom_loss_rate_out_of_range_is_rejected`、`test_bom_quantity_must_be_positive`、`test_bom_without_lines_is_rejected`、`test_duplicate_normal_material_is_rejected`、`test_bom_effective_range_must_be_ordered`、`test_inactive_style_cannot_be_used`、`test_sku_must_belong_to_style` | **含损耗用量必须由后端算**（前端传值被忽略）；损耗率边界 [0,1)；空明细与重复用料拒绝 |
+| 替代料 | `test_substitute_line_links_to_normal_line`、`test_substitute_for_unknown_line_is_rejected`、`test_normal_line_cannot_reference_substitute_target` | 替代料只能指向同一 BOM 的正常用料行，反向引用被拒 |
+| 版本 | `test_version_no_increments_within_scope`、`test_scope_version_unique_constraint_is_enforced`、`test_new_version_from_submitted_is_rejected`、`test_draft_can_be_updated_but_submitted_cannot`、`test_optimistic_lock_rejects_stale_version` | 版本号在范围内自增；**数据库唯一约束兜底（真实 `IntegrityError`）**；提交后冻结；乐观锁 409 |
+| 审批 | `test_submit_requires_approval_template`、`test_approve_activates_version_and_obsoletes_previous`、`test_reject_returns_document_to_rejected_state`、`test_withdraw_returns_document_to_draft` | 无模板**拒绝提交**而非跳过；通过时旧生效版本转 `obsolete`；驳回/撤回状态正确 |
+| 快照 | `test_snapshot_matches_version_and_survives_new_version`、`test_bom_snapshot_service_equals_api` | **派生新版本后旧版本快照不变**（必测案例 13）；接口与服务输出逐字段相等 |
+| 作废 | `test_obsolete_requires_reason`、`test_obsolete_marks_version_inactive`、`test_obsolete_submitted_is_rejected` | 作废必填原因；作废后不再是生效版本；审核中不能作废 |
+| 生效版本 | `test_effective_bom_returns_approved_only` | 只有 `approved` 可被 MRP/MES 取用 |
+| 审计 | `test_key_actions_are_audited` | 关键动作落 `AuditLog` |
+| 工艺路线 | `test_create_routing_applies_default_steps`、`test_create_routing_with_explicit_steps`、`test_duplicate_routing_sequence_is_rejected`、`test_negative_standard_hours_is_rejected`、`test_routing_requires_at_least_one_step`、`test_routing_submit_and_approve`、`test_routing_new_version_copies_steps_and_obsoletes_previous`、`test_routing_snapshot_contains_quality_gate`、`test_routing_update_locks_after_submit`、`test_routing_obsolete_requires_reason` | 默认工艺（含质检点）生效；**显式空工序列表被拒**；重复顺序/负标工拒绝；派生新版本复制工序 |
+| 服务层边界 | `test_meta_exposes_planning_enums`、`test_service_rejects_style_from_another_company`、`test_service_rejects_material_from_another_company`、`test_service_rejects_out_of_range_loss_rate`、`test_service_requires_reason_to_obsolete` | 绕过接口直接调服务也必须做公司校验与边界校验 |
+
+### 15.5 真实数据链路验证（直连开发库，非测试框架）
+
+用 Django `Client`（`SERVER_NAME=127.0.0.1`）+ `admin` 账号直连**开发库** `yishang_platform`，
+读取 `seed_demo` 造的演示数据（真实输出）：
+
+```text
+anonymous /api/v1/planning/boms/ -> 403
+admin login -> True
+admin /api/v1/planning/boms/ -> 200，count = 1
+BOM: BOM202609180001 v1 approved，lines = 5，scope = 款式通用，style = YS-W-2401
+  line1: FAB-001 qty=0.280000 loss=0.0600000000 gross=0.296800
+snapshot lines = 5，service == api -> True
+Routing: RT202609180001 v1 approved，steps = 5
+  steps: 1.裁剪 / 2.缝制 / 3.整烫 / 4.检验(质检点) / 5.包装
+meta bom_statuses: ['draft','submitted','approved','rejected','obsolete']
+meta bom_line_types: ['normal','substitute']
+GET /api/v1/schema/ -> 200（application/vnd.oai.openapi），planning 路径 14 个
+```
+
+`planning` 的 14 个 OpenAPI 路径：`boms/`、`boms/{id}/`、`boms/{id}/submit|obsolete|new-version|snapshot|set-active`、
+`routings/` 下同样 7 个。`set-active` 由 `ScopedModelViewSet` 基类提供（启停，任务书 5.5「主数据优先停用」），
+业务方仍**没有 `DELETE`**。
+
+关键点核实：`gross_quantity` 为 `0.296800`（= 0.28 × (1 + 0.06)，已按 6 位小数量化，无浮点尾数）；
+**服务层快照与接口快照逐字段相等**；「检验」工序带质检点标记；匿名访问被拒。
+
+### 15.6 本轮修复的真实缺陷
+
+| # | 缺陷 | 发现方式 | 修复 |
+| --- | --- | --- | --- |
+| 1 | `Routing` 缺 `scope_label`（只有 `Bom` 有），序列化器取属性时 `AttributeError` | 前端页面/序列化首次实跑 | 抽出 `ScopeLabelMixin` 给 `Bom` / `Routing` 共用 |
+| 2 | `gross_quantity` 未量化，输出 `0.2968000000000000` 浮点尾数 | 真实库读取演示数据时发现 | 加 `ROUND_HALF_UP` 量化到 6 位小数 |
+| 3 | `create_routing(steps=[])` 静默回落默认工艺，把错误输入变成"有效"数据 | 写用例时推演 `steps=[]` 分支 | 显式空列表抛 `ROUTING_STEP_REQUIRED`，只有完全不传才套默认 |
+| 4 | 服务层缺公司一致性校验，绕过接口直接调服务可跨公司建 BOM | 补服务层边界用例时发现 | 增加 `_assert_company_scope` + BOM 明细逐行物料公司校验 |
+| 5 | `RoutingList.vue` 模板内联箭头函数触发 `TS7006`（隐式 any） | `npm run typecheck` | 抽成具名函数 `qualityGateCount(row)` |
+| 6 | `BomList.vue` 的 `filters` 引用了 `meta.options()` 快照数组，meta 异步加载后下拉项为空 | 复查数据流 | 改为 `computed(() => [...])`（下拉项随 meta 更新） |
+| 7 | `tests/test_planning.py` 4 处 ruff 违规（导入顺序、2 个未使用导入、嵌套 `with`） | 一键冒烟脚本 | 见 §15.3；修完重跑通过 |
+
+> 第 1、2、3、4 条是**代码缺陷**，第 5、6 条是**前端类型/数据流缺陷**，第 7 条是**静态检查问题**。
+> 全部是实际执行暴露的，未虚构；发现后都补了对应断言或直接修代码，未用"放宽检查"绕过。
+
+### 15.7 本轮仍未执行的测试（不得视为通过）
+
+- **Docker Compose 未启动验证**（本机无 Docker）；`deploy/` 下的编排文件只做过结构检查。
+- **`mysqlclient` 生产驱动未验证**：本地用 `DB_DRIVER=pymysql`；`mysqlclient` 未安装/未编译验证。
+- **Celery Worker / Beat 未运行**：本轮无异步任务依赖（快照是同步计算）。
+- **MySQL 版本偏差**：本机为 MySQL 8.0.17，任务书要求 8.4 LTS，**未在 8.4 上验证**。
+- **Playwright 端到端未执行**：浏览器自动化被安全策略拒绝（自动审核失败，非人工拒绝），
+  因此「登录 → 打开 BOM 页面 → 新建版本 → 提交审批」的全链路**未经浏览器实测**，
+  仅以「真实 HTTP Client 调用 + 组件编译 + 生产构建」替代。
+- **并发测试未针对 planning 编写**：本轮唯一并发敏感点是「同一范围同时只有一个生效版本」，
+  当前靠 `select_for_update` + 服务层校验；**未做独立连接的真实并发用例**（阶段 2 库存已有并发用例，
+  但那是库存键，不能替代本场景）。这是本模块已知的测试缺口。
+- **未做性能压测**：BOM 明细行数量与多层展开的性能未评估（MRP 阶段需要）。
+- **≤768px 手机布局、暗色主题、触摸手势**未验证（承前）。
+
+## 十六、阶段 3 第二步复验记录（MRP，本轮）
+
+> 本节只追加本轮真实输出，**不改写**前面各节的历史记录。本轮新增 `apps/planning/mrp.py`
+> 计算内核、4 张 MRP 表、2 个前端页面，并修复 6 个真实缺陷（§16.6）；
+> MRP 对库存与采购**只读**，建议转单只产出**草稿**采购申请，生产建议**不伪造工单**。
+
+### 16.1 后端（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| Django 系统检查 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移一致性 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 静态检查 | `ruff check apps config tests` | `All checks passed!` |
+| 全量测试 | `pytest backend/tests -q --reuse-db` | `301 passed in 112.01s (0:01:52)` |
+| MRP 专项 | `pytest backend/tests/test_mrp.py -q --reuse-db` | `32 passed in 4.64s` |
+| 登录 / CSRF 专项 | `pytest backend/tests/test_auth_api.py -q --reuse-db` | `14 passed in 1.47s` |
+
+用例总数 299 → **301**（新增 `test_mrp.py` 32 条、登录 CSRF 回归 2 条；
+`test_auth_api.py` 由 12 → 14 条）。全部既有用例保持通过，说明本轮**未破坏既有行为**。
+
+### 16.2 MRP 用例构成（`backend/tests/test_mrp.py`，32 条）
+
+| 分组 | 用例 |
+| --- | --- |
+| 时间分段净算 | `test_net_requirement_nets_on_hand_and_on_order`（面 210 毛需求 − 60 库存 − 40 在途 = 110）、`test_purchase_on_order_reduces_net_requirement`、`test_usable_stock_excludes_frozen_reserved_and_unqualified`、`test_overdue_demand_lands_in_first_bucket`、`test_demand_outside_horizon_ignored`、`test_partially_shipped_demand_uses_remaining_quantity`、`test_draft_order_produces_no_demand` |
+| BOM 展开 | `test_explosion_uses_parent_net_requirement`（父件净 70 × 2 = 140，而非毛 100 × 2）、`test_low_level_code_net_calculated_once`（同一子件合并为 15）、`test_suggestion_type_rules_and_unexploded_materials` |
+| 异常与边界 | `test_cycle_bom_rejected_and_failed_run_recorded`（`BOM_CYCLE_DETECTED` + 1 条 `failed` 运行 + 无 `completed`）、`test_mrp_is_read_only_for_inventory`、`test_invalid_bucket_and_horizon_rejected`、`test_week_bucket_normalises_to_monday`（9/2 → 8/31）、`test_audit_and_outbox_event_written_with_business_data` |
+| 转单与状态机 | `test_convert_creates_draft_requisition_with_document_link`、`test_convert_twice_rejected`、`test_convert_stale_suggestion_rejected`、`test_convert_production_suggestion_rejected`（`PRODUCTION_ORDER_NOT_IMPLEMENTED`）、`test_convert_inactive_material_rejected`、`test_cancel_requires_reason_and_blocks_convert`、`test_archive_run_blocks_conversion_and_repeat_archive_rejected` |
+| API 与权限 | `test_anonymous_access_rejected`（403）、`test_view_only_user_cannot_run_mrp`、`test_user_without_convert_permission_cannot_convert`、`test_convert_requires_procurement_requisition_create`、`test_run_api_creates_run_with_counts_and_detail_endpoints`、`test_api_convert_and_repeat_rejected`、`test_api_run_rejects_invalid_parameters`、`test_api_run_scoped_to_company_and_warehouse`、`test_mrp_permissions_do_not_grant_other_modules`、`test_archive_api_requires_permission_and_is_audited` |
+
+### 16.3 前端（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 9 passed (9)` / `Tests 129 passed (129)` |
+| 生产构建 | `npm run build` | `✓ built in 11.99s` |
+
+`tests/router.spec.ts` 由 47 → 49 条：`frontend/tests/fixtures/menu-components.json` 已按最新后端菜单
+重新生成（**56 条**），新增的 `views/planning/MrpRunList.vue`、`views/planning/MrpSuggestionList.vue`
+被 `views-compile.spec.ts` 逐个编译。`vitest` 分文件输出：
+
+```text
+ ✓ tests/http-error.spec.ts (2 tests) 3ms
+ ✓ tests/responsive.spec.ts (15 tests) 38ms
+ ✓ tests/format.spec.ts (5 tests) 25ms
+ ✓ tests/router.spec.ts (49 tests) 9ms
+ ✓ tests/side-menu.spec.ts (10 tests) 98ms
+ ✓ tests/pro-table.spec.ts (4 tests) 479ms
+ ✓ tests/views-compile.spec.ts (3 tests) 5491ms
+   ✓ 视图模块 > 每个视图都能被编译并加载 5488ms
+ Test Files  9 passed (9)
+      Tests  129 passed (129)
+```
+
+生产构建产物包含 `dist/assets/MrpRunList-D1oXWkdZ.js`（12.32 kB）、
+`dist/assets/MrpSuggestionList-B8mYygLV.js`（6.52 kB）。
+
+### 16.4 一键冒烟（`scripts/smoke_check.ps1`，真实输出）
+
+```text
+全部检查通过。
+```
+
+7 步（`django check` / `makemigrations --check` / `ruff` / `pytest` / `vue-tsc` / `vitest` / `vite build`）
+退出码 0，脚本自身判定 `$failed.Count -eq 0`。
+
+### 16.5 真实 HTTP 链路验证（非测试框架，对着运行中的开发服务器）
+
+验收脚本使用 `urllib` + CookieJar，走**真实的 Session 登录、CSRF 校验、DRF 权限与生产同源的
+URL 路径**（不是 `django.test.Client`，也不是 SQLite），脚本按收尾约定删除、结论以本节为准。
+脚本逐项计 **29 项请求检查全部通过**；下表按业务阶段归并展示：
+
+| # | 检查 | 期望 | 真实结果 |
+| --- | --- | --- | --- |
+| 1 | 未登录访问 `GET /api/v1/planning/mrp-runs/` | 403 | 403 `NOT_AUTHENTICATED` |
+| 2 | 取 CSRF Cookie 后**不带令牌**登录 | 403 | 403 `CSRF_FAILED`（`CSRF token missing.`） |
+| 3 | 带正确令牌用 `.env` 口令登录 `admin` | 200 | 200 |
+| 4 | 读会话 / 读用户列表 | 200 | 200（`company_id=None`，超管无归属公司） |
+| 5 | 运行 MRP 不传 `company_id` | 400 | 400 `COMPANY_REQUIRED` |
+| 6 | `bucket=month` | 400 | 400 `VALIDATION_FAILED`（`"month" 不是合法选项`） |
+| 7 | 区间颠倒 | 400 | 400 `VALIDATION_FAILED`（`需求区间结束日期不能早于开始日期`） |
+| 8 | 运行 MRP（`company_id=2`，90 天，按日） | 201 | 201 `MRP202609180005`，`item_count=7 / suggestion_count=5` |
+| 9 | `GET .../{id}/demands/` | 200 | 200 `count=7`（`L0` 成品 300 + 5 条 `L1` 子件） |
+| 10 | `GET .../{id}/supplies/` | 200 | 200 `count=3`（面料 1280 库存 + 400 在途、成品 186 库存） |
+| 11 | `GET .../{id}/suggestions/` | 200 | 200 `count=5`（1 生产 + 4 采购） |
+| 12 | `GET /mrp-suggestions/?run_id=` | 200 | 200（过滤生效） |
+| 13 | 旧运行建议转单 | 409 | 409 `SUGGESTION_STALE` |
+| 14 | 归档旧运行 | 200 | 200（`MRP202609180004` → `archived`，写审计） |
+| 15 | 已归档运行的建议转单 | 409 | 409 `MRP_RUN_NOT_ACTIVE` |
+| 16 | 生产建议转单 | 409 | 409 `PRODUCTION_ORDER_NOT_IMPLEMENTED` |
+| 17 | 采购建议转单 | 200 | 200 `status=converted`，`converted_document_no=PR202609180002` |
+| 18 | 重复转单 | 409 | 409 `SUGGESTION_ALREADY_CONVERTED` |
+| 19 | 查询转出的采购申请 | 200 | 200，`PR202609180002` 状态 **`draft`** |
+| 20 | 取消建议缺原因 | 400 | 400 `VALIDATION_FAILED`（`reason` 必填） |
+| 21 | 取消建议（带原因） | 200 | 200 `status=cancelled` |
+| 22 | 已取消建议转单 | 409 | 409 `SUGGESTION_NOT_OPEN` |
+| 23 | 退出登录 | 200 | 200 |
+| 24 | 退出后访问 MRP 列表 | 403 | 403 `NOT_AUTHENTICATED` |
+
+数据库侧核对（同一轮的直连读取，非推测）：
+
+```text
+run MRP202609180004 archived  archived_by=1
+run MRP202609180005 completed
+建议（MRP202609180005）：1 生产 open / 2 采购 converted → PR202609180002 / 3 采购 cancelled（原因已存）
+                        / 4、5 采购 open
+审计：create planning.MrpRun ×5、update planning.MrpRun（归档）、
+      update planning.MrpSuggestion（转单 ×2、取消 ×1）
+Outbox：planning.mrp.completed ×5、planning.mrp.suggestion_converted ×2（status=pending，未消费）
+单据关联：MRP202609180005#2 → procurement.PurchaseRequisition PR202609180002（generated_from，数量 1.260000）
+转出采购申请行：ACC-001 数量 1.260000，需求日期 2026-10-02，备注「MRP MRP202609180005 第 2 行建议」
+```
+
+### 16.5b 经 Vite 开发代理的浏览器路径验证（CSRF 修复回归）
+
+CSRF 校验是**新增的服务端强制项**，因此额外从「浏览器实际会走的那条路」复验一次：
+经 `http://127.0.0.1:5173`（Vite 开发代理）访问 `/api/v1/...`，并带上浏览器会发送的
+`Origin` / `Referer`（`http://127.0.0.1:5173`）。**5 项检查结果**：
+
+```text
+[1] GET  /api/v1/identity/auth/csrf/  (经代理)          200，下发 yishang_csrftoken
+[2] POST /api/v1/identity/auth/login/ (带 CSRF 令牌)     200，user=admin，menus=12
+[3] GET  /api/v1/identity/auth/session/                 200
+[4] GET  /api/v1/planning/mrp-runs/                     200，count=2
+    runs = [('MRP202609180005', 'completed'), ('MRP202609180004', 'archived')]
+[5] POST /api/v1/identity/auth/login/ (不带 CSRF 令牌)    403 CSRF_FAILED
+```
+
+结论：前端「先取 CSRF Cookie 再登录」的既有实现与新的服务端校验兼容，
+登录、会话与 MRP 查询在代理链路上均正常；不带令牌的登录被拒绝。
+
+### 16.6 本轮修复的 7 个真实缺陷
+
+| # | 缺陷 | 影响 | 修复 |
+| --- | --- | --- | --- |
+| 1 | `apps/core/checks.py` **从未被导入** | `yishang.E001`（视图声明了未登记权限码）**永远不会触发**，权限契约形同失效 | `CoreConfig.ready()` 显式 `from apps.core import checks`；修复后立即抓出既有遗漏 `masterdata.identifier.update` 未登记并补齐 |
+| 2 | MRP 低层码排序**预先过滤"当前已有需求"的物料** | BOM 展开出的子件需求**永远不被净算**，BOM 展开形同失效（净需求只剩顶层成品） | 改为按低层码全量升序遍历，无需求 `continue`；由 `test_low_level_code_net_calculated_once` 锁定 |
+| 3 | `MrpRunSerializer` 声明 `demand_count`/`supply_count`/`suggestion_count` 但未加入 `Meta.fields` | `/api/v1/planning/mrp-runs/` 一旦被访问即 `AssertionError` | 三个字段加入 `Meta.fields` |
+| 4 | `seed_demo` 打印转单**前的**建议实例 | `convert_suggestion` 内部 `select_for_update` 重新取行，导致日志里采购申请号为空 | 改用服务返回值 |
+| 5 | **登录接口缺少 CSRF 校验** | 违反任务书 6.1「登录接口同样防护 CSRF」；`LoginView` 清空 `authentication_classes` 后 DRF `SessionAuthentication` 对匿名请求不调用 `enforce_csrf` | `@method_decorator(csrf_protect, name="dispatch")` + 2 条回归用例 |
+| 6 | `EntityListPage.vue` 缺 `initialFilters` prop | 「按 `?run_id=` 打开建议页」初始过滤无法生效 | 新增可选 prop 并透传 `defaultFilters`（默认 `undefined`，向后兼容） |
+| 7 | `views/system/ProgressView.vue` 的「阶段实施状态」停留在初始快照 | 阶段 2、3 被标为「未开始」，告警还称「采购、销售、仓储单据不会出现在左侧导航」，与已实现菜单和 `docs/progress.md` 相反 —— 管理员看到的是**与事实相反**的状态 | 按 `docs/progress.md` §一 更新阶段 2/3 行、已完成 / 未完成清单与提示文案（该页本来就声明为「文档镜像」，非业务报表数据） |
+
+第 1、5 项属**安全 / 契约类**缺陷（已在修复后补充可复现的测试）；第 7 项属**文档 / 界面一致性**缺陷，由 `frontend/tests/responsive.spec.ts`、`frontend/tests/styles.spec.ts` 与 `views-compile.spec.ts` 在改动后复跑确认未破坏既有断言。
+
+### 16.7 本轮仍未执行的测试（不得视为通过）
+
+- **Docker Compose 未启动验证**（本机 Docker 守护进程不可达）。
+- **Celery Worker / Beat 未运行**：MRP 为**同步计算**，不依赖 worker；但 Outbox 事件仍为 `pending`，
+  未验证消费副作用。
+- **MySQL 8.4 LTS 未验证**（本机为 8.0.17）、**`mysqlclient` 生产驱动未验证**（本地 `DB_DRIVER=pymysql`）。
+- **并发 / 多连接压测未执行**：MRP 运算本身不修改库存，但"同一运行的建议并发转单"未做真实并发验证
+  （当前靠 `select_for_update` + 建议状态唯一性 + 单据唯一约束保证）。
+- **Playwright 端到端未执行**；**浏览器截图级样式校验未执行**（本轮只能确认组件编译与构建产物）。
+- **性能压测未执行**（百万级流水 / 读数）。
+- **备份与恢复演练未执行**。
+
+## 十七、文档同步与使用说明增量复验记录（本轮）
+
+> 本节只追加本轮**真实输出**，不改写前面各节的历史记录。
+
+### 17.1 变更范围
+
+本轮无业务代码变更，无新增迁移、无新增 API、无新增页面。变更文件：
+
+| 类型 | 文件 |
+| --- | --- |
+| 新增文档 | `docs/user-guide.md`、`docs/user-guide.html`（生成物） |
+| 新增脚本 | `scripts/build_user_guide.py`（Markdown → 单文件网页，纯标准库） |
+| 新增前端资源 | `frontend/public/guide.html`（生成物）、`BasicLayout.vue` 增加「使用说明」入口 |
+| 新增测试 | `backend/tests/test_docs_sync.py` |
+| 修改文档 | `README.md`、`docs/acceptance.md`、`docs/inventory-rules.md`、`docs/requirements-matrix.md`、`docs/api-conventions.md`、`docs/deployment.md`、`docs/progress.md`、`docs/user-guide.md` |
+
+### 17.2 后端检查（真实输出）
+
+```
+System check identified no issues (0 silenced).
+No changes detected
+All checks passed!
+```
+
+### 17.3 后端全量测试
+
+| 项 | 命令 | 结果 |
+| --- | --- | --- |
+| 全量测试 | `pytest backend/tests -q --reuse-db` | `308 passed in 101.34s (0:01:41)` |
+
+用例总数 301 → **308**（新增 `tests/test_docs_sync.py` 7 条；其余 301 条无删改）。
+
+### 17.4 新增用例 `tests/test_docs_sync.py`（7 条）
+
+| 用例 | 校验内容 |
+| --- | --- |
+| `test_user_guide_declares_all_sync_facts` | `docs/user-guide.md` 存在事实行且键齐全、取值 > 0 |
+| `test_user_guide_sync_facts_match_code[permissions]` | 事实行 `permissions` == `len(PERMISSIONS)` |
+| `...[menus]` | == `len(MENUS)` |
+| `...[models]` | == 受管且非自动生成的模型数 |
+| `...[migrations]` | == `backend/apps/*/migrations/0*.py` 文件数 |
+| `...[builtin_roles]` | == `len(BUILTIN_ROLES)` |
+| `test_published_guide_html_is_up_to_date` | 执行 `scripts/build_user_guide.py --check`，校验 `docs/user-guide.html` 与 `frontend/public/guide.html` 与 Markdown 源一致 |
+
+### 17.5 反向验证（确认用例真的会拦住失同步）
+
+把 `docs/user-guide.md` 事实行临时改为 `menus=99`，单跑该用例：
+
+```
+E       AssertionError: docs/user-guide.md 的事实行已过期：menus=99，代码实际为 56。
+1 failed, 5 passed in 0.46s
+```
+
+还原后：`6 passed`。**说明该用例确实会因文档与代码不一致而失败**，不是永远通过的摆设。
+
+### 17.6 本轮未执行的测试（不得视为通过）
+
+| 项 | 原因 |
+| --- | --- |
+| 前端 `typecheck` / `vitest` / `build` | 本轮**未改动前端代码**，未重跑 |
+| Docker Compose 启动 | 本机 Docker 不可用，**未执行** |
+| Celery Worker / Beat | **未运行** |
+| Playwright 端到端 | **未执行** |
+| 备份 / 恢复演练、性能压测、MySQL 8.4 验证 | **未执行**（与 §16.7 口径一致） |
+| 浏览器截图级 UI 校验、≤768px 布局 | **未执行** |
+
+## 十一、结论
+
+阶段 0、阶段 1 的**已实现部分**、阶段 2 已完成的四个增量
+（第一步：客户与供应商主数据；核心：统一库存服务；第三步：采购模块；第四步：销售模块）、
+**阶段 3 第一步：BOM 与工艺路线版本快照**（第十五节）、
+**阶段 3 第二步：MRP**（时间分段净算 / 多层 BOM 展开 / 缺料建议 / 采购建议转单，第十六节），
+以及**界面样式增量**（第十二节）、**视图样式统一增量**（第十三节）、**窄屏响应式增量**（第十四节）、
+**文档同步与使用说明增量**（第十七节）与**枚举值中文化增量**（第十八节）
+通过了本报告列出的全部检查：
+后端 312 项、前端 131 项自动化测试通过，前后端构建通过，静态检查通过，迁移无漂移，
+一键冒烟 7 步全过，并在运行中的开发服务器上完成 **29 项真实 HTTP 链路检查**。
+
+「通过」仅指上述已执行项。未执行项见第五节、§7.5、§8.3、§9.3、§10.6、§12.3、§13.5、§14.4、§15.7 与 §16.7，
 不得据本报告推断这些能力已经可用。
+
+## 十八、枚举值中文化复验记录（本轮）
+
+> 起因：用户反馈「仓库类型 / 部门类型 / 计量类型」等在界面上显示英文。
+> 排查确认是**两层缺陷**：①接口未返回中文标签；②库里存在连 `get_FOO_display()` 都翻译不出的
+> **非法枚举值**（历史演示数据写入错误）。两层都已修复，本节是**实际执行**的记录。
+
+### 18.1 变更范围
+
+- 后端：`apps/core/serializers.py::DisplayLabelsMixin`（新增）、`ReferenceIdSerializer` 继承它；
+  `apps/identity/serializers.py` 7 个序列化器显式继承；`apps/factory/models.py` 扩展
+  `Department.department_type` / `Workshop.workshop_type` 的 choices；
+  `apps/core/management/commands/seed_demo.py` 修正枚举源头数据。
+- 新增迁移：`apps/factory/migrations/0003_alter_department_department_type_and_more.py`
+  （`RunPython` 修数据 + 2 个 `AlterField` 扩 choices，反向迁移为空操作）。
+- 前端：`ProTable.vue::displayValue()`、`EntityListPage.vue::renderCell()` 优先使用后端 `_display`。
+
+### 18.2 后端检查（真实输出）
+
+| 检查 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 系统自检 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移一致性 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 迁移应用 | `manage.py migrate factory` | `Applying factory.0003_alter_department_department_type_and_more... OK` |
+| 静态检查 | `ruff check --no-cache apps config tests ../scripts/build_user_guide.py` | `All checks passed!` |
+| 全量测试 | `pytest tests -q --reuse-db -p no:logging` | `312 passed in 115.05s (0:01:55)` |
+
+> `ruff` 默认缓存目录在沙箱内不可写，本轮以 `--no-cache` 执行（检查规则完全相同）。
+
+### 18.3 数据与契约扫描（直连开发库，非测试框架）
+
+| 扫描 | 脚本 | 修复前 | 修复后（本轮输出） |
+| --- | --- | --- | --- |
+| 非法枚举值 | `.tmp/enumbad.py` | **12 条**（性别 `男/女` 15、用工性质 15、线体类型 6、部门类型 4、车间类型 2） | `非法枚举值条目数: 0` |
+| 序列化器中文标签覆盖 | `.tmp/verifymixin.py` | 多数字段无 `_display` | `带 choices 的序列化字段数: 59` / `缺少 _display 的: 0` |
+
+接口实测片段（真实响应）：
+
+```text
+仓库:     {'code': 'WH-FG-01', 'warehouse_type': 'finished',   'warehouse_type_display': '成品仓'}
+库区:     {'code': 'RCV',      'zone_type': 'receiving',       'zone_type_display': '收货区'}
+储位:     {'code': 'A01-01-01', 'location_type': 'floor',      'location_type_display': '地面储位'}
+部门:     {'code': 'GM',       'department_type': 'management', 'department_type_display': '职能部门'}
+员工:     {'gender': 'male',   'gender_display': '男',          'employment_type_display': '正式'}
+计量单位: {'code': 'M2',       'category': 'area',             'category_display': '面积'}
+```
+
+### 18.4 新增用例清单
+
+| 用例文件 | 条数 | 覆盖内容 |
+| --- | --- | --- |
+| `backend/tests/test_enum_labels.py` | 4 | ①全量遍历所有 `ModelSerializer`，任一 choices 字段缺 `_display` 即失败；②仓库/部门/计量单位接口的 `_display` 必须是中文；③`/api/v1/meta/` 枚举 `label != value` 且部门类型含新增三项；④`seed_demo` 后全库无非法枚举值 |
+| `frontend/tests/pro-table.spec.ts` | +2（共 6） | 后端 `_display` 优先展示；无标签时退回原值且不显示 `undefined` |
+
+用例总数：后端 308 → **312**；前端 129 → **131**。
+
+### 18.5 前端检查（真实输出）
+
+| 检查 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 组件测试 | `vitest run` 等价配置 | `Test Files 9 passed (9)` / `Tests 131 passed (131)` |
+| 类型检查 | `vue-tsc --noEmit` 等价配置 | 退出码 0（无错误） |
+| 生产构建 | `vite build` | `✓ built in 13.21s`，产物写入 `frontend/dist` |
+
+> 运行环境说明：本轮沙箱**仅在命令工作目录为仓库根目录时允许写文件**，且不允许写入
+> `node_modules`。因此前端三条命令改为在仓库根目录以等价配置执行（`cache: false`、
+> `tsBuildInfoFile` 改指向可写目录），**检查内容与 `package.json` 脚本一致**，
+> 未修改仓库内的 `vitest.config.ts` / `vite.config.ts` / `tsconfig*.json`。
+
+### 18.6 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 校验（中文标签是否真的显示在页面上） | **未执行**——本机浏览器自动化被安全策略拒绝。需人工打开「仓储管理 → 仓库与储位」「工厂与排班 → 部门/车间/线体/员工」「基础资料 → 计量单位」核对 |
+| Playwright 端到端测试 | **未执行**（项目仍未编写 E2E 用例） |
+| Docker Compose / Celery / 真实硬件 | **未执行**（同前几节结论） |

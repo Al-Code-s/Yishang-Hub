@@ -1,9 +1,13 @@
 # 实施进度（docs/progress.md）
 
 > 本文件记录**实际执行结果**。未执行的测试一律注明「未执行」，不写成通过。
-> 最近更新：2026-09-17（阶段 0 / 阶段 1 交付；阶段 2 第一步：客户与供应商主数据；
+> 最近更新：2026-09-18（阶段 0 / 阶段 1 交付；阶段 2 第一步：客户与供应商主数据；
 > 阶段 2 核心：**统一库存服务（余额 / 流水 / 单据 / 质量放行）**；
-> 阶段 2 第三步：**采购模块（采购申请 / 订单 / 收货 / 来料检验放行）**）
+> 阶段 2 第三步：**采购模块（采购申请 / 订单 / 收货 / 来料检验放行）**；
+> 阶段 2 第四步：**销售模块（销售订单 / 库存占用 / 发货出库 / 销售退货与检验判定）**；
+> 阶段 3 第一步：**BOM 与工艺路线版本快照**；阶段 3 第二步：**MRP（时间分段净算 / 多层 BOM 展开 / 缺料建议 / 建议转单）**；
+> 界面：**侧边导航层级区分**、**视图样式统一（共享样式类）**与**窄屏响应式（侧边栏自动折叠）**；
+> 本轮增量：**枚举值中文化**（所有 choices 字段随接口返回中文标签）与**历史非法枚举数据修复**（见 §十七））
 
 ## 一、当前状态总览
 
@@ -11,14 +15,19 @@
 | --- | --- | --- |
 | 0 | 仓库检查、需求矩阵、架构与数据模型、环境与部署编排 | 已完成（Docker 编排未在本机启动验证） |
 | 1 | 登录、权限、组织、主数据、仓库储位、基础审批、审计、后台界面 | 已完成（阶段验收待人工确认） |
-| 2 | 客户、供应商、采购、销售、WMS 单据 | **进行中**：客户/供应商主数据、**统一库存服务（收发存/移库/质量放行/冲销/幂等）已完成**、**采购模块（申请 → 订单 → 收货 → 来料检验放行）已完成**；销售单据、询价/报价/评价、计划、调拨在途与盘点未开始 |
-| 3 | BOM、工艺、MRP、MES、QMS | 未开始 |
+| 2 | 客户、供应商、采购、销售、WMS 单据 | **进行中**：客户/供应商主数据、**统一库存服务（收发存/移库/质量放行/冲销/幂等）已完成**、**采购模块（申请 → 订单 → 收货 → 来料检验放行）已完成**、**销售模块（订单 → 库存占用 → 发货出库 → 退货 → 检验判定）已完成**；询价/报价/供应商评价、销售计划与预测、应收/收款登记、调拨在途与盘点未开始 |
+| 3 | BOM、工艺、MRP、MES、QMS | **进行中**：BOM 与工艺路线版本快照已完成（见 §十四）；**MRP（任务书 10.6）已完成**——时间分段净需求、多层 BOM 展开与损耗、循环 BOM 检查、缺料清单、采购 / 生产建议、供需追溯、计算快照、采购建议转单（见 §十五）；**MES、QMS 未开始** |
 | 4 | 设备、备件、保养、点检、维修 | 未开始 |
 | 5 | 采集、EMS、能源报表与告警 | 未开始 |
 | 6 | CRM 深化、EHS、厂内物流、终端安全 | 未开始 |
 | 7 | 综合报表、基础成本、性能、安全、运维与恢复演练 | 未开始 |
 
-当前规模（统计自 `permissions_registry` 与开发库）：**139 个权限点 / 47 项菜单 / 38 个业务页面 / 77 张表**。
+当前规模（统计自 `permissions_registry` 与开发库，2026-09-18 实测）：**173 个权限点 / 56 项菜单（45 个业务页面 + 11 个目录）/
+86 个数据模型**（`apps.get_models()` 全量，含 Django 框架自带模型）；数据库共 **92 张表**（其中框架表 13 张、业务表 79 张）；
+已提交迁移文件 **19 个**；前端 **48 个 `.vue` 视图**；内置角色 **16 个**（`bootstrap_system` 13 + `seed_demo` 3 个演示角色）。
+
+**使用说明**见 `docs/user-guide.md`（启动 / 账号 / 菜单 / 操作 / 错误码）；
+其 §11.5 事实行由 `backend/tests/test_docs_sync.py` 与代码比对，防止文档静默过期。
 
 **未实施的模块不在左侧导航中展示，也不存在可访问路由**（任务书 8.2）。
 `apps/identity/permissions_registry.py` 只登记已实现页面；前端路由按后端菜单动态注册，
@@ -214,7 +223,11 @@ API 统一前缀 `/api/v1/`，清单与示例见 `docs/api-conventions.md`。
 > 注意：三个 `.ps1` 脚本必须保存为**带 BOM 的 UTF-8**，否则 Windows PowerShell 5.1
 > 会按 ANSI 解析中文导致语法错误——本仓库已因此问题修复过一次。
 
-### 5.2 新增文档（本轮补齐 13 份）
+### 5.2 新增文档（阶段 0 本轮补齐 13 份）
+
+> 后续补充：`docs/user-guide.md`（**项目使用说明**，阶段 3 第二步之后新增），文档共 **17** 份。
+> 该文档内置 `<!-- yishang-doc-sync: ... -->` 事实行，由 `backend/tests/test_docs_sync.py`
+> 与注册表 / 模型 / 迁移比对，保证「代码更新后使用文档同步变动」。
 
 `architecture.md`、`data-model.md`、`business-flows.md`、`permission-matrix.md`、
 `api-conventions.md`、`inventory-rules.md`、`energy-calculation.md`、`assumptions.md`、
@@ -829,3 +842,1043 @@ frontend: npm run build                        -> ✓ built
 
 全仓库扫描：`弋尚` 仅剩本文档 §9.1 映射表的「旧值」列（8 处，属改名记录本身），
 代码、配置与其余文档中为 **0** 处。
+
+## 十、阶段 2 第四步：销售模块（本轮增量）
+
+### 10.1 已实现功能
+
+销售订单 → 库存占用 → 发货出库 → 客户退货 → 检验判定，**全部通过
+`apps/sales/services.py` 调用统一库存服务 `apps/wms/services/stock.py` 完成**，
+没有新建第二套库存体系，也没有在 View / Serializer 里写库存逻辑。
+
+| 能力 | 实现位置 | 说明 |
+| --- | --- | --- |
+| 销售订单 | `sales.SalesOrder` / `SalesOrderLine` | 草稿 → 提交审批 → 批准 → 部分发货 → 已发货 → 关闭 / 驳回 / 取消；关闭与取消是不同语义 |
+| 金额计算 | `services.compute_line_amount` / `recalculate_order_amounts` | 行金额、单头金额与税额**全部由后端计算**后落库；前端传入的金额字段被忽略（用例 `test_order_amount_is_computed_by_backend`） |
+| 颜色尺码 | `SalesOrderLine.sku` | 订单行可关联成品 SKU（款式 + 颜色 + 尺码）；SKU 与库存物料一对一，不产生两套编码 |
+| 客户校验 | `_assert_customer_usable` | 停用 / 终止客户不能新建订单（`CUSTOMER_INACTIVE`） |
+| 库存占用 | `stock.reserve_stock` / `release_reservation` / `release_reservations_for_biz` | 占用**只改可用量、不写库存流水**；`request_key` 唯一约束保证幂等 |
+| 库位推荐 | `stock.choose_reservation_dimension` | 未指定储位/批次时按「可用量最大的合格维度」占用；库存分散在多个维度时报明确错误而不是静默少占 |
+| 销售发货 | `sales.SalesShipment` / `SalesShipmentLine` | 草稿 → 出库过账 → 取消（仅草稿可取消） |
+| 先占用后发货 | `stock._assert_reservation_covers`（经 `require_full_reservation=True`） | 出库数量必须由**本订单**占用覆盖；未占用返回 `RESERVATION_REQUIRED`，且不会动用其他订单的占用 |
+| 出库维度一致 | `_shipment_document_lines` + `stock.open_reservation_hint` | 发货行留空的储位/批次/卷号由占用维度推导，避免「前端选错储位 → 误判占用不足」 |
+| 销售退货 | `sales.SalesReturn` / `SalesReturnLine` | 草稿 → 收货过账（**待检**）→ 检验判定（合格回库 / 不合格）→ 取消 |
+| 退货批次追溯 | `_inherit_return_dimensions` + `stock.document_line_hint` | 退货行未填维度时继承**原发货出库单据**的储位/批次/卷号并写回退货行，检验放行复用同一维度，批次追溯不断链 |
+| 退货数量口径 | `SalesOrderLine.returnable_quantity` | 可退数量 = 已发货 − 已退货；超出即 `OVER_RETURN` |
+| 订单到交付链路 | `GET /api/v1/sales/orders/{id}/chain/` | 一次返回订单、行交付进度、发货单、退货单与关联库存单据（任务书 12.1） |
+| 幂等 | `Idempotency-Key` + `idempotent_execute` | 发货过账、退货收货过账支持幂等重放，重放时响应头 `Idempotency-Replayed: true` |
+| 审计与事件 | `record_audit` + `publish_event` | 订单、占用、释放、发货、退货、判定全部留痕并写入 Outbox |
+
+**库存口径（本轮新增，详见 `docs/inventory-rules.md` 第十节）**
+
+- 占用**不写库存流水**：`InventoryTransaction` 只记录实存量增减；占用有自己的生命周期。
+- 一致性口径：`InventoryBalance.reserved == 该维度所有未结占用数量之和`。
+- 占用结束分两种：**消耗结束**（`closed`）与**释放结束**（`cancelled`），便于排查「占用去哪了」。
+- 占用 / 释放 / 过账三处的加锁顺序统一为「余额 → 占用」，降低多维度并发死锁风险（任务书 5.6）。
+
+### 10.2 数据迁移
+
+| 迁移 | 内容 |
+| --- | --- |
+| `apps/wms/migrations/0003_stockreservation.py` | `wms_stockreservation` 表 + 3 个检查约束 + 2 个索引 |
+| `apps/sales/migrations/0001_initial.py` | `sales_salesorder`、`sales_salesorderline`、`sales_salesshipment`、`sales_salesshipmentline`、`sales_salesreturn`、`sales_salesreturnline` |
+
+`makemigrations --check --dry-run` 输出 `No changes detected`。
+
+### 10.3 页面与 API
+
+新增左侧一级目录「销售管理」下的 3 个页面（路由由后端菜单动态注册）：
+
+| 页面 | 组件 | 主要交互 |
+| --- | --- | --- |
+| 销售订单 | `frontend/src/views/sales/SalesOrderList.vue` | 新增/编辑（颜色尺码 SKU、行金额后端算）、提交审批、库存占用、释放占用、关闭、取消；详情抽屉展示链路进度 |
+| 销售发货 | `frontend/src/views/sales/SalesShipmentList.vue` | 按订单未发货数量生成发货单、发货过账（带幂等键）、取消；详情展示出库库存单据 |
+| 销售退货 | `frontend/src/views/sales/SalesReturnList.vue` | 退货登记、退货收货（进待检）、检验判定（人工录入，标注未接入检测设备）、取消 |
+
+新增 API（统一前缀 `/api/v1/`）：
+
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| GET / POST | `/sales/orders/` | `sales.order.view` / `sales.order.create` |
+| PATCH | `/sales/orders/{id}/` | `sales.order.update` |
+| POST | `/sales/orders/{id}/submit/` | `sales.order.submit` |
+| POST | `/sales/orders/{id}/cancel/` | `sales.order.update` |
+| POST | `/sales/orders/{id}/close/` | `sales.order.close` |
+| POST | `/sales/orders/{id}/reserve/` | `sales.order.reserve` + `wms.inventory.reserve` |
+| POST | `/sales/orders/{id}/release/` | `sales.order.release` + `wms.inventory.release` |
+| GET | `/sales/orders/{id}/chain/` | `sales.order.view` |
+| GET / POST / PATCH | `/sales/shipments/`、`/sales/shipments/{id}/` | `sales.shipment.view` / `.create` / `.update` |
+| POST | `/sales/shipments/{id}/post/` | `sales.shipment.post` + `wms.document.create` + `wms.document.post` |
+| POST | `/sales/shipments/{id}/cancel/` | `sales.shipment.update` |
+| GET / POST / PATCH | `/sales/returns/`、`/sales/returns/{id}/` | `sales.return.view` / `.create` / `.update` |
+| POST | `/sales/returns/{id}/post/` | `sales.return.post` + `wms.document.create` + `wms.document.post` |
+| POST | `/sales/returns/{id}/inspect/` | `sales.return.inspect` + `wms.quality.release` |
+| POST | `/sales/returns/{id}/cancel/` | `sales.return.update` |
+
+`/api/v1/meta/` 新增枚举：`sales_order_statuses`、`sales_order_priorities`、`shipment_statuses`、
+`return_statuses`、`return_dispositions`、`reservation_statuses`（前端不硬编码枚举）。
+
+### 10.4 权限
+
+- 新增 18 个权限点：`wms.inventory.reserve/release` + `sales.order.*`（7）+ `sales.shipment.*`（4）+
+  `sales.return.*`（5）。权限总数 **139 → 157**。
+- 新增 4 项菜单（1 个目录 + 3 个页面）。菜单总数 **47 → 51**。
+- 新增内置角色 `sales_admin`（27 个权限），**不含** `sales.return.inspect`：
+  销售与质检职责分离，退货检验判定只能由质检角色执行。
+- **修正缺陷**：内置角色 `quality_inspector`（质检员）此前缺少 `wms.document.create` /
+  `wms.document.post`，而质量放行要经统一库存服务创建并过账「质量转换单」，
+  导致质检员实际无法完成放行（采购来料检验同样受影响）。本轮补齐并重跑 `bootstrap_system`。
+  权限数 9 → 11。
+
+### 10.5 演示数据
+
+`seed_demo` 新增 `_sales()`：全部经服务层完成，固定单号 + 状态推进，重复执行不重复建单、
+不重复扣库存。真实输出：
+
+```text
+演示数据写入完成（本次新建数量）：
+  sales.SalesOrder: 1
+  sales.SalesReturn: 1
+  sales.SalesShipment: 1
+  workflow.ApprovalTemplate: 1
+  workflow.ApprovalTemplateNode: 3
+```
+
+链路核对（读取开发库真实数据）：
+
+```text
+订单 SO-DEMO-0001 shipped 23940.0000 27052.2000
+  行 1 YS-M-2401-NV-170A 60.000000 已发 60.000000 已退 6.000000 可退 54.000000
+发货 SH-DEMO-0001 posted 出库单据 15
+退货 SR-DEMO-0001 inspected qualified [('FG-2509-01', 42, '6.000000')]
+  余额 42 FG-2509-01 qualified 实存 186.000000 占用 0.000000 可用 186.000000
+未结占用 0
+```
+
+即：成品批次 `FG-2509-01` 入库 240 → 占用 60 → 发货出库 60 → 退货 6 件进待检 →
+检验合格回库 6，最终合格可用 186，与流水一致。
+
+### 10.6 测试执行结果（真实输出）
+
+```text
+backend:  ruff check apps config tests         -> All checks passed!
+backend:  manage.py check                      -> System check identified no issues (0 silenced).
+backend:  makemigrations --check --dry-run     -> No changes detected
+backend:  pytest tests -q --reuse-db           -> 217 passed（新增 tests/test_sales.py 34 例）
+frontend: npm run typecheck                    -> 退出码 0
+frontend: npm run test                         -> 6 files / 69 tests passed
+frontend: npm run build                        -> ✓ built
+```
+
+销售用例覆盖（`backend/tests/test_sales.py`）：
+
+- 未登录 / 无权限 / 无占用权限 / 无检验权限的拒绝（含**职责分离**：销售岗位不能做质量判定）；
+- 金额后端计算、非正数量拒绝、停用客户拒绝；
+- 提交 → 审批 → 批准 / 驳回回写状态；
+- 占用幂等、占用**不改实存量且不写流水**、可用量不足拒绝、**待检库存不可占用**；
+- 释放占用、**取消订单自动释放未结占用**；
+- **未占用不允许发货**（`RESERVATION_REQUIRED`，且失败整体回滚）；
+- 发货过账消耗占用并扣减实存量、**过账幂等**（同键重放 + 重复过账）；
+- 发货数量不得超过未发货数量；
+- **占用维度与出库维度按批次对齐**（`test_reserve_uses_matching_batch_dimension`）；
+- 退货必须先有已出库发货单、可退数量不得超过「已发货 − 已退货」；
+- 退货必须先收货再过账才能判定、判定必须填写说明、重复判定拒绝；
+- 退货收货进**待检**且待检库存不可出库；合格回库 / 判为不合格后**不合格库存不可出库**；
+- **退货入库继承原发货批次**（`test_return_inherits_original_batch`）；
+- 订单到交付链路接口、跨公司隔离、`/api/v1/meta/` 销售枚举。
+
+未执行：Playwright 端到端、并发多连接压测（见 10.8）。
+
+### 10.7 启动验证步骤
+
+```powershell
+# 1) 数据库迁移（含本轮 2 个迁移）
+cd E:\github\Yishang-Hub\backend
+.\.venv\Scripts\python.exe manage.py migrate
+
+# 2) 系统初始化（会同步权限/菜单/编码规则，含新增 SH / SR 单号规则）
+.\.venv\Scripts\python.exe manage.py bootstrap_system
+
+# 3) 演示数据（幂等，可重复执行）
+.\.venv\Scripts\python.exe manage.py seed_demo
+
+# 4) 启动后端 / 前端
+powershell -ExecutionPolicy Bypass -File ..\scripts\dev_backend.ps1
+powershell -ExecutionPolicy Bypass -File ..\scripts\dev_frontend.ps1
+```
+
+人工验证路径：登录 → 销售管理 → 销售订单（SO-DEMO-0001）→ 详情查看链路 →
+「库存占用」→ 销售发货（SH-DEMO-0001）「发货过账」→ 销售退货（SR-DEMO-0001）「退货收货」→
+「检验判定」。注意：**未做过库存占用的订单直接发货会被后端拒绝**，这是设计行为。
+
+### 10.8 未完成事项（销售模块剩余）
+
+1. 颜色尺码矩阵录入界面（当前按行选择 SKU，未提供矩阵批量录入）。
+2. 订单变更版本快照与变更审批（任务书 10.3「订单变更保存版本」）。
+3. 分批发货界面细化、发货单与运单/物流对接、箱码与标签打印。
+4. 分销商、销售计划、基础预测（任务书 10.3）。
+5. 应收与收款登记（`sales.receivable` / `payment registration`）——未开始。
+6. 跨储位/跨批次**自动拆分占用**：当前占用落在单个可用量最大的维度，
+   库存分散时返回 `STOCK_SPLIT_ACROSS_DIMENSIONS` 引导先移库合并。
+7. 退货入库维度仅在「行未填维度」时继承原发货批次；多批次部分退货尚未按批次分摊。
+8. 并发多连接压测未执行（现有并发保障是 `request_key` 唯一约束 + `select_for_update`，
+   但未做真实多进程并发验证）。
+
+### 10.9 下一阶段依赖
+
+- 阶段 2 剩余：供应商询价/报价/评价 → 采购到货差异与退货（需先定义差异口径）→ 调拨在途与盘点。
+- 阶段 3：BOM/工艺版本快照 → MRP（消费销售订单未发货量与需求）→ MES 工单报工 →
+  QMS 检验单（届时把销售退货与来料检验的**人工判定**升级为引用检验单）。
+
+## 十一、界面样式优化（本轮增量）
+
+### 11.1 需求来源
+
+用户反馈：「进入页面后左侧一级目录和二级目录样式看起来一样」，并要求整体观感更接近商用后台。
+本轮**只改前端样式与导航组件**，不动任何业务逻辑、接口与数据结构（后端文件零改动）。
+
+### 11.2 侧边导航层级区分（主要变更）
+
+| 层级 | class（由 `SideMenu.vue` 的 `depth` 生成） | 视觉处理 |
+| --- | --- | --- |
+| 一级目录 | `ys-menu-group--d0` | 12px / 字重 600 / 字距 0.08em、低对比度，作为「分组标题」；展开时提亮并高亮图标；**当前页面所属目录**再叠加左侧竖条 + 提亮（Element 的 `is-active`）；分组之间加分隔线 |
+| 一级叶子页面（工作台） | `ys-menu-node--d0` | 与一级目录同一排版等级 + 图标，选中为蓝色渐变块 |
+| 二级页面 | `ys-menu-node--d1` | 13px、缩进 + 4px 圆点、悬停提亮；选中为蓝色渐变块 + 阴影 + 圆点放大 |
+| 展开的子菜单容器 | `.el-menu--inline` | 半透明深色底 + 圆角，把「同一目录下的页面」框成一组 |
+| 折叠态 | `.ys-layout__aside--collapsed` | 图标居中、隐藏圆点与展开箭头 |
+| 折叠后的弹出菜单 | `.el-menu--popup`（teleport 到 body，必须写全局规则） | 白底、圆角、蓝色选中块 |
+
+### 11.3 其他样式统一
+
+- 主题：Element Plus 主色替换为品牌科技蓝 `#1668dc`，并补齐 light-3/5/7/8/9 与 dark-2 梯度。
+  （只覆盖基色会让 hover、浅色态仍是 Element 默认蓝，页面上出现两种蓝。）
+- 菜单行高：Element Plus 的行高来自 CSS 变量 `--el-menu-item-height`（默认 56px），
+  只覆盖 `height` 会让其它派生计算仍按 56px 走；已在侧边栏统一设置
+  `--el-menu-item-height: 40px` / `--el-menu-sub-item-height: 36px` / `--el-menu-base-level-padding: 12px`，
+  并由用例锁死，避免回退。
+- 顶部栏：轻阴影、面包屑末级加重、用户区胶囊 hover、头像渐变。
+- 标签页：由卡片式改为「选中块 + 底部 2px 主色下划线」。
+- 页面骨架：标题左侧主色竖条、卡片统一 8px 圆角 + 轻阴影、筛选栏与表格卡风格一致。
+- 组件：表格表头浅灰 + 行 hover 淡蓝、按钮/标签圆角与字重、弹窗与抽屉标题分隔线、滚动条细化。
+- 工作台：看板卡片 hover 上浮、区块标题竖条。
+- 登录页：卡片圆角与阴影、登录按钮字距。
+
+### 11.4 涉及文件
+
+| 文件 | 变更 |
+| --- | --- |
+| `frontend/src/styles/index.css` | 重写为 8 个小节：设计令牌 / 基础重置 / 页面骨架 / 主布局 / 侧边导航 / 顶部栏与标签页 / 组件细节 / 登录页 / 辅助类 |
+| `frontend/src/components/SideMenu.vue` | 新增 `depth` prop，按层级输出 `ys-menu-group--dN` / `ys-menu-node--dN` |
+| `frontend/src/layouts/BasicLayout.vue` | 品牌标识尺寸、面包屑与折叠按钮的样式钩子 class |
+| `frontend/src/views/workspace/Index.vue` | 看板卡片 hover、区块标题竖条 |
+| `frontend/tests/side-menu.spec.ts` | 新增 10 条用例：DOM 层级 class + 样式表规则（用 postcss 真实解析样式表） |
+
+### 11.5 验证结果（真实输出）
+
+- `npm run typecheck` → 退出码 0
+- `npm run test` → **7 个文件 / 79 项通过**（原 6 / 69，新增 `side-menu.spec.ts` 10 项）
+- `npm run build` → `✓ built in 13.27s`
+- 开发服务器实际下发校验：`GET http://127.0.0.1:5173/src/styles/index.css` → 200、18144 字节，
+  内容包含 `ys-menu-group--d0`、`ys-menu-node--d1`、`--el-color-primary: #1668dc`
+- 本轮无后端文件变更，`manage.py check` 与迁移一致性不受影响。
+
+### 11.6 未完成 / 未执行
+
+- **未做浏览器截图级像素校验**：浏览器自动化被安全策略拒绝（非人工拒绝），本轮无法由我截图确认最终观感；
+  已改用「DOM 层级 class 断言 + postcss 解析样式规则 + 开发服务器实际下发」三重检查替代，
+  最终观感仍需人工在浏览器确认。
+- 未做响应式（窄屏 / 平板）适配；未引入暗色主题。
+- 各业务视图内部的局部样式（`RoleList`、`OutboxList`、`ProgressView` 等）未逐一美化，仍是阶段 1/2 的默认观感。
+  **（本条已由第十二节部分处理：面板、区块标题、统计卡、代码块已下沉为共享类；剩余项见 §12.6。）**
+
+## 十二、视图样式统一（本轮增量）
+
+### 12.1 背景
+
+第十一节把侧边导航的层级区分做完了，但各业务视图内部仍是阶段 1/2 各自手写的样式。
+用 `.tmp/scan_styles.py` 扫描 16 个带 `<style scoped>` 的 .vue 文件后发现：
+**同一个界面元素在不同页面的写法不同**——`.ys-section-title` 被 4 个视图各自定义（字号、边距、竖条都不一致），
+统计「标签 + 数值」有 3 套写法，白色面板有 3 份重复的「白底 + 边框 + 圆角」声明。
+结果就是「切换页面时，看起来是同一类卡片，长相却不一样」。本轮把这三类重复下沉为全局共享类。
+
+### 12.2 新增共享样式原语（唯一定义处：`frontend/src/styles/index.css`）
+
+| 类 | 用途 | 关键视觉 |
+| --- | --- | --- |
+| `.ys-panel` | 通用白色面板（与 `.ys-table-card` 合并为同一条规则） | padding 16 / 1px 边框 / `var(--ys-radius)` / `var(--ys-shadow-card)` |
+| `.ys-panel--flush` | 承载 `el-tabs` 的面板（标签页需贴边，故去掉上内边距） | `padding: 0 12px 12px` |
+| `.ys-section-title` | 区块标题 | 14px / 字重 600 / 深蓝 + 主色竖条 `::before` |
+| `.ys-stat-cards` / `.ys-stat-card` | 统计卡容器与卡片 | flex 自动换行 + hover 上浮 |
+| `.ys-stat__label` / `.ys-stat__value` / `.ys-stat__hint` | 统计卡内文字 | 12px 灰标签 / 22px 深蓝数值 / 12px 说明文字 |
+| `.ys-code-block` | 代码、Outbox 报文、审计变更明细 | 等宽字体、浅灰底、圆角 6px、`max-height: 320px` 可滚动 |
+| `.ys-ml-4` | 小间距辅助类（原先分散在 2 个视图） | `margin-left: 4px` |
+
+同时补齐 Element Plus 细节：`.el-drawer__body` 上内边距、`.el-drawer__footer` 上边框、
+`.el-drawer .el-descriptions__label` 标签列加宽 108px + 浅灰底，让详情抽屉观感一致。
+
+### 12.3 改造的视图
+
+| 文件 | 改动 |
+| --- | --- |
+| `views/workspace/Index.vue` | 看板统计卡改用 `ys-stat-cards` / `ys-stat-card` / `ys-stat__label` / `ys-stat__value` |
+| `views/integration/OutboxList.vue` | 统计块改用共享类；标签页容器改 `ys-panel ys-panel--flush`；事件报文改 `ys-code-block` |
+| `views/system/ProgressView.vue` | 统计卡统一；说明文字改 `ys-stat__hint` |
+| `views/system/PermissionList.vue` | 标签页容器改 `ys-panel ys-panel--flush` |
+| `views/system/AuditLogList.vue` | 变更明细改 `ys-code-block` |
+| `views/system/RoleList.vue`、`views/system/UserList.vue`、`views/workflow/TemplateList.vue`、`components/ApprovalDetailDrawer.vue` | 删除本地重复的 `ys-section-title` / `ys-ml-4` 定义 |
+
+### 12.4 度量（改造前后）
+
+| 指标 | 改造前 | 改造后 |
+| --- | --- | --- |
+| `.ys-section-title` 定义份数 | 4 | 1（全局唯一定义处） |
+| 视图内重名的共享类 | 3 类（`ys-section-title`、`ys-ml-4`、统计标签/数值） | **0** |
+| 全局样式表体积 | 18144 字节 | 20702 字节 |
+
+### 12.5 验证结果（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 8 passed (8)` / `Tests 110 passed (110)` |
+| 生产构建 | `npm run build` | `✓ built in 12.02s` |
+| 样式表编码与配平 | `.tmp/checkcss.py` | BOM False / CRLF 0 / 20702 字节 / 花括号 129 = 129 |
+| 共享类重名扫描 | `.tmp/scan_styles.py` | 16 个带样式块的 .vue；重名选择器 **0** |
+
+新增 `frontend/tests/styles.spec.ts`（31 项，全部通过）把约定固化为测试，其中最关键的一条是
+「**任何 .vue 的 scoped 样式都不得再重新定义共享类**」，防止以后再次分叉。
+
+### 12.6 未完成 / 未执行
+
+- **浏览器截图级像素校验未执行**（原因同 §11.6，浏览器自动化被安全策略拒绝，非人工拒绝）；
+  最终观感仍需人工在浏览器打开 `http://127.0.0.1:5173/` 确认。
+- `OutboxList` / `ProgressView` 的统计卡外层仍是 `el-row` + 固定 `:span` 栅格，未改为 `.ys-stat-cards` 的 flex 布局
+  （窄屏下换行不整齐，属于「窄屏响应式」的范围）。
+- `NotificationDrawer.vue`、`CodeRuleList.vue`、`WarehouseList.vue`、`DepartmentList.vue` 的局部样式尚未统一。
+- 窄屏响应式与暗色主题仍未实现，因此无可执行用例。
+
+## 十三、窄屏响应式（本轮增量）
+
+### 13.1 背景
+
+第十二节统一了观感，但布局仍按「宽屏」假设写死：侧边栏恒定 220px，统计卡用
+`el-row` + 固定 `:span="4"` / `:span="6"`，列多的表格只能靠挤压列宽。
+在 1366×768 的笔记本上表格可用宽度不足，一屏读不下几列。本轮只改前端布局与样式（后端零改动）。
+
+### 13.2 断点约定
+
+| 断点 | 处理 |
+| --- | --- |
+| ≤1440px | 表格改为容器内横向滚动（`.ys-table-card { overflow-x: auto }` + `.ys-table-card .el-table { min-width: 720px }`），不再把每列压到不可读 |
+| ≤1200px | **侧边栏自动折叠为图标态**；页面内边距 16 → 12px；统计卡最小宽 168 → 140px |
+| ≤992px | 标题与操作区上下排列；统计卡整行铺满；`.ys-grid-2` 双列改单列；弹窗与抽屉宽度铺到 92% |
+
+`useAutoCollapse.ts` 的 `NARROW_BREAKPOINT = 1200` 与样式表里的 `@media (max-width: 1200px)`
+必须一致，已由 `responsive.spec.ts` 断言两边相等——「JS 与 CSS 各写一份断点」是最容易改一边忘一边的地方。
+
+弹窗与抽屉的宽度是 Element Plus 的**内联样式**（`width: 600px` 之类），普通选择器无法覆盖，
+因此那两条规则必须带 `!important`，样式表里已就地注明原因，避免后人误删。
+
+### 13.3 侧边栏自动折叠规则
+
+| 场景 | 行为 |
+| --- | --- |
+| 宽屏加载 | 展开 |
+| 窄屏加载（≤1200px） | 折叠（setup 阶段先取一次视口宽度，不会出现「先展开再跳变」） |
+| 用户在窄屏点折叠按钮 | 手动展开，并保持到视口变化 |
+| 视口跨过断点 | 清除手动偏好，回到「跟随视口」，避免窗口拉宽后侧边栏仍停在收起状态 |
+| 组件卸载 | 移除 resize 与 matchMedia 监听，离开页面后不再改状态 |
+
+### 13.4 涉及文件
+
+| 文件 | 变更 |
+| --- | --- |
+| `frontend/src/composables/useAutoCollapse.ts` | 新增：视口 → 折叠状态（手动偏好优先，跨断点重置） |
+| `frontend/src/layouts/BasicLayout.vue` | 改用该组合式函数；折叠按钮补 `title` 提示（展开/收起） |
+| `frontend/src/styles/index.css` | 新增第 9 节「窄屏响应式」；新增 `.ys-grid-2`；`.ys-stat-card` 改为 `flex: 1 1 168px` |
+| `frontend/src/views/integration/OutboxList.vue` | 统计卡由 `el-row` + `:span="4"` 改为 `.ys-stat-cards` flex |
+| `frontend/src/views/system/ProgressView.vue` | 统计卡同上；双列区块由 `el-row` + `:span="12"` 改为 `.ys-grid-2` |
+| `frontend/tests/responsive.spec.ts` | 新增 15 条：断点一致性 + 响应式规则 + 自动折叠行为 + 视图不再用固定栅格 |
+
+### 13.5 验证结果（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 9 passed (9)` / `Tests 125 passed (125)` |
+| 生产构建 | `npm run build` | `✓ built in 11.65s` |
+| 一键冒烟 | `scripts/smoke_check.ps1` | 7 个步骤全部通过，退出码 0（`全部检查通过。`） |
+| 样式表编码与配平 | `.tmp/checkcss.py` | BOM False / CRLF 0 / 23034 字节 / 花括号 151 = 151 |
+| 共享类重名扫描 | `.tmp/scan_styles.py` | 15 个带样式块的 .vue（原 16：`OutboxList` 的空样式块随统计卡改造删除）；重名 **0** |
+| 开发服务器下发 | `GET /src/styles/index.css`、`GET /src/layouts/BasicLayout.vue` | 均 200，样式含 `@media`，布局模块含 `useAutoCollapse` / `toggleCollapsed` |
+
+`responsive.spec.ts`（15 条，全部通过）覆盖：断点一致性、三个断点的规则内容、
+`.ys-grid-2` 与 `.ys-stat-card` 的默认值、宽屏/窄屏初始态、手动切换、
+视口跨断点重置偏好、卸载后不再响应 resize，以及三个文件「不再使用固定栅格 / 固定展开状态」。
+
+### 13.6 未完成 / 未执行
+
+- **浏览器截图级像素校验未执行**（原因同 §11.6，浏览器自动化被安全策略拒绝，非人工拒绝）；
+  真实观感与「拖动窗口时侧边栏是否平滑折叠」需人工在浏览器里拖窗口确认。
+- 只覆盖统计卡栅格与表格容器：`EntityListPage` 的筛选栏在窄屏仍靠换行，未做「展开/收起筛选面板」。
+- ≤768px（手机竖屏）未单独处理，未做移动端专用布局。
+- 暗色主题未实现；触摸手势、横竖屏旋转未验证。
+
+## 十四、阶段 3 第一步：BOM 与工艺路线版本快照（本轮增量）
+
+### 14.1 背景与范围
+
+阶段 2 结束时本文件 §10.9 给出的下一步是「阶段 3：BOM/工艺版本快照 → MRP → MES 工单报工 → QMS 检验单」。
+本轮只做**第一步**：把工程数据（BOM、工艺路线）按任务书 9.5 建成**版本化、可审批、可快照**的实体，
+为 MRP 展开与 MES 工单下达提供唯一的数据来源。**本轮不碰库存**（`planning` 不 import 任何 wms 服务）。
+
+| 任务书 9.5 要求 | 本轮实现 |
+| --- | --- |
+| BOM 版本、生效日期、审核状态 | `planning.Bom`（`version_no` + `effective_from/to` + `status`），走 `workflow` 审批 |
+| SKU 差异用料、标准用量、损耗 | `Bom.sku`（空=款式通用，填写=该 SKU 差异版本）+ `BomLine.quantity` / `loss_rate` / `gross_quantity` |
+| 替代料审批 | `BomLine.line_type=substitute` + `substitute_for` 指向同一 BOM 的正常用料行；随所属版本一起审批 |
+| 工艺路线、标准工时、设备要求、工序质检点 | `planning.Routing` + `RoutingStep.standard_hours` / `equipment_requirement` / `is_quality_gate` |
+| 默认工艺 裁剪→缝制→整烫→检验→包装 | `DEFAULT_ROUTING_STEPS`；不传工序即套用，「检验」自动带质检点标记 |
+| 工单下达保存版本快照 | `build_bom_snapshot()` / `build_routing_snapshot()` 输出不可变 dict；工单本身在阶段 3 后续增量实现 |
+
+**范围边界（本轮明确不做）**：不建空的快照表（快照由 MES 工单在阶段 3 后续增量落库）；
+不做 MRP 展开与建议转单；不做 MES 工单/派工/报工；不做 QMS 检验单；不引入 signals
+（版本与状态迁移只由 `services` 修改，任务书 4.3/4.4）。
+
+### 14.2 已实现功能
+
+**BOM**
+
+1. **版本化**：同一「款式 + SKU 范围」可有多个版本；草稿可改（`is_editable`），提交后冻结，审核通过后生效。
+2. **同一范围同时只有一个生效版本**：审核通过时旧 `approved` 版本自动转 `obsolete`（只改状态，内容与快照不动）。
+3. **变更只能派生新版本**：`POST /planning/boms/{id}/new-version/` 复制明细行生成 `version_no + 1` 的新草稿；
+   已审核版本不被覆盖，因此**已下达工单引用的版本内容不变**（任务书 9.5、14.2 必测案例 13）。
+4. **用量口径**：`quantity` 是单位成品净用量；`gross_quantity = quantity × (1 + loss_rate)` **由后端计算**，
+   前端传入会被忽略；统一按数量精度 **6 位小数 `ROUND_HALF_UP`** 舍入，且**只在这一处**舍入（任务书 5.3）。
+5. **明细校验**（序列化器 + 服务层两级，绕过接口直接调服务也拦得住）：用量必须 > 0；损耗率 ∈ [0, 1)；
+   至少 1 行；同一 BOM 内同一正常用料不可重复（`NORMAL_MATERIAL_DUPLICATED`）；替代料行必须指向同一 BOM
+   内的正常用料行、正常用料行不得指向替代料行（`SUBSTITUTE_TARGET_INVALID`）；生效区间必须有序；
+   款式 / SKU / 物料必须属于同一公司。
+6. **状态机**：`draft → submitted → approved / rejected`；`submitted` 可撤回（`withdraw` 回 `draft`）；
+   `obsolete` 必须填原因；审核中不允许派生新版本或作废。
+7. **快照一致**：`GET /planning/boms/{id}/snapshot/` 与 `services.build_bom_snapshot()` 输出**逐字段相等**
+   （`test_bom_snapshot_service_equals_api` 断言），且派生新版本后旧版本快照不变。
+
+**工艺路线**
+
+8. 版本 / 审批 / 作废 / 派生新版本规则与 BOM **完全一致**（共用同一套服务骨架），工序随版本冻结。
+9. 工序校验：`sequence` 在同一路线内唯一、`standard_hours ≥ 0`、至少 1 道工序；
+   `is_quality_gate` 标记工序质检点（MES 必须在该工序产生检验记录，任务书 9.5）。
+10. **默认工艺**：不传 `steps` 时套用 `DEFAULT_ROUTING_STEPS`（裁剪 / 缝制 / 整烫 / **检验(质检点)** / 包装）；
+    **显式传空列表会被拒绝**（`ROUTING_STEP_REQUIRED`）——避免把错误输入悄悄变成"有效"的默认工艺。
+11. 工序可挂车间（`workshop`，受数据范围校验，越权车间被拒）；`equipment_requirement` 记录设备要求。
+
+**审批集成**
+
+12. 复用 `workflow`，**不新建审批体系**：`apps/planning/apps.py::PlanningConfig.ready()` 显式
+    `register_biz_handler("planning.bom" / "planning.routing", ...)`，审批结果回写单据状态并（通过时）执行版本切换。
+13. **没有审批模板时直接拒绝提交**（`APPROVAL_TEMPLATE_NOT_FOUND`），不静默跳过审批；
+    `seed_demo` 已为两个 biz_type 各建 1 个模板（`AP-BOM` / `AP-ROUTING`）。
+14. 审批通过 / 驳回 / 撤回都留痕：单据状态 + `approved_by` / `approved_at` + `AuditLog`。
+
+**数值与一致性**
+
+15. 全程 `Decimal`，禁止 float；API 中 Decimal 以字符串输出（任务书 5.3）。
+16. 服务层额外做**公司一致性校验**（`_assert_company_scope` + BOM 明细逐行校验物料公司），
+    覆盖"绕过接口直接调用服务"的路径（`test_service_requires_reason_to_obsolete` 等同组用例）。
+17. 乐观锁：`version` 字段，PATCH 传过时版本返回 409（`test_optimistic_lock_rejects_stale_version`）。
+
+### 14.3 数据迁移
+
+新增 App `backend/apps/planning/`，迁移 `planning/migrations/0001_initial.py`：**4 张表 + 17 个数据库约束**。
+
+| 表 | 关键约束 |
+| --- | --- |
+| `planning_bom` | `uq_bom_company_code`、`uq_bom_scope_version`、`ck_bom_version_positive`、`ck_bom_effective_range` |
+| `planning_bomline` | `uq_bom_line_no`、`ck_bom_line_quantity_positive`、`ck_bom_line_loss_non_negative`、`ck_bom_line_loss_lt_one` |
+| `planning_routing` | `uq_routing_company_code`、`uq_routing_scope_version`、`ck_routing_version_positive` |
+| `planning_routingstep` | `uq_routing_step_sequence`、`ck_routing_step_sequence_positive`、`ck_routing_step_hours_non_negative` |
+
+**规范化唯一键（任务书 5.4 重点）**：MySQL 的联合唯一索引不约束 `NULL`（多行 NULL 互不冲突），
+因此**不能**直接对 `(company, style, sku, version_no)` 建唯一索引。实现上把范围压成非空字符串
+`scope_key`（`engineering_scope_key()` → `"style:1"` 或 `"style:1:sku:3"`），唯一约束建在
+`(company, scope_key, version_no)` 上 —— 与 `wms_inventorybalance.dimension_key` **同一个坑、同一套解法**，
+已由 `test_scope_version_unique_constraint_is_enforced`（真实 `IntegrityError`）覆盖。
+
+**「同一范围只有一个生效版本」不用索引兜底**：MySQL 没有部分唯一索引（`WHERE status='approved'`），
+因此靠服务层在 `transaction.atomic()` + `select_for_update()` 内切换状态，并在锁内重新校验。
+
+配置接线：`config/settings/base.py` 的 `LOCAL_APPS` 新增 `"apps.planning"`；
+`config/urls.py` 新增 `path("api/v1/planning/", include("apps.planning.urls"))`。
+
+### 14.4 页面与 API
+
+| 页面 | 前端组件 | 路由 | 菜单权限 |
+| --- | --- | --- | --- |
+| 物料清单（BOM） | `views/planning/BomList.vue` | `/planning/boms` | `planning.bom.view` |
+| 工艺路线 | `views/planning/RoutingList.vue` | `/planning/routings` | `planning.routing.view` |
+
+一级菜单目录「计划管理」（`/planning`，`sort_order=75`，排在「仓储管理」80 之前）。
+两个页面均基于共享组件 `EntityListPage.vue`（筛选 / 分页 / 排序 / 详情抽屉 / 表单弹窗 / 状态标签 /
+审批轨迹 / 防重复提交 / 离开未保存提示），未新增页面骨架代码。
+
+| 方法与路径 | 说明 | 权限点 |
+| --- | --- | --- |
+| `GET/POST /api/v1/planning/boms/` | 列表 / 新建（含明细行，后端算含损耗用量） | `planning.bom.view` / `.create` |
+| `GET/PATCH /api/v1/planning/boms/{id}/` | 详情 / 改草稿（PATCH 带 `expected_version` 乐观锁） | `.view` / `.update` |
+| `POST /api/v1/planning/boms/{id}/submit/` | 提交审批（无模板即拒绝） | `.submit` |
+| `POST /api/v1/planning/boms/{id}/obsolete/` | 作废版本（必填原因） | `.obsolete` |
+| `POST /api/v1/planning/boms/{id}/new-version/` | 派生新草稿版本（唯一变更方式） | `.create` |
+| `GET /api/v1/planning/boms/{id}/snapshot/` | 版本快照（供 MES 工单引用） | `.view` |
+| `POST /api/v1/planning/boms/{id}/set-active/` | 启停（基类提供，任务书 5.5 主数据优先停用） | `planning.bom.update` |
+| `/api/v1/planning/routings/` 下同样 7 个端点 | 工艺路线，规则与 BOM 一致 | `planning.routing.*` |
+
+**不提供 `DELETE`**（任务书 5.5：已审核单据不物理删除，工程数据用「作废 + 派生新版本」）。
+OpenAPI 由 drf-spectacular 自动同步：`GET /api/v1/schema/` 返回 200，其中 planning 共 **14 个路径**（每个视图集 7 个：`/`、`/{id}/`、`submit/`、`obsolete/`、`new-version/`、`snapshot/`、`set-active/`）。
+`GET /api/v1/meta/` 新增 3 个枚举键：`bom_statuses`、`routing_statuses`、`bom_line_types`。
+
+### 14.5 权限
+
+新增 **10 个权限点**（`planning.bom.view/create/update/submit/obsolete`、
+`planning.routing.view/create/update/submit/obsolete`）与 **3 个菜单**（1 个目录 + 2 个页面），
+全部登记在 `apps/identity/permissions_registry.py`，由 `bootstrap_system` 幂等同步到数据库
+（`apps/core/checks.py` 会在权限/菜单未登记时让 `manage.py check` 失败，因此不存在"只加接口不加权限"的漏网）。
+
+新增内置角色 **`planning_admin`（计划管理员）**，数据范围 `COMPANY`，共 20 个权限
+（BOM / 工艺路线全部动作 + 物料、款式查看等）。
+
+权限边界已实测：`planning.routing.*` **不会**顺带授予 BOM 写权限
+（`test_routing_permission_does_not_grant_bom_write`）；只读用户不能新建（`test_view_only_user_cannot_create_bom`）；
+跨公司对象被拒（`test_cross_company_objects_are_rejected`）；匿名访问 `403`
+（`test_planning_endpoints_require_authentication`）。
+
+### 14.6 演示数据
+
+`seed_demo` 新增 `_engineering()`（幂等，可重复执行）：
+
+| 数据 | 内容 |
+| --- | --- |
+| 审批模板 | `AP-BOM`（biz_type `planning.bom`）、`AP-ROUTING`（`planning.routing`），单节点，审批人 `demo_dept_manager` |
+| BOM | `BOM202609180001` v1，款式通用（`YS-W-2401`），**5 行明细**，已提交并审批通过 |
+| 工艺路线 | `RT202609180001` v1，**5 道工序**：裁剪 / 缝制 / 整烫 / 检验（`is_quality_gate=True`）/ 包装，已审批通过 |
+| 编码规则 | `BOM{YYYYMMDD}{SEQ:4}`、`RT{YYYYMMDD}{SEQ:4}`（`bootstrap_system` 同步，共 13 条） |
+
+真实库中读取到的演示 BOM 明细（面料行）：`quantity=0.280000`、`loss_rate=0.0600000000`、
+`gross_quantity=0.296800` —— 含损耗用量由后端算出且已按 6 位小数量化。
+
+### 14.7 测试执行结果（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| Django 系统检查 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移一致性 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 静态检查 | `ruff check apps config tests` | `All checks passed!` |
+| 后端测试（全量） | `pytest tests -q --reuse-db` | `267 passed in 105.84s (0:01:45)` |
+| 计划模块用例 | `pytest tests/test_planning.py` | `50 passed in 21.40s` |
+| 类型检查 | `npm run typecheck` | 退出码 0（无输出） |
+| 组件测试 | `npm run test` | `Test Files 9 passed (9)` / `Tests 127 passed (127)` |
+| 生产构建 | `npm run build` | `✓ built in 13.14s`（含 `BomList-B_Xq9rdS.js`、`RoutingList-BoeDw3JC.js`） |
+
+新增 `backend/tests/test_planning.py`：48 个测试函数 / **50 条用例**（含 2 个参数化），覆盖分组：
+权限与数据范围、BOM 明细校验、版本自增与唯一约束、提交 / 审核 / 驳回 / 撤回、派生新版本、
+快照不变性、作废必填原因、生效版本查询、审计留痕、工艺路线（默认工序 / 重复顺序 / 负标工 /
+质检点 / 车间范围）、服务层公司校验与边界。前端两个新页面已被 `tests/router.spec.ts`（47 条）
+与 `tests/views-compile.spec.ts`（菜单 fixture 逐组件编译）纳入回归。
+
+一键冒烟 `scripts/smoke_check.ps1` 7 步全过（`django check` / `makemigrations --check` / `ruff` /
+`pytest` / `vue-tsc` / `vitest` / `vite build`，退出码 0）。**注意**：本轮首跑冒烟脚本时 ruff 报出
+4 处真实违规（导入顺序、2 个未使用导入、嵌套 `with`），修复后才通过 —— 详见 `docs/test-report.md` §15。
+
+修复后复跑完整冒烟（最终状态，真实输出）：
+
+```text
+=== django check ===            System check identified no issues (0 silenced).
+=== makemigrations --check ===  No changes detected
+=== ruff check ===              All checks passed!
+=== pytest ===                  267 passed in 94.82s (0:01:34)
+=== vue-tsc 类型检查 ===        退出码 0
+=== vitest ===                  Test Files 9 passed (9) / Tests 127 passed (127)
+=== vite build ===              ✓ built in 10.65s
+
+全部检查通过。
+```
+
+### 14.8 启动验证步骤
+
+```powershell
+# 1) 迁移（含 planning 0001）
+cd backend
+.\.venv\Scripts\python.exe manage.py migrate
+# 2) 系统初始化（同步 10 个权限点 / 3 个菜单 / 2 条编码规则 / planning_admin 角色）
+.\.venv\Scripts\python.exe manage.py bootstrap_system
+# 3) 演示数据（幂等；生产环境会被拒绝）
+.\.venv\Scripts\python.exe manage.py seed_demo
+# 4) 启动后端
+.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+# 5) 启动前端（另开一个终端）
+cd ..\frontend
+npm run dev
+```
+
+验证：浏览器打开 `http://127.0.0.1:5173/` → 左侧「计划管理」→「物料清单（BOM）」/「工艺路线」；
+用 `admin` 登录可看到演示 BOM（5 行明细、含损耗用量只读）与工艺路线（5 道工序、检验为质检点）；
+匿名 `GET http://127.0.0.1:8000/api/v1/planning/boms/` 返回 **403**，登录后返回 200。
+
+### 14.9 未完成事项（阶段 3 剩余）
+
+- **MRP 未开始**（任务书 10.6）：时间分段净需求、多层 BOM 展开、损耗、循环 BOM 检查、缺料清单、
+  采购建议 / 生产建议、供需追溯、计算快照、建议审核转单。
+- **MES 未开始**（任务书 10.7）：工单、线体排产、裁剪任务、派工、报工、在制转移、返工报废、完工入库。
+  工单下达时必须保存 `build_bom_snapshot()` / `build_routing_snapshot()` 的结果（快照表届时落库）。
+- **QMS 未开始**（任务书 10.9）：检验项目 / 标准 / 版本、来料 / 首件 / 过程 / 成品 / 出货检验、不合格处置。
+  `procurement.receipt.inspect` 目前仍是**人工判定**，待升级为引用检验单（阶段 3 后续增量）。
+- 工艺路线未与 `factory.Station.process_name`、阶段 4 的设备主数据建立外键关联，
+  当前用文本 `workcenter` / `equipment_requirement` 记录。
+- `standard_hours` 尚未参与任何计算（OEE 理论产能、工序效率在阶段 3/4 使用）。
+- 无 BOM / 工艺路线的 Excel 导入导出（导入导出框架阶段 2 已有基础，本轮未接线）。
+- 无 BOM 成本卷算（基础成本属阶段 7）。
+
+### 14.10 下一阶段依赖
+
+1. **MRP** 依赖本轮的 `services.get_effective_bom(company, style, sku)` 与 `BomLine.gross_quantity`，
+   同时依赖阶段 2 的可用库存（统一库存服务）与采购在途（`procurement` 未收货数量）。
+2. **MES 工单**依赖 `build_bom_snapshot()` / `build_routing_snapshot()`；落库前需把
+   `docs/data-model.md` 的 BOM 章节与工单快照字段对齐，避免"快照结构 vs 源头字段"漂移。
+3. **QMS** 用工艺路线的 `is_quality_gate` 决定"哪些工序必须产生检验记录"，
+   与 `procurement.receipt.inspect` 的升级路径共用同一检验单实体。
+
+
+## 十五、阶段 3 第二步：MRP（本轮增量）
+
+### 15.1 背景与范围
+
+任务书 10.6 要求 MRP 具备：时间分段净需求、多层 BOM 展开、损耗计算、循环 BOM 检查、缺料清单、
+采购建议、生产建议、供需追溯、计算快照、建议审核转单。本轮实现**全部条目**，但按任务书
+2.3 与「先做可运行增量」的要求划出明确边界：
+
+- **只读**库存与在途，**不写**任何库存 / 采购 / 生产单据；建议转单只创建**草稿采购申请**，
+  后续仍走采购审批（MRP 不绕过审批产生采购承诺）。
+- **生产建议本轮明确拒绝转单**（`PRODUCTION_ORDER_NOT_IMPLEMENTED`），MES 工单属阶段 3 第三步，
+  **不伪造工单**。
+- MRP 需求来源只有**销售订单**；在制供给、替代料、提前期与批量规则均未参与计算（见
+  `docs/assumptions.md` §四之六，逐条列明）。
+
+### 15.2 已实现功能
+
+**计算内核（`apps/planning/mrp.py`，纯同步、无 Celery）**
+
+- **低层码（low-level code）分层净算**：先算父件再算子件，父件净需求展开子件需求后在本轮循环内
+  动态产生，保证同一物料在多层 BOM 中只净算一次（不多算、不漏算）。
+- **时间分段（bucket）净需求**：`day` 与 `week` 两种分段；`week` 归一到周一；逾期需求统一落在
+  第一个分段；区间外需求不参与计算。
+- **供给认读**：现有**可用库存**（`on_hand − frozen − reserved`，且**只认合格质量状态**）+
+  采购**未收货在途**（`purchase` 订单未收数量，按承诺交期落段）。
+- **BOM 展开**：只展 `line_type=normal` 的行（替代料不展开），用量取 `BomLine.gross_quantity`
+  （= 净用量 × (1+损耗率)，含损耗），版本来自阶段 3 第一步的
+  `services.get_effective_bom(company, style, sku)`。
+- **异常与保护**：循环 BOM（`BOM_CYCLE_DETECTED`）、层级超限（`BOM_TOO_DEEP`，`MAX_LEVEL=10`）、
+  非法分段 / 区间（`INVALID_BUCKET` / `INVALID_HORIZON`）均拒绝；**失败也落一条 `failed` 运行记录**并写明原因。
+- **建议类型规则**：有生效 BOM 或分类属成品 / 半成品 → **生产建议**；否则 → **采购建议**；
+  无生效 BOM 的成品会记入 `unexploded_materials`（演示"缺 BOM"告警），不伪造展开结果。
+- **快照与追溯**：需求行保存 `source_type/source_id/source_no/source_line_no` 与 `path` 来源路径，
+  建议的 `detail` 保存 `level` / `bom_code` / `bom_version_no` / `trace` / `demand_sources`，
+  计算参数完整存入 `MrpRun.parameters`（含 `lead_time_mode=lot_for_lot`、`in_progress_supply=not_implemented`、
+  `frozen_and_reserved=excluded_from_available`、`include_substitutes=false`）。
+
+**转单与状态机**
+
+- `convert_suggestion()`：锁内重取建议（`select_for_update`）→ 校验运行状态 → 校验未转单 →
+  校验运行仍是**最新已完成运行**（否则 `SUGGESTION_STALE`）→ 校验物料启用 → 生产建议拒绝 →
+  调 `procurement.services.create_requisition()` 建**草稿**采购申请 →
+  写 `integration.DocumentLink`（`generated_from`）→ 建议置 `converted` → 审计 + Outbox 事件（同事务）。
+- `cancel_suggestion()`：**必填原因**，已转单不可取消，已取消不可转单。
+- `archive_run()`：归档运行（`UPDATE` 审计），归档后其建议不可再转单（`MRP_RUN_NOT_ACTIVE`）。
+
+**只读边界（已用测试锁定）**：`test_mrp_is_read_only_for_inventory` 断言运算前后
+`InventoryBalance` / `StockLedger` 行数与数量完全不变。
+
+### 15.3 数据迁移
+
+| 迁移文件 | 内容 |
+| --- | --- |
+| `backend/apps/planning/migrations/0002_mrprun_mrpdemandline_mrpsuggestion_mrpsupplyline_and_more.py` | 4 张表（`MrpRun` / `MrpDemandLine` / `MrpSupplyLine` / `MrpSuggestion`）+ 8 个约束 |
+
+约束明细（4 表 × 2 条 = 8 条）：
+`uq_mrp_run_company_no`（同一公司运行编号唯一）、`ck_mrp_horizon_ordered`（区间不可颠倒）、
+`uq_mrp_demand_line_no` / `ck_mrp_demand_quantity_positive`、`uq_mrp_supply_line_no` /
+`ck_mrp_supply_quantity_positive`、`uq_mrp_suggestion_line_no` / `ck_mrp_suggestion_quantity_positive`
+（后三组分别为「同一运行内行号唯一」与「数量必须为正」）。
+
+> 说明：`bucket` / `status` 的**枚举取值**由 `choices` 在应用层校验，未建 `CHECK` 约束
+> （与既有模块一致）；「同一建议不得重复转单」由服务层状态机 + `select_for_update` 保证，
+> 数据库层通过建议行号唯一与目标单据的外键关系兜底。
+
+已提交迁移文件累计 **18 个**。
+
+### 15.4 页面与 API
+
+| 方法与路径 | 说明 | 权限 |
+| --- | --- | --- |
+| `GET /api/v1/planning/mrp-runs/` | 运行列表（含 `demand_count` / `supply_count` / `suggestion_count` 注记） | `planning.mrp.view` |
+| `POST /api/v1/planning/mrp-runs/` | 运行一次 MRP（同步计算后返回运行与 `summary`） | `planning.mrp.run` |
+| `GET /api/v1/planning/mrp-runs/{id}/demands/` | 展开后的需求行（含来源路径） | `planning.mrp.view` |
+| `GET /api/v1/planning/mrp-runs/{id}/supplies/` | 本次认到的供给（可用库存 / 采购在途） | `planning.mrp.view` |
+| `GET /api/v1/planning/mrp-runs/{id}/suggestions/` | 缺料清单 / 建议清单（可按类型过滤） | `planning.mrp.view` |
+| `POST /api/v1/planning/mrp-runs/{id}/archive/` | 归档运行（必填原因） | `planning.mrp.archive` |
+| `GET /api/v1/planning/mrp-suggestions/` | 建议列表（支持 `run_id` / `suggestion_type` / `status` / `material_id` 过滤） | `planning.mrp.view` |
+| `POST /api/v1/planning/mrp-suggestions/{id}/convert/` | 采购建议 → 草稿采购申请 | `planning.mrp.convert` **+** `procurement.requisition.create` |
+| `POST /api/v1/planning/mrp-suggestions/{id}/cancel/` | 取消建议（必填原因） | `planning.mrp.cancel` |
+
+前端新增 2 个页面（均为真实可用页面，非静态原型）：
+
+- `frontend/src/views/planning/MrpRunList.vue` ：`/planning/mrp-runs`。运行表单（**公司选择框**、
+  需求区间、按日 / 按周分段、限定仓库、备注）、运行列表、详情抽屉（摘要 + 需求行 / 供给行 / 缺料建议三个页签）、归档。
+- `frontend/src/views/planning/MrpSuggestionList.vue` ：`/planning/mrp-suggestions`。建议列表
+  （支持 `?run_id=` 初始过滤）、转采购申请（填写需求日期）、取消（必填原因）、详情抽屉含分段净算过程。
+
+`POST /api/v1/planning/mrp-runs/` 不传 `company_id` 时若用户无归属公司会返回 **400 `COMPANY_REQUIRED`**
+（超级管理员 `admin` 即属此情况），前端因此提供公司选择框；服务端仍会按数据范围重新校验公司。
+
+### 15.5 权限
+
+新增 **5 个权限点**（`planning.mrp.view` / `run` / `convert` / `cancel` / `archive`）与 **2 个菜单**
+（`planning.mrp`、`planning.mrp_suggestion`，`planning` 目录下 `sort_order` 78 / 79），
+全部登记在 `apps/identity/permissions_registry.py`，由 `bootstrap_system` 幂等同步。
+
+- `planning_admin` 角色新增 5 个 MRP 权限 + `procurement.requisition.view/create`
+  （**转单必需**：MRP 转单落点是采购申请，缺该权限时服务层会拒绝）。
+- `procurement_admin` 角色新增 `planning.mrp.view`（只读缺料清单，便于采购据此备货）。
+- 权限边界已实测：`planning.mrp.*` **不会**顺带授予其它模块权限；只有 `planning.mrp.view` 的用户
+  不能运行 MRP；有 `planning.mrp.convert` 但无 `procurement.requisition.create` 时转单仍被拒绝。
+
+同步真实输出：
+
+```text
+权限点：新增 6，更新 167，注册表共 173 条。
+菜单：新增 2，更新 54，注册表共 56 条。
+编码规则：新增 1，共计 14 条。
+```
+
+（"新增 6"含本轮补登记的 `masterdata.identifier.update`，见 §15.7 缺陷修复。）
+
+### 15.6 演示数据
+
+`seed_demo` 新增 `_mrp()`（幂等，可重复执行；第二次执行新建 0 条）：
+
+| 数据 | 内容 |
+| --- | --- |
+| 需求单 | `SO-MRP-0001`：客户 `CUS-001`，`YS-W-2401-BK-L` **300 件**，单价 399，金额 135,261 元，走多级金额审批直至 `approved` 且**保持未发货** |
+| 审批推进 | `_approve_fully()` 按模板节点审批人角色（`demo_dept_manager` / `demo_gm` / `demo_finance`）循环推进到 `approved`，避免金额路由导致停在"审批中" |
+| MRP 运行 | `run_mrp(horizon=今天+90 天, bucket=day)`；已存在 `completed` 运行则跳过（幂等） |
+| 建议转单 | 取第 1 条 `purchase` + `open` 建议调 `convert_suggestion()`，产出**草稿采购申请** |
+
+真实库中的运行结果（`MRP202609180004`，一次真实运算）：
+
+```text
+item_count=7  level_count=2  bucket_count=3
+demand_quantity=1422.300000  supply_quantity=1866.000000  suggestion_quantity=1213.260000
+demand_line_count=7  supply_line_count=3  suggestion_count=5
+purchase_suggestion_count=4  production_suggestion_count=1  unexploded_materials=[]
+```
+
+需求行示例：`L0 SO-MRP-0001 成品 300.000000`（`exploded=True`）展开出 5 条 `L1 parent_item` 子件需求
+（面料 `89.040000`、缝纫线 `1.260000`、主唛 `306.000000`、包装 303.000000 ×2）；
+`SO-DEMO-0002`（120 件、成品无 BOM）产生生产建议并进入 `unexploded_materials`，
+用于演示"成品缺 BOM"告警（**故意保留**，见 `docs/assumptions.md` §四之六）。
+
+### 15.7 测试执行结果（真实输出）
+
+| 检查 | 命令 | 真实输出 |
+| --- | --- | --- |
+| Django 系统检查 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移一致性 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 静态检查 | `ruff check apps config tests` | `All checks passed!` |
+| 后端测试（全量） | `pytest backend/tests -q --reuse-db` | `301 passed in 112.01s (0:01:52)` |
+| MRP 用例 | `pytest backend/tests/test_mrp.py` | `32 passed` |
+| 类型检查 | `npm run typecheck` | 退出码 0 |
+| 组件测试 | `npm run test` | `Test Files 9 passed (9)` / `Tests 129 passed (129)` |
+| 生产构建 | `npm run build` | `✓ built in 11.99s`（含 `MrpRunList-*.js`、`MrpSuggestionList-*.js`） |
+| 一键冒烟 | `scripts/smoke_check.ps1` | 7 步全过，`全部检查通过。` |
+| 真实 HTTP 链路 | 临时验收脚本（`urllib` + CookieJar，对运行中的开发服务器逐项请求；已按收尾约定删除） | **29 项请求检查全部通过**（清单见 `docs/test-report.md` §16.5） |
+| 经 Vite 代理的浏览器路径 | 同上脚本，经 `127.0.0.1:5173` 并带浏览器 `Origin`/`Referer` | **5 项检查通过**（登录 / 会话 / MRP 查询 200，无令牌登录 403），见 §16.5b |
+
+`backend/tests/test_mrp.py` 共 **32 条用例**，覆盖：净算（含在途、冻结 / 占用、质量状态、逾期落段、
+区间外忽略、部分发货用剩余量、草稿单不产生需求）、展开（父件净需求展开、低层码只净算一次）、
+异常（循环 BOM 记 `failed` 运行、库存只读、非法参数、按周归一到周一、审计与 Outbox 同事务）、
+转单与状态机（草稿申请 + 单据关联、重复转单、过期建议、生产建议拒绝、停用物料、取消必填原因、
+归档后不可转单）、API（匿名 403、只读用户不能运行、缺权限不能转单、转单需采购申请权限、
+运行与明细接口、参数校验、公司/仓库范围、权限不外溢、归档审计）。
+
+**真实 HTTP 链路（`docs/test-report.md` §十六有完整清单）**：未登录 403 → 无 CSRF 令牌登录 403 →
+取 token 后登录 200 → 缺 `company_id` 400 `COMPANY_REQUIRED` → 运行 MRP 201（7 需求 / 3 供给 / 5 建议）→
+需求行、供给行、建议清单、`run_id` 过滤全部 200 → 旧运行建议转单 409 `SUGGESTION_STALE` →
+归档旧运行 200 → 归档后转单 409 `MRP_RUN_NOT_ACTIVE` → 生产建议 409 `PRODUCTION_ORDER_NOT_IMPLEMENTED` →
+采购建议转单 200（`PR202609180002`，`DocumentLink` `generated_from`）→ 重复转单 409 →
+转出单据确为 `draft` → 取消缺原因 400、取消 200、已取消转单 409 → 退出登录后 403。
+数据库侧核对：审计 5 条（运行创建 / 归档、建议转单 / 取消）、Outbox 事件 2 类 pending、单据关联 2 条。
+
+**本轮修复的 7 个真实缺陷**（详见 `docs/test-report.md` §十六）：
+
+1. `apps/core/checks.py` **从未被导入**——`yishang.E001`（视图声明未登记权限码）永远不会触发。
+   修复：`CoreConfig.ready()` 显式 `from apps.core import checks`。修复后立刻抓出既有遗漏
+   `masterdata.identifier.update` 未登记，已补。
+2. MRP 低层码排序**预先过滤了"当前已有需求"的物料**，导致 BOM 展开出的子件需求永远不被净算
+   （BOM 展开形同失效）。修复为按低层码全量遍历、无需求即 `continue`。
+3. `MrpRunSerializer` 声明了 `demand_count` / `supply_count` / `suggestion_count` 但未加入
+   `Meta.fields`，`/api/v1/planning/mrp-runs/` 一旦被访问即 `AssertionError`。
+4. `seed_demo` 打印的是**转单前的建议实例**（`convert_suggestion` 内部 `select_for_update` 重新取行），
+   日志里采购申请号为空。修复为使用服务返回值。
+5. **登录接口缺少 CSRF 校验**（任务书 6.1「登录接口同样防护 CSRF」）：`LoginView` 清空了
+   `authentication_classes`，而 DRF `SessionAuthentication` 只对**已登录会话**调用 `enforce_csrf`，
+   匿名请求根本不校验 → 登录成为无 CSRF 防护的写接口。修复：
+   `@method_decorator(csrf_protect, name="dispatch")`，并新增 2 条回归用例
+   （`test_login_requires_csrf_token` / `test_login_succeeds_with_csrf_token`）。
+6. `EntityListPage.vue` 缺 `initialFilters` prop，"按 `?run_id=` 打开建议页"无法生效（前端缺陷）。
+7. `views/system/ProgressView.vue`（系统管理 → 实施进度）的阶段状态仍是初始快照——阶段 2、3 标为
+   「未开始」，告警文案还声称"采购、销售、仓储单据不会出现在左侧导航"，与已实现的菜单和文档相反。
+   管理员据此会得到**与事实相反**的实施状态（任务书 8.2 / 19.3）。已按 `docs/progress.md` §一
+   的真实状态更新阶段 2/3 行、已完成 / 未完成清单与提示文案。
+
+### 15.8 启动验证步骤
+
+```powershell
+# 1) 迁移（含 planning 0002：4 张 MRP 表）
+cd backend
+.\.venv\Scripts\python.exe manage.py migrate
+# 2) 系统初始化（同步 5 个 MRP 权限点 / 2 个菜单 / 1 条 MRP 编码规则）
+.\.venv\Scripts\python.exe manage.py bootstrap_system
+# 3) 演示数据（幂等；生产环境会被拒绝）
+.\.venv\Scripts\python.exe manage.py seed_demo
+# 4) 启动后端
+.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+# 5) 启动前端（另开一个终端）
+cd ..rontend
+npm run dev
+```
+
+验证步骤：
+
+1. 浏览器打开 `http://127.0.0.1:5173/`，用 `admin` 登录（口令取自 `backend/.env` 的 `YISHANG_ADMIN_PASSWORD`）。
+2. 左侧「计划管理 → MRP 运算」→ 选择公司「意尚智造服饰有限公司」→ 需求区间默认今天起 90 天 → 点「运行 MRP」，
+   列表出现新运行，`summary` 显示需求行 / 供给行 / 建议数。
+3. 打开该运行详情 → 三个页签可看到需求行（含来源路径）、供给行（可用库存 / 采购在途）、缺料建议。
+4. 左侧「计划管理 → 缺料与建议」→ 对一条**采购建议**点「转采购申请」→ 状态变「已转单」并显示申请号；
+   再点一次应提示已转单；对**生产建议**点转单应提示"MES 尚未实现"。
+5. 命令行复验：`GET http://127.0.0.1:8000/api/v1/planning/mrp-runs/` 匿名返回 **403**，登录后返回 200。
+
+### 15.9 未完成事项（MRP 与阶段 3 剩余）
+
+- **MRP 未做**（已在 `docs/assumptions.md` §四之六逐条登记）：
+  采购提前期与批量规则（当前 `lot_for_lot`，不提前、不合并）、**在制供给**（`in_progress_supply=not_implemented`，
+  MES 未实现故恒为 0）、**替代料参与净算**（当前只展 `normal` 行）、安全库存缓冲、
+  除销售订单外的需求来源（生产计划 / 预测 / 安全库存补货）、**生产建议转工单**（等 MES）、
+  MRP 的 Excel 导出与定时重算（Celery Beat）、多工厂 / 多仓库维度的独立净算（当前按公司 + 可选单仓过滤）。
+- **MES 未开始**（任务书 10.7）：工单、线体排产、裁剪任务、派工、报工、在制转移、返工报废、完工入库。
+  工单下达时必须保存 `build_bom_snapshot()` / `build_routing_snapshot()` 的结果。
+- **QMS 未开始**（任务书 10.9）：`procurement.receipt.inspect` 目前仍是**人工判定**，待升级为引用检验单。
+- 生产建议当前**只能线下评审**，缺 MES 工单落点；`PRODUCTION_ORDER_NOT_IMPLEMENTED` 是**刻意**的拒绝，不是缺陷。
+- `SO-DEMO-0002`（成品无 BOM）会持续进入 `unexploded_materials`，属演示"缺 BOM"告警的**故意**数据。
+- Celery Worker / Beat 未在本机启动，Outbox 事件处于 `pending`（未消费）——**未执行**。
+
+### 15.10 下一阶段依赖
+
+1. **MES 工单**：MRP 生产建议将在此转单（`convert_suggestion` 已预留分支与错误码），
+   工单下达需保存 BOM / 工艺路线快照，并把工单"在制数量"回流成 MRP 的 `in_progress` 供给。
+2. **QMS 检验单**：`procurement.receipt.inspect` 的人工判定升级为引用检验单后，
+   MRP 的"可用库存"口径（只认合格质量状态）自动受益，无需改 MRP 代码。
+3. **提前期与批量规则**：需要采购 / 生产的提前期数据，依赖阶段 4 的设备 / 产能数据与供应商交期统计。
+
+## 十六、文档同步与项目使用说明（本轮增量）
+
+**本轮性质**：不新增业务模块；只做「文档按最新代码对齐 + 新增项目使用说明」，
+并给使用说明加一条**机器可校验**的同步保障（回应「代码更新后使用文档也要变」的要求）。
+
+### 16.1 新增文档 `docs/user-guide.md`
+
+| 章节 | 内容 |
+| --- | --- |
+| 一～二 | 文档定位与用法、平台能力边界（已可用 / 还没有 / 当前实测规模） |
+| 三 | 环境准备、环境变量、首次启动、日常启动停止（含 `scripts/dev_*.ps1`）、访问地址、**数据库在哪里 / 怎么连接**、上传文件与日志 |
+| 四～五 | 账号与权限（10 个演示账号、16 个内置角色及权限点数、四层权限）、界面结构、通用交互约定、**56 项菜单清单** |
+| 六～七 | 按模块操作指南（基础资料 / 工厂排班 / 仓储库存 / 采购 / 销售 / BOM 与工艺 / MRP / 审批 / 系统管理）与三条端到端演练 |
+| 八 | 测试与自检：一键冒烟 7 步、分步命令与**最近一次真实结果**、数据库自检、权限菜单自检 |
+| 九 | 常见问题与错误码：认证权限 / 单据库存 / 计划 MRP / 环境类，全部取自代码中真实存在的 `code` |
+| 十 | 未执行 / 未验证事项清单 |
+| 十一 | **代码更新后本文档必须同步**：触发清单、每轮收尾清单、核对方法与兜底机制 |
+
+### 16.2 新增机器可校验的「文档事实行」
+
+- `docs/user-guide.md` §11.5 内嵌
+  `<!-- yishang-doc-sync: permissions=173 menus=56 models=86 migrations=18 builtin_roles=13 -->`。
+- 新增 `backend/tests/test_docs_sync.py`（7 条），把该行与代码里的权威来源逐项比对，并校验网页版是否最新：
+  `identity.permissions_registry.PERMISSIONS` / `MENUS`、`django.apps.get_models()`（受管且非自动生成）、
+  `backend/apps/*/migrations/0*.py` 文件数、`bootstrap_system.BUILTIN_ROLES`。
+- **反向验证（真做）**：临时把事实行改成 `menus=99` 后单跑该用例，按预期失败并提示
+  「docs/user-guide.md 的事实行已过期：menus=99，代码实际为 56」（`1 failed, 5 passed`）；已还原，复原后 `6 passed`。
+- 效果：以后**代码里的权限点 / 菜单 / 模型 / 迁移 / 内置角色数量一变**，用例即失败，
+  强制同步使用说明，不再依赖自觉。
+
+### 16.3 按最新代码修正的文档
+
+| 文件 | 修正内容 |
+| --- | --- |
+| `docs/acceptance.md` | 顶部加「最新核对（2026-09-18）」块（173 权限 / 56 菜单 / 86 模型 / 92 表 / 18 迁移 / 后端 307 + 前端 129）；阶段 0 表「**当前 71 张**」→ 92 张；「后端 112 / 前端 60」标注为该阶段当时快照并给出最新值 |
+| `docs/inventory-rules.md` | §八 第 3 条原写「冻结/解冻与占用/释放均无业务入口」**已过时**：改为占用/释放已由 `reserve_stock()` / `release_reservation()` / `release_reservations_for_biz()` 落地（销售订单占用、销售发货、销售退货、MRP 只读扣减），**冻结/解冻仍无入口** |
+| `docs/requirements-matrix.md` | §一之六「明确未包含」移除 MRP（已由 §一之七 交付）；`REQ-7.4-01` 补注「MRP 为同步计算，不经 Celery（ADR-09）」；`REQ-12.1-01` 由「MRP / MES 未实现」→「MRP 已打通，MES 工单 / 报工 / 成品入库未实现」；`REQ-20-16` 测试数更新；新增 `REQ-14.1-08` 文档一致性校验 |
+| `docs/api-conventions.md` | §九 Celery 长任务清单移除 MRP，并新增一条「MRP 为同步计算（ADR-09），不经 Celery」 |
+| `README.md` | 文档地图新增 `docs/user-guide.md` 并置顶（标注「面向使用者，先看这份」）；登录账号段与「下一步」指向使用说明及其 §十一 同步规则 |
+| `docs/deployment.md` | 顶部加交叉引用：使用者操作手册见 `user-guide.md`，**启动命令与环境变量变化必须同步其 §三** |
+| `docs/progress.md` | §5.2 补注 `user-guide.md` 为后续新增，文档总数 17 份；§一 当前状态总览加使用说明指引 |
+
+### 16.4 本轮执行的检查（真实输出）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Django 自检 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移无漂移 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 后端静态检查 | `ruff check apps config tests` | `All checks passed!` |
+| 后端全量测试 | `pytest tests -q --reuse-db` | **`308 passed in 101.34s`**（原 301 + 新增 7 条文档同步用例） |
+| 文档同步用例单跑 | `pytest tests/test_docs_sync.py -q` | `7 passed` |
+| 反向验证 | 故意改错事实行后单跑 | `1 failed, 5 passed`（**按预期失败**，已还原） |
+| 网页版是最新的 | `scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+
+前端 `typecheck` / `vitest` / `build` 本轮**未重跑**：本轮未改动任何前端代码。
+
+### 16.5 使用说明网页版（给客户直接看）
+
+`docs/user-guide.md` 现在同时产出**一份自包含的单文件网页**，便于直接交付客户：
+
+| 产物 | 位置 | 用途 |
+| --- | --- | --- |
+| `docs/user-guide.html` | 仓库内 | 单文件、离线可用，双击打开或作为附件发送 |
+| `frontend/public/guide.html` | 随前端发布 | 浏览器访问 `/guide.html`（开发 `http://127.0.0.1:5173/guide.html`） |
+
+- 生成器：新增 `scripts/build_user_guide.py`（**纯标准库**，不引入 npm/pip 依赖）。
+  只实现 `user-guide.md` 实际用到的 Markdown 子集（标题 / 表格 / 围栏代码 / 引用 / 列表 /
+  行内代码与加粗），输出左侧**可搜索目录**、平台配色的表格与代码块、
+  「打印 / 导出 PDF」按钮、窄屏自适应；**CSS/JS 全部内联，无外链无 CDN**。
+- 系统入口：顶部工具栏新增「使用说明」按钮，个人中心下拉新增「使用说明」（打开 `/guide.html`）。
+- 防过期：`tests/test_docs_sync.py` 新增 1 条用例执行 `build_user_guide.py --check`，
+  比对两份产物与 Markdown 源是否一致——**改了 Markdown 忘了重新生成就会测试失败**。
+- 生成器两个真实缺陷已修：① `**加粗**` 内含行内代码时不再漏转；② 标题锚点不再保留全角标点。
+- 结构校验（真实执行）：Markdown 28 张表 ↔ HTML 28 张表；11 个 h2 / 44 个 h3 / 10 个代码块；
+  目录 55 项且锚点全部命中；标签配对无异常；加粗标记 0 处残留。
+
+> ⚠️ `frontend/public/` 由 nginx 作为静态资源直接发布、**不校验登录**；
+> 如说明中含不便外发的内容，请只把 `docs/user-guide.html` 发给客户，
+> 或为 `/guide.html` 单独加访问控制。该提醒已写入 `docs/user-guide.md` §11.7。
+
+### 16.6 未完成事项
+
+- 文档**正文**（菜单名称、操作步骤、错误码解释）没有自动校验，只能按
+  `docs/user-guide.md` §11.3 的收尾清单人工维护——这是已知缺口，已写入该文档 §十。
+- 使用说明中的界面截图、≤768px 手机布局、浏览器截图级校验：**未执行**。
+- 前端测试本轮未重跑（无前端改动）。
+
+### 16.7 下一阶段依赖
+
+阶段 3 第三步：**MES 工单与报工 → QMS 检验单**。MES 落地后必须同步
+`docs/user-guide.md` 的 §二（能力边界）、§五（菜单清单）、§六（操作指南）、
+§九（`PRODUCTION_ORDER_NOT_IMPLEMENTED` 分支将被打开）与 §11.5（事实行）。
+
+## 十七、枚举值中文化（本轮增量）
+
+### 17.1 问题与范围
+
+界面多处把枚举显示为**英文原始键**，例如仓库类型 `finished`、部门类型 `management`、
+计量单位类别 `area`、员工用工性质 `full_time`。排查后确认是**两层缺陷叠加**，
+用户看到的只是表层：
+
+1. **展示层**：接口只返回英文枚举键，前端仅靠 `meta` 字典兜底，未覆盖的枚举直接显示英文。
+2. **数据层（更严重）**：库里存在**非法枚举值**——这些值连 `get_FOO_display()` 都翻译不出来，
+   属于历史演示数据的写入错误，界面无论如何都会显示英文。
+
+### 17.2 修复一：`DisplayLabelsMixin`（choices 字段自动带中文标签）
+
+- 新增 `apps/core/serializers.py::DisplayLabelsMixin`：在 `get_fields()` 中为
+  **序列化器 `Meta.fields` 里确实包含**且**模型字段带 `choices`** 的字段自动追加
+  `<field>_display = CharField(source="get_<field>_display", read_only=True)`。
+- `ReferenceIdSerializer` 继承该 Mixin，因此全部 **71 个 ModelSerializer** 自动生效；
+  `apps/identity/serializers.py` 中 7 个未继承的序列化器（User / Role / RoleScopeGrant /
+  Permission / Menu / LoginAttempt / Notification）显式补上。
+- 约定：**写入与筛选仍用英文键**，只读中文标签走 `<field>_display`；
+  已显式声明的同名字段不被覆盖；只新增只读字段，**不产生数据库迁移**。
+- 扫描结果（真实执行）：**59 个 choices 序列化字段，0 个缺少 `_display`**。
+
+实测接口返回片段：
+
+```text
+仓库:     {'code': 'WH-FG-01', 'warehouse_type': 'finished',  'warehouse_type_display': '成品仓'}
+库区:     {'code': 'RCV',      'zone_type': 'receiving',      'zone_type_display': '收货区'}
+储位:     {'code': 'A01-01-01', 'location_type': 'floor',     'location_type_display': '地面储位'}
+部门:     {'code': 'GM',       'department_type': 'management','department_type_display': '职能部门'}
+员工:     {'gender': 'male',   'gender_display': '男',        'employment_type_display': '正式'}
+计量单位: {'code': 'M2',       'category': 'area',            'category_display': '面积'}
+```
+
+### 17.3 修复二：历史非法枚举数据与 choices 缺口
+
+直连开发库扫描发现 **12 条非法枚举值**：
+
+| 模型 / 字段 | 非法值 | 条数 |
+| --- | --- | --- |
+| `factory.Employee.gender` | `男` / `女` | 9 / 6 |
+| `factory.Employee.employment_type` | `management` / `worker` / `professional` | 6 / 6 / 3 |
+| `factory.ProductionLine.line_type` | `sewing` / `finishing` / `cutting` | 3 / 2 / 1 |
+| `factory.Department.department_type` | `supply` / `marketing` / `equipment` | 2 / 1 / 1 |
+| `factory.Workshop.workshop_type` | `finishing` | 2 |
+
+处理方式：
+
+- `Department.department_type` 补充 `procurement`（采购部门）/ `sales`（销售部门）/ `equipment`（设备部门）；
+  `Workshop.workshop_type` 补充 `finishing`（整烫包装）——它们本就是业务上合法的类型，只是 choices 漏登记。
+- `seed_demo` 修正数据源头：部门 `supply→procurement`、`marketing→sales`；员工性别改英文键；
+  用工性质统一 `full_time`；线体类型改合法值。
+- 新增迁移 `factory/0003_alter_department_department_type_and_more.py`：先 `RunPython`
+  按部门编码（`PUR/SALES/WH/EAM`）/ 性别 / 用工性质映射**修正历史数据**，再 `AlterField`
+  扩展 choices；反向迁移为显式空操作。
+- 迁移执行后复扫：**全库非法枚举值 0 条**。
+
+### 17.4 前端
+
+- `frontend/src/components/ProTable.vue::displayValue()` 与
+  `frontend/src/components/EntityListPage.vue::renderCell()` **优先**使用后端下发的
+  `<field>_display`；没有该字段时退回原值，不会显示 `undefined`。
+- 前端 `meta` 字典机制保留作为回退，两者不冲突（后端标签优先）。
+
+### 17.5 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `manage.py migrate factory` | `Applying factory.0003_... OK` |
+| 枚举合法性复扫（直连开发库） | 修复前 12 条非法 → 修复后 **0 条** |
+| `ruff check --no-cache ...` | `All checks passed!` |
+| 后端全量测试 | `312 passed` |
+| 前端类型检查（`vue-tsc --noEmit`） | 通过（退出码 0） |
+| 前端测试 | `Test Files 9 passed (9)` / `Tests 131 passed (131)` |
+| 前端构建（`vite build`） | `built in 13.21s`，产物写入 `frontend/dist` |
+
+### 17.6 新增测试
+
+- `backend/tests/test_enum_labels.py`（4 条）：
+  ① 遍历全部 ModelSerializer，任一 choices 字段缺 `_display` 即失败；
+  ② 仓库 / 部门 / 计量单位接口返回的 `_display` 必须是中文；
+  ③ `/api/v1/meta/` 的枚举 `label != value`，且部门类型含新增的三项；
+  ④ `seed_demo` 执行后全库无非法枚举值。
+- `frontend/tests/pro-table.spec.ts` 新增 2 条：中文标签优先；无标签时退回原值且不显示 `undefined`。
+
+### 17.7 未完成事项
+
+- **浏览器截图级 UI 校验未执行**（本机浏览器自动化被安全策略拒绝）。请人工打开
+  「仓储管理 → 仓库与储位」「工厂与排班 → 部门 / 车间 / 线体 / 员工」「基础资料 → 计量单位」
+  核对中文标签。
+- `docs/user-guide.md` 正文（菜单名称、操作步骤、错误码解释）仍只能人工维护，见该文档 §十。
+
+### 17.8 下一阶段依赖
+
+阶段 3 第三步：**MES 工单与报工 → QMS 检验单**。新增枚举时必须同时：
+① 在模型 `choices` 里给中文标签；② 跑 `pytest tests/test_enum_labels.py` 确认
+序列化器自动带 `_display`；③ 若改动了 `docs/user-guide.md`，重新生成网页版
+（`python scripts/build_user_guide.py`）。

@@ -2,6 +2,8 @@ import { createCrudApi } from '@/api/crud'
 import type {
   Attachment,
   AuditLog,
+  Bom,
+  BomInput,
   CodeRule,
   Color,
   Company,
@@ -21,13 +23,24 @@ import type {
   Location,
   Material,
   MaterialCategory,
+  MrpRun,
+  MrpRunInput,
+  MrpSuggestion,
   PermissionRow,
   ProductionLine,
   PurchaseOrder,
   PurchaseOrderInput,
   PurchaseRequisition,
   RequisitionInput,
+  ReturnInput,
   Role,
+  Routing,
+  RoutingInput,
+  SalesOrder,
+  SalesOrderInput,
+  SalesReturn,
+  SalesShipment,
+  ShipmentInput,
   Shift,
   Size,
   Sku,
@@ -101,6 +114,19 @@ export const purchaseOrderApi = createCrudApi<PurchaseOrder, PurchaseOrderInput>
 export const goodsReceiptApi = createCrudApi<GoodsReceipt, GoodsReceiptInput>(
   '/procurement/receipts',
 )
+
+// 销售管理（阶段 2 增量：订单 → 库存占用 → 发货 / 退货）
+export const salesOrderApi = createCrudApi<SalesOrder, SalesOrderInput>('/sales/orders')
+export const salesShipmentApi = createCrudApi<SalesShipment, ShipmentInput>(
+  '/sales/shipments',
+)
+export const salesReturnApi = createCrudApi<SalesReturn, ReturnInput>('/sales/returns')
+
+// 计划管理（阶段 3 第一步：BOM 与工艺路线版本快照）
+export const bomApi = createCrudApi<Bom, BomInput>('/planning/boms')
+export const routingApi = createCrudApi<Routing, RoutingInput>('/planning/routings')
+export const mrpRunApi = createCrudApi<MrpRun, MrpRunInput>('/planning/mrp-runs')
+export const mrpSuggestionApi = createCrudApi<MrpSuggestion>('/planning/mrp-suggestions')
 
 // 系统管理
 export const userApi = createCrudApi<UserRow>('/identity/users')

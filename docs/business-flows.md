@@ -37,12 +37,19 @@ quantity                              该关系涉及的**数量**（Decimal）
 - 销售退货**先验收**再决定质量状态。
 
 **当前状态**：基座已就绪（`DocumentLink` 表、审批、审计、主数据、仓库储位）。
-**「采购单 → 到货及检验 → 合格库存」这一段已在阶段 2 采购模块打通**：
-`采购申请 →（审批）→ 采购订单 →（审批）→ 到货收货（待检）→ 来料检验放行 → 合格库存`，
-收货过账与放行**全部经由统一库存服务**，待检/不合格库存不可领用或销售（`docs/inventory-rules.md` §八）。
-**销售订单、MRP、MES 与销售发货未实现**，因此整条链路**仍未打通**（阶段 2 剩余 + 阶段 3）。
+**MRP 段已打通**（阶段 3 第二步，`apps/planning/mrp.py`，用例见 `tests/test_mrp.py`，真实链路见 `docs/test-report.md` §16.5）：
 
-已实现的采购侧子链路（`apps/procurement/services.py`，端到端用例见 `tests/test_procurement.py`）：
+```text
+SalesOrder(approved 未发货) --run_mrp--> MrpRun + MrpDemandLine（含 BOM 展开）+ MrpSupplyLine
+  --> MrpSuggestion(purchase) --convert_suggestion--> PurchaseRequisition(draft)  ← 只到草稿，仍走采购审批
+  --> MrpSuggestion(production) --convert_suggestion--> 明确拒绝 PRODUCTION_ORDER_NOT_IMPLEMENTED（等 MES）
+```
+
+MRP 的口径：需求来源为销售订单未发货数量；供给只认**可用库存**（`on_hand − frozen − reserved`，且只认合格质量状态）
+与**采购未收货在途**；展开按生效版本 BOM 的含损耗用量（`gross_quantity`），同一物料按低层码只净算一次；
+**在制供给恒为 0**（MES 未实现），**不冒充**已有在制数据。
+
+**采购侧已打通**（阶段 2 第三步，`apps/procurement/services.py`，端到端用例见 `tests/test_procurement.py`）：
 
 ```text
 PurchaseRequisition(draft) --submit--> 审批 --> approved
@@ -55,6 +62,47 @@ PurchaseRequisition(draft) --submit--> 审批 --> approved
 数量口径：订单行的 `quantity - received_quantity - 草稿收货量` 是可收上限，**不允许超收**；
 订单状态随收货推进 `approved → partially_received → received`，未收完可 `close`。
 来料检验是**人工录入判定**（未接入检测设备），结论、判定人、说明与依据单据一并留痕。
+
+**销售侧已打通到「发货出库 + 退货检验」**（阶段 2 第四步，`apps/sales/services.py`，
+端到端用例见 `tests/test_sales.py`）：
+
+```text
+SalesOrder(draft) --submit--> 审批 --> approved
+  --reserve--> StockReservation(active)  占用只减可用量，不动实存量
+  --SalesShipment.create--> (draft) --post--> 库存 qualified 出库 + 订单行 shipped_quantity
+  --SalesReturn.create--> (draft) --post--> 库存 quarantine（先验收，不可直接再销售）
+  --inspect(qualified)--> 库存 qualified（可再销售）
+  --inspect(rejected) --> 库存 rejected（留在仓内，不可动用）
+```
+
+数量口径：发货上限 = 订单行 `quantity - shipped_quantity`，且**出库数量必须由本订单的占用覆盖**
+（`RESERVATION_REQUIRED`，未占用不允许发货，也不会挪用其他订单的占用）；
+可退数量 = 已发货 − 已退货，超出即 `OVER_RETURN`；退货行留空的储位/批次/卷号
+**继承原发货出库单据**并写回退货行，检验放行复用同一维度，批次追溯不断链。
+
+占用口径：占用**不写库存流水**（流水只记实存量增减），一致性口径为
+`InventoryBalance.reserved == 该维度未结占用之和`，详见 `docs/inventory-rules.md` 第十节。
+
+**工程数据（BOM / 工艺路线）已就绪**（阶段 3 第一步，`apps/planning`，用例见 `tests/test_planning.py`）：
+
+```text
+Bom(draft) --submit--> 审批 --> approved（同「款式/SKU 范围」旧版本自动 obsolete）
+Routing(draft) --submit--> 审批 --> approved
+  --new-version--> v2 草稿（复制明细 / 工序；v1 内容与快照保持不变）
+```
+
+- MRP 用 `services.get_effective_bom(company, style, sku)` 取**唯一生效版本**展开多层 BOM，
+  用料数量取 `BomLine.gross_quantity`（净用量 ×(1+损耗率)，后端按 6 位小数 `ROUND_HALF_UP` 舍入）。
+- MES 工单下达时保存 `build_bom_snapshot()` / `build_routing_snapshot()` 的结果，
+  并把工艺路线中 `is_quality_gate=True` 的工序作为**质检点**交给 QMS。
+- 工艺路线的默认工艺（裁剪 → 缝制 → 整烫 → 检验 → 包装）已在种子里生效，「检验」即质检点。
+
+**仍未打通的部分**：MRP（阶段 3）、生产领料 / 工序报工 / 成品检验 / 成品入库（阶段 3 MES + QMS）。
+因此「订单到交付」整条链路仍**未打通**；但销售侧的**发货出口**与**退货入口**已经可用，
+生产侧入库落地时只需调用同一库存服务，不新增第二套库存逻辑。
+
+任务书 12.1 的「可从订单查看所有关联单据与数量」已由
+`GET /api/v1/sales/orders/{id}/chain/` 提供（返回订单行交付进度、发货单、退货单与关联库存单据）。
 
 ## 12.2 设备维修
 

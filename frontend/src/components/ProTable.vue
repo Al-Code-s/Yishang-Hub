@@ -129,6 +129,12 @@ const emit = defineEmits<{
 const columns = computed(() => props.columns)
 
 function displayValue(row: Record<string, unknown>, prop: string): string {
+  // 枚举列：后端会同时返回英文键与中文标签（如 warehouse_type / warehouse_type_display），
+  // 展示层一律优先用中文标签，避免界面出现 raw / management / finished 这类英文值。
+  const label = row[`${prop}_display`]
+  if (label !== null && label !== undefined && label !== '') {
+    return String(label)
+  }
   const value = row[prop]
   if (value === null || value === undefined || value === '') {
     return '-'

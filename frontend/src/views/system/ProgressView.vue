@@ -21,23 +21,26 @@
       show-icon
       title="未实施的模块不提供菜单与路由"
     >
-      任务书要求「未实施的模块不展示伪可用页面」。因此采购、销售、生产、仓储单据、质量、设备、能源、
-      安全环保、终端安全等模块当前不会出现在左侧导航中，也不存在对应可访问路由；它们将在后续阶段实现，
-      而不是通过对接外部 ERP / MES / WMS 完成。
+      任务书要求「未实施的模块不展示伪可用页面」。因此 MES 工单与报工、质量、设备、能源、
+      安全环保、厂内物流、终端安全等**尚未实施**的模块不会出现在左侧导航中，也不存在对应可访问路由；
+      它们将在后续阶段实现，而不是通过对接外部 ERP / MES / WMS 完成。
     </el-alert>
 
     <el-alert v-if="errorMessage" type="error" :closable="false" show-icon :title="errorMessage" />
 
     <h3 class="ys-section-title">实时计数（来自当前环境的后端接口）</h3>
-    <el-row :gutter="12" class="ys-progress__row">
-      <el-col v-for="item in counters" :key="item.key" :span="6">
-        <el-card shadow="never">
-          <div class="ys-progress__label">{{ item.label }}</div>
-          <div class="ys-progress__value">{{ item.value }}</div>
-          <div class="ys-muted">{{ item.hint }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="ys-stat-cards">
+      <el-card
+        v-for="item in counters"
+        :key="item.key"
+        shadow="never"
+        class="ys-stat-card"
+      >
+        <div class="ys-stat__label">{{ item.label }}</div>
+        <div class="ys-stat__value">{{ item.value }}</div>
+        <div class="ys-stat__hint">{{ item.hint }}</div>
+      </el-card>
+    </div>
 
     <h3 class="ys-section-title">阶段实施状态（文档镜像）</h3>
     <el-table :data="stages" border size="small">
@@ -52,24 +55,24 @@
     </el-table>
 
     <h3 class="ys-section-title">阶段 1 已完成 / 未完成</h3>
-    <el-row :gutter="12">
-      <el-col :span="12">
+    <div class="ys-grid-2">
+      <div>
         <el-card shadow="never">
           <template #header>已完成（可操作、已持久化、已加权限）</template>
           <ul class="ys-progress__list">
             <li v-for="item in doneItems" :key="item">{{ item }}</li>
           </ul>
         </el-card>
-      </el-col>
-      <el-col :span="12">
+      </div>
+      <div>
         <el-card shadow="never">
           <template #header>未完成 / 待人工确认</template>
           <ul class="ys-progress__list">
             <li v-for="item in todoItems" :key="item">{{ item }}</li>
           </ul>
         </el-card>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
 
     <p class="ys-muted">
       「页面已存在」不等于「已通过阶段验收」。完成标准见任务书 19.3：页面可操作、API 可访问、数据持久化、
@@ -121,14 +124,14 @@ const stages: StageRow[] = [
   {
     stage: '2',
     scope: '客户、供应商、采购、销售、WMS 单据',
-    status: '未开始',
-    note: '依赖阶段 1 的主数据与库存服务设计；库存在本阶段末才产生流水。',
+    status: '已完成',
+    note: '客户与供应商主数据、统一库存服务（余额/流水/单据/质量放行）、采购（申请→订单→收货→来料检验放行）、销售（订单→占用→发货→退货检验）均已落地。剩余：寻源报价评分、跨仓调拨在途与盘点、应收/收付款登记。',
   },
   {
     stage: '3',
     scope: 'BOM、工艺、MRP、MES、QMS',
-    status: '未开始',
-    note: '订单到生产交付闭环。',
+    status: '进行中',
+    note: 'BOM 与工艺路线版本快照、MRP（净算 / 缺料建议 / 采购建议转草稿采购申请）已完成；MES 工单与报工、QMS 检验单未开始。',
   },
   {
     stage: '4',
@@ -168,6 +171,11 @@ const doneItems: string[] = [
   '审计日志（只写不改）与内部协同发件箱（至少一次投递、人工重放）',
   '工作台指标、我的待办/我的申请、用户与角色管理、权限与菜单查询页面',
   'bootstrap_system 与 seed_demo 管理命令（幂等、生产环境保护）',
+  '阶段 2：客户与供应商主数据、统一库存服务（余额/流水/单据/质量放行/幂等/并发安全）',
+  '阶段 2：采购模块（申请→审批→订单→收货→待检→来料检验放行，不允许超收）',
+  '阶段 2：销售模块（订单→审批→库存占用→发货出库→退货→检验判定，必须先占用）',
+  '阶段 3：BOM 与工艺路线版本化（审批后冻结、变更只能派生新版本、快照输出）',
+  '阶段 3：MRP（时间分段净算、多层 BOM 展开、缺料清单、采购建议转草稿采购申请）',
 ]
 
 const todoItems: string[] = [
@@ -177,7 +185,10 @@ const todoItems: string[] = [
   'Playwright 端到端测试未执行',
   '本机 MySQL 为 8.0.17、Redis 为 3.2，与任务书要求的 MySQL 8.4 / 新版 Redis 存在版本差异',
   '开发环境使用 PyMySQL 驱动（本机无 C 编译工具链），Docker 镜像仍以 mysqlclient 为目标但未验证',
-  '库存服务、单据过账、并发与幂等数据库级测试只能在阶段 2 引入库存后执行',
+  'MRP 未做：采购提前期与批量规则、安全库存、在制供给（依赖 MES）、替代料展开、',
+  '　除销售订单外的需求来源、生产建议转 MES 工单、MRP 导出与定时重算、MRP 成本卷算',
+  'MES 工单与报工、QMS 检验单未开始；跨仓调拨在途、盘点范围冻结未开始',
+  'Outbox 事件仍为 pending（Celery worker / beat 未启动，未验证消费侧）',
 ]
 
 function statusTag(status: string): 'success' | 'info' | 'warning' {
@@ -261,28 +272,6 @@ onMounted(async () => {
 <style scoped>
 .ys-progress__notice {
   margin-bottom: 12px;
-}
-
-.ys-section-title {
-  margin: 16px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
-.ys-progress__row {
-  margin-bottom: 8px;
-}
-
-.ys-progress__label {
-  font-size: 12px;
-  color: var(--ys-gray-500);
-}
-
-.ys-progress__value {
-  margin: 4px 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--ys-navy-900);
 }
 
 .ys-progress__list {

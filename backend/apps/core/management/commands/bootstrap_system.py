@@ -177,6 +177,8 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
             # 收货过账经由统一库存服务记账，必须同时具备库存单据权限
             "wms.document.create",
             "wms.document.post",
+            # 采购需要看到 MRP 算出的缺料与采购建议（只读，不能运行/转单）
+            "planning.mrp.view",
         ),
         remark="采购申请、采购订单与收货过账；来料检验判定由质检角色执行。",
     ),
@@ -188,15 +190,106 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
         include=(
             "procurement.receipt.view",
             "procurement.receipt.inspect",
+            "sales.return.view",
+            "sales.return.inspect",
             "wms.quality.release",
             "wms.inventory.view",
+            # 质量放行由统一库存服务创建并过账「质量转换单」，缺少这两个权限
+            # 质检员无法真正完成放行（库存服务会拒绝），因此必须包含。
+            "wms.document.create",
+            "wms.document.post",
             "analytics.dashboard.view",
         ),
         extra=(
             "core.attachment.upload",
             "core.attachment.download",
         ),
-        remark="来料检验判定；质量放行必须走库存服务 wms.quality.release，不直接改质量状态。",
+        remark="来料检验与销售退货检验判定；质量放行必须走库存服务 wms.quality.release。",
+    ),
+    RoleDef(
+        code="sales_admin",
+        name="销售管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=27,
+        # 逐条列出：销售角色**不含** return.inspect，退货检验判定由质检角色执行，
+        # 销售与质检职责分离（任务书 6.3 / 10.3）
+        include=(
+            "sales.order.view",
+            "sales.order.create",
+            "sales.order.update",
+            "sales.order.submit",
+            "sales.order.close",
+            "sales.order.reserve",
+            "sales.order.release",
+            "sales.shipment.view",
+            "sales.shipment.create",
+            "sales.shipment.update",
+            "sales.shipment.post",
+            "sales.return.view",
+            "sales.return.create",
+            "sales.return.update",
+            "sales.return.post",
+            "analytics.dashboard.view",
+        ),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "crm.customer.view",
+            "masterdata.material.view",
+            "masterdata.sku.view",
+            "wms.inventory.view",
+            # 库存占用与发货出库都经由统一库存服务，必须同时具备库存侧权限
+            "wms.inventory.reserve",
+            "wms.inventory.release",
+            "wms.document.create",
+            "wms.document.post",
+        ),
+        remark="销售订单、库存占用与发货出库；退货检验判定由质检角色执行。",
+    ),
+    RoleDef(
+        code="planning_admin",
+        name="计划管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=28,
+        # BOM / 工艺路线是工程数据：计划角色可维护与提交，但审批由审批人执行
+        include=(
+            "planning.bom.view",
+            "planning.bom.create",
+            "planning.bom.update",
+            "planning.bom.submit",
+            "planning.bom.obsolete",
+            "planning.routing.view",
+            "planning.routing.create",
+            "planning.routing.update",
+            "planning.routing.submit",
+            "planning.routing.obsolete",
+            "planning.mrp.view",
+            "planning.mrp.run",
+            "planning.mrp.convert",
+            "planning.mrp.cancel",
+            "planning.mrp.archive",
+            "analytics.dashboard.view",
+        ),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "factory.workshop.view",
+            "masterdata.style.view",
+            "masterdata.sku.view",
+            "masterdata.material.view",
+            "masterdata.material_category.view",
+            "masterdata.uom.view",
+            # MRP 采购建议只能转成**草稿采购申请**（仍走采购审批），
+            # 因此计划角色必须具备采购申请的新建权限；这是真实约束，不靠绕过服务实现。
+            "procurement.requisition.view",
+            "procurement.requisition.create",
+        ),
+        remark=(
+            "BOM、工艺路线与 MRP 运算；采购建议转单只生成草稿采购申请，"
+            "BOM / 工艺 / 采购申请审批由审批人执行。"
+        ),
     ),
     RoleDef(
         code="approver",
@@ -226,6 +319,8 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
 CODE_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("AP", "审批单号", "AP{YYYYMMDD}{SEQ:5}", ResetPeriod.DAILY),
     ("SO", "销售订单号", "SO{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("SH", "销售发货单号", "SH{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("SR", "销售退货单号", "SR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("PO", "采购订单号", "PO{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("PR", "采购申请号", "PR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("GR", "采购收货单号", "GR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
@@ -233,6 +328,9 @@ CODE_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("MO", "生产工单号", "MO{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("TR", "移库单号", "TR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("ST", "盘点单号", "ST{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("BOM", "BOM 编号", "BOM{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("ROUTING", "工艺路线编号", "RT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("MRP", "MRP 运行编号", "MRP{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
 )
 
 DICTIONARIES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (

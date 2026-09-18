@@ -28,7 +28,7 @@
     <el-row :gutter="12" class="ys-dashboard__row">
       <el-col :span="6">
         <el-card shadow="never" class="ys-dashboard__approval">
-          <div class="ys-dashboard__approval-label">我的待办审批</div>
+          <div class="ys-stat__label">我的待办审批</div>
           <div class="ys-dashboard__approval-value">
             {{ dashboard?.approval.todo === null || dashboard?.approval.todo === undefined ? '无权限' : dashboard.approval.todo }}
           </div>
@@ -44,7 +44,7 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" class="ys-dashboard__approval">
-          <div class="ys-dashboard__approval-label">我提交的审批中单据</div>
+          <div class="ys-stat__label">我提交的审批中单据</div>
           <div class="ys-dashboard__approval-value">
             {{ dashboard?.approval.my_submitted_pending ?? '-' }}
           </div>
@@ -60,7 +60,7 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" class="ys-dashboard__approval">
-          <div class="ys-dashboard__approval-label">未读通知</div>
+          <div class="ys-stat__label">未读通知</div>
           <div class="ys-dashboard__approval-value">{{ auth.unreadNotifications }}</div>
           <el-button
             v-if="canViewNotifications"
@@ -74,7 +74,7 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" class="ys-dashboard__approval">
-          <div class="ys-dashboard__approval-label">数据中心时间</div>
+          <div class="ys-stat__label">数据中心时间</div>
           <div class="ys-dashboard__approval-time">{{ formatDateTime(dashboard?.generated_at) }}</div>
           <div class="ys-muted">业务时区 {{ dashboard?.business_timezone || 'Asia/Shanghai' }}</div>
         </el-card>
@@ -83,7 +83,7 @@
 
     <h3 class="ys-section-title">主数据规模（按数据范围统计）</h3>
     <el-empty v-if="cards.length === 0 && !loading" description="当前账号没有任何主数据查看权限" />
-    <div class="ys-dashboard__cards">
+    <div class="ys-stat-cards">
       <el-tooltip
         v-for="card in cards"
         :key="card.key"
@@ -91,9 +91,9 @@
         effect="light"
         :content="`来源：${card.definition.source} ｜ 时间字段：${card.definition.time_field} ｜ 口径：${card.definition.scope} ｜ 权限：${card.definition.permission}`"
       >
-        <el-card shadow="hover" class="ys-dashboard__card">
-          <div class="ys-dashboard__card-label">{{ card.label }}</div>
-          <div class="ys-dashboard__card-value">
+        <el-card shadow="never" class="ys-stat-card">
+          <div class="ys-stat__label">{{ card.label }}</div>
+          <div class="ys-stat__value">
             {{ card.value === null ? '无权限' : formatAmount(card.value, 0) }}
           </div>
         </el-card>
@@ -268,11 +268,6 @@ onBeforeUnmount(() => {
   margin-bottom: 12px;
 }
 
-.ys-dashboard__approval-label {
-  font-size: 12px;
-  color: var(--ys-gray-500);
-}
-
 .ys-dashboard__approval-value {
   margin: 6px 0 4px;
   font-size: 28px;
@@ -283,34 +278,6 @@ onBeforeUnmount(() => {
 .ys-dashboard__approval-time {
   margin: 6px 0 4px;
   font-size: 14px;
-  font-weight: 600;
-  color: var(--ys-navy-900);
-}
-
-.ys-section-title {
-  margin: 16px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
-.ys-dashboard__cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.ys-dashboard__card {
-  width: 168px;
-}
-
-.ys-dashboard__card-label {
-  font-size: 12px;
-  color: var(--ys-gray-500);
-}
-
-.ys-dashboard__card-value {
-  margin-top: 6px;
-  font-size: 22px;
   font-weight: 600;
   color: var(--ys-navy-900);
 }

@@ -16,14 +16,17 @@
       </div>
     </div>
 
-    <el-row :gutter="12" class="ys-outbox__cards">
-      <el-col v-for="item in healthItems" :key="item.key" :span="4">
-        <el-card shadow="never">
-          <div class="ys-outbox__label">{{ item.label }}</div>
-          <div class="ys-outbox__value">{{ item.value }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="ys-stat-cards">
+      <el-card
+        v-for="item in healthItems"
+        :key="item.key"
+        shadow="never"
+        class="ys-stat-card"
+      >
+        <div class="ys-stat__label">{{ item.label }}</div>
+        <div class="ys-stat__value">{{ item.value }}</div>
+      </el-card>
+    </div>
 
     <el-alert
       v-if="healthError"
@@ -33,7 +36,7 @@
       :title="`发件箱健康统计加载失败：${healthError}`"
     />
 
-    <el-tabs v-model="activeTab" class="ys-outbox__tabs">
+    <el-tabs v-model="activeTab" class="ys-panel ys-panel--flush">
       <el-tab-pane label="事件列表" name="events">
         <div class="ys-filter-bar">
           <el-input
@@ -210,7 +213,7 @@
         </el-descriptions>
 
         <h4 class="ys-section-title">载荷（payload）</h4>
-        <pre class="ys-outbox__payload">{{ prettyPayload }}</pre>
+        <pre class="ys-code-block">{{ prettyPayload }}</pre>
       </template>
       <el-empty v-else description="未加载到事件详情" />
     </el-drawer>
@@ -441,44 +444,3 @@ onMounted(async () => {
   await refreshAll()
 })
 </script>
-
-<style scoped>
-.ys-outbox__cards {
-  margin-bottom: 12px;
-}
-
-.ys-outbox__label {
-  font-size: 12px;
-  color: var(--ys-gray-500);
-}
-
-.ys-outbox__value {
-  margin-top: 4px;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--ys-navy-900);
-}
-
-.ys-outbox__tabs {
-  padding: 0 12px 12px;
-  background: #fff;
-  border: 1px solid var(--ys-gray-200);
-  border-radius: 6px;
-}
-
-.ys-section-title {
-  margin: 16px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
-.ys-outbox__payload {
-  max-height: 320px;
-  padding: 12px;
-  overflow: auto;
-  font-size: 12px;
-  background: var(--ys-gray-50);
-  border: 1px solid var(--ys-gray-200);
-  border-radius: 4px;
-}
-</style>

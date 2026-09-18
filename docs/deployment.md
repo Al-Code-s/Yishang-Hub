@@ -2,6 +2,14 @@
 
 > **重要**：本文件中标记 **【未执行】** 的步骤在本轮开发环境中**没有实际运行过**。
 > 未执行的内容一律不写作通过（任务书 2.4）。真实执行结果见 `docs/test-report.md`。
+>
+> **使用者视角的操作手册（启动、账号、菜单、排错）见 `docs/user-guide.md`**；
+> 本文档侧重部署与发布。两者的启动命令与初始化参数必须保持一致——
+> 命令或环境变量变化时，除本文件外**必须同步 `docs/user-guide.md` §三**（规则见其 §十一）。
+>
+> 使用说明的**网页版**由 `python scripts/build_user_guide.py` 从 `docs/user-guide.md` 生成，
+> 产物 `frontend/public/guide.html` 随前端静态资源一起发布（nginx 直接托管 `/guide.html`，
+> **不校验登录**）；单文件副本 `docs/user-guide.html` 可直接发给客户。发布前先跑 `--check`。
 
 ## 一、环境区分
 

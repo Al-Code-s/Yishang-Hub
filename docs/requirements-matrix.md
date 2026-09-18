@@ -19,7 +19,7 @@
 | REQ-20-05 | 20.1.5 | 平台 | — | — | — | 初始化 Vue 与 Django 工程 | `manage.py check`、`npm run build` | 0 | 已完成 | 前后端均可构建 |
 | REQ-20-06 | 20.1.6 | 平台 | — | `/readyz` | — | 配置 MySQL、Redis、对象存储与 Compose | `test_health_ready_checks_database` | 0 | 部分完成 | 本地 MySQL/Redis 已连通；对象存储与 Compose 未启动验证 |
 | REQ-20-07 | 20.1.7 | 身份 | 用户管理 | `identity/users/` | `identity.User` | 首次迁移即使用自定义 User | 全套 identity 用例 | 0/1 | 已完成 | `AUTH_USER_MODEL=identity.User` |
-| REQ-20-08 | 20.1.8 | 身份 | 登录 / 个人中心 | `identity/auth/*` | Session、LoginAttempt | 会话登录、CSRF、退出、改密 | `test_auth_api.py`（12 项） | 1 | 已完成 | 含登录限流与失败锁定 |
+| REQ-20-08 | 20.1.8 | 身份 | 登录 / 个人中心 | `identity/auth/*` | Session、LoginAttempt | 会话登录、CSRF（**含登录接口**）、退出、改密 | `test_auth_api.py`（14 项） | 1 | 已完成 | 含登录限流与失败锁定；登录 CSRF 于阶段 3 第二步补齐（`@method_decorator(csrf_protect, name="dispatch")`） |
 | REQ-20-09 | 20.1.9 | 身份 | 角色与权限 | `identity/roles/*` | Role、Permission、Menu、RoleScopeGrant | 角色、权限点、数据范围 | `test_permissions.py`（17 项） | 1 | 已完成 | 四层权限 |
 | REQ-20-10 | 20.1.10 | 组织 | 公司/部门/工厂/员工 | `factory/*` | Company、Department、Factory、Employee | 组织层级合法、跨公司拒绝 | `test_factory_api.py`、`test_permissions.py` | 1 | 已完成 | 车间/线体/工位/班次/班组同页提供 |
 | REQ-20-11 | 20.1.11 | 主数据 | 款式/颜色/尺码/SKU/物料 | `masterdata/*` | Style、Color、Size、Sku、Material | 款式+颜色+尺码 唯一确定 SKU | `test_smoke_api.py::test_sku_generate_endpoint` | 1 | 已完成 | SKU 与成品物料一对一 |
@@ -27,7 +27,7 @@
 | REQ-20-13 | 20.1.13 | 平台 | 后台布局/菜单/首页 | `identity/auth/session/`、`analytics/dashboard/` | Menu | 菜单由后端按权限下发 | `router.spec.ts`（菜单组件一致性） | 1 | 已完成 | 无权限的页面不注册路由 |
 | REQ-20-14 | 20.1.14 | 平台 | 待办/我的申请/审批模板 | `workflow/*` | ApprovalTemplate、ApprovalInstance | 顺序多级、条件路由、快照 | `test_workflow_api.py`（10 项） | 1 | 已完成 | 审批与库存过账分离 |
 | REQ-20-15 | 20.1.15 | 平台 | — | — | — | 初始化与演示命令 | `test_management_commands.py`（8 项） | 1 | 已完成 | `bootstrap_system`、`seed_demo` 幂等 |
-| REQ-20-16 | 20.1.16 | 平台 | — | — | — | 迁移、测试、检查、构建 | 见 `docs/test-report.md` | 0/1 | 已完成 | 后端 183 + 前端 66 项通过（含阶段 2 第一步、统一库存服务与采购模块增量） |
+| REQ-20-16 | 20.1.16 | 平台 | — | — | — | 迁移、测试、检查、构建 | 见 `docs/test-report.md` | 0/1 | 已完成 | 后端 **312** + 前端 **131** 项通过；一键冒烟 7 步全过；真实 HTTP 链路 29 项通过（含阶段 2 四步、界面样式 / 视图统一 / 窄屏响应式、阶段 3 第一步 BOM 与工艺版本快照、**阶段 3 第二步 MRP**） |
 | REQ-20-17 | 20.1.17 | 平台 | 实施进度 | — | — | 更新进度文档 | — | 0/1 | 已完成 | `docs/progress.md` |
 | REQ-20-18 | 20.1.18 | 平台 | — | — | — | 输出访问地址、启动命令、验证步骤、未完成项 | — | 0/1 | 已完成 | `README.md`、`docs/deployment.md`、`docs/progress.md` |
 
@@ -88,6 +88,102 @@
 **明确未包含**：询价比价与报价单、到货差异处理、采购退货、应付与付款登记、备件采购、
 采购价格与交付分析报表、单据打印、供应商准入审批流程接入 `workflow`。
 这些条目在 §10.4、§10.5 中逐条标注并给出计划阶段。
+
+## 一之五、阶段 2 第四步增量：销售模块（本轮实际完成）
+
+| 交付项 | 页面（前端组件） | API | 数据实体 | 权限点 | 自动化用例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 销售订单（含行、SKU、交期、优先级） | `views/sales/SalesOrderList.vue` | `/api/v1/sales/orders/` + `submit/`、`cancel/`、`close/` | `sales.SalesOrder` / `SalesOrderLine` | `sales.order.view/create/update/submit/close` | `test_order_submit_then_approve_writes_back_status`、`test_order_approval_rejection_writes_back_rejected`、`test_suspended_customer_cannot_be_used`、`test_order_without_warehouse_cannot_reserve` | 已通过阶段验收 |
+| 金额后端计算 | 同上（行金额只读展示） | 同上 | `total_amount` / `tax_amount` / `amount_with_tax` | — | `test_order_amount_is_computed_by_backend`、`test_order_rejects_non_positive_quantity` | 已通过阶段验收 |
+| 库存占用 | 同上（占用/释放按钮） | `POST /sales/orders/{id}/reserve/`、`/release/` | `wms.StockReservation` | `sales.order.reserve/release` + `wms.inventory.reserve/release` | `test_reserve_moves_available_to_reserved_without_touching_on_hand`、`test_reserve_is_idempotent`、`test_reserve_rejects_insufficient_available`、`test_reserve_rejects_quarantine_stock`、`test_release_order_stock_returns_available`、`test_cancel_order_releases_open_reservations` | 已通过阶段验收 |
+| 库位/批次推荐与维度对齐 | — | 占用内部调用 `stock.choose_reservation_dimension` | `InventoryBalance.dimension_key` | — | `test_reserve_uses_matching_batch_dimension` | 已通过阶段验收 |
+| 销售发货与出库过账 | `views/sales/SalesShipmentList.vue` | `/api/v1/sales/shipments/` + `post/`、`cancel/` | `sales.SalesShipment` / `SalesShipmentLine` → `wms.InventoryDocument` | `sales.shipment.view/create/update/post` + `wms.document.create/post` | `test_shipment_post_consumes_reservation_and_decrements_on_hand`、`test_shipment_post_is_idempotent`、`test_shipment_quantity_cannot_exceed_remaining` | 已通过阶段验收 |
+| 先占用后发货（未占用拒绝出库） | 同上（过账前提示） | 同上 | `_assert_reservation_covers` | 同上 | `test_shipment_requires_reservation` | 已通过阶段验收 |
+| 销售退货（收货进待检 → 检验判定） | `views/sales/SalesReturnList.vue` | `/api/v1/sales/returns/` + `post/`、`inspect/`、`cancel/` | `sales.SalesReturn` / `SalesReturnLine` | `sales.return.view/create/update/post/inspect` + `wms.quality.release` | `test_return_requires_posted_shipment`、`test_return_quantity_cannot_exceed_shipped`、`test_return_post_lands_in_quarantine`、`test_inspect_qualified_returns_stock_to_qualified`、`test_inspect_rejected_keeps_stock_unusable`、`test_inspect_requires_remark`、`test_repeated_inspect_is_rejected` | 已通过阶段验收 |
+| 退货批次追溯 | 同上 | 同上 | `_inherit_return_dimensions` + `stock.document_line_hint` | — | `test_return_inherits_original_batch` | 已通过阶段验收 |
+| 职责分离（销售不能做质量判定） | 同上（按钮按权限隐藏） | 同上 | 内置角色 `sales_admin` / `quality_inspector` | 权限分离 | `test_sales_clerk_cannot_inspect_returns`、`test_user_without_reserve_permission_cannot_reserve` | 已通过阶段验收 |
+| 订单到交付链路视图 | 同上（详情抽屉） | `GET /sales/orders/{id}/chain/` | 订单/发货/退货/库存单据 | `sales.order.view` | `test_chain_endpoint_lists_related_documents` | 已通过阶段验收 |
+| 数据范围与跨公司隔离 | — | 全部列表/详情 | `company` + `warehouse` 范围 | 四层权限 | `test_orders_are_company_scoped`、`test_sales_endpoints_require_authentication`、`test_view_only_user_cannot_create_order` | 已通过阶段验收 |
+| 销售枚举字典 | — | `/api/v1/meta/`（6 个新键） | 枚举类 | — | `test_meta_exposes_sales_enums` | 已通过阶段验收 |
+| 演示数据 | — | — | `seed_demo._sales()`：订单 → 占用 → 发货 → 退货 → 检验各 1 张 | — | `seed_demo` 二次执行新建 0 条 | 已通过阶段验收 |
+
+**明确未包含**（在 §10.3 中逐条标注）：销售计划、颜色尺码矩阵批量录入、折扣、
+订单变更版本快照、分销商、基础预测、应收与收款登记、发货申请单与运单对接、
+跨储位/跨批次自动拆分占用、多批次部分退货的批次分摊。
+
+## 一之六、阶段 3 第一步增量：BOM 与工艺路线版本快照（本轮实际完成）
+
+| 交付项 | 页面（前端组件） | API | 数据实体 | 权限点 | 自动化用例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| BOM 版本化（草稿/审核中/已审核/已驳回/已作废） | `views/planning/BomList.vue` | `/api/v1/planning/boms/` + `/{id}/` | `planning.Bom` | `planning.bom.view/create/update` | `test_create_bom_persists_lines_and_computes_gross_quantity`、`test_draft_can_be_updated_but_submitted_cannot` | 已通过阶段验收（阶段 3 第一步） |
+| 生效日期与区间校验 | 同上 | 同上 | `effective_from` / `effective_to` + `ck_bom_effective_range` | 同上 | `test_bom_effective_range_must_be_ordered` | 已通过阶段验收 |
+| 审核状态（走 `workflow`，无模板即拒绝） | 同上（提交/撤回按钮） | `POST /boms/{id}/submit/` | `status` + `approval_instance_id` + `approved_by/at` | `planning.bom.submit` | `test_submit_requires_approval_template`、`test_approve_activates_version_and_obsoletes_previous`、`test_reject_returns_document_to_rejected_state`、`test_withdraw_returns_document_to_draft` | 已通过阶段验收 |
+| 同一范围唯一生效版本 | 同上（状态标签） | 同上 | 服务层 `select_for_update` 切换（MySQL 无部分唯一索引） | 同上 | `test_approve_activates_version_and_obsoletes_previous`、`test_effective_bom_returns_approved_only` | 已通过阶段验收 |
+| SKU 差异用料（款式通用 / 单 SKU 版本） | 同上 | 同上 | `Bom.sku` + `scope_key` 规范化键 | 同上 | `test_version_no_increments_within_scope`、`test_sku_must_belong_to_style` | 已通过阶段验收 |
+| 标准用量与损耗（后端计算含损耗用量） | 同上（只读展示） | 同上 | `BomLine.quantity` / `loss_rate` / `gross_quantity` | 同上 | `test_client_supplied_gross_quantity_is_ignored`、`test_bom_loss_rate_out_of_range_is_rejected` | 已通过阶段验收 |
+| 替代料 | 同上 | 同上 | `BomLine.line_type` + `substitute_for` | 同上 | `test_substitute_line_links_to_normal_line`、`test_substitute_for_unknown_line_is_rejected`、`test_normal_line_cannot_reference_substitute_target` | 已通过阶段验收 |
+| 变更只能派生新版本（不覆盖已审核版本） | 同上（派生新版本按钮） | `POST /boms/{id}/new-version/` | 新 `Bom` + 复制明细 | `planning.bom.create` | `test_new_version_from_submitted_is_rejected`、`test_snapshot_matches_version_and_survives_new_version` | 已通过阶段验收 |
+| 作废（必填原因，不物理删除） | 同上 | `POST /boms/{id}/obsolete/` | `status=obsolete` + `is_active` | `planning.bom.obsolete` | `test_obsolete_requires_reason`、`test_obsolete_marks_version_inactive`、`test_obsolete_submitted_is_rejected` | 已通过阶段验收 |
+| 版本快照（供 MES 工单引用） | 同上 | `GET /boms/{id}/snapshot/` | `services.build_bom_snapshot()` | `planning.bom.view` | `test_bom_snapshot_service_equals_api`、`test_snapshot_matches_version_and_survives_new_version` | 已通过阶段验收 |
+| 工艺路线（版本/审批/作废/派生规则同 BOM） | `views/planning/RoutingList.vue` | `/api/v1/planning/routings/` 下 7 个端点 | `planning.Routing` | `planning.routing.view/create/update/submit/obsolete` | `test_routing_submit_and_approve`、`test_routing_new_version_copies_steps_and_obsoletes_previous`、`test_routing_update_locks_after_submit`、`test_routing_obsolete_requires_reason` | 已通过阶段验收 |
+| 工序、标准工时、设备要求、工序质检点 | 同上 | 同上 | `planning.RoutingStep`（`sequence` / `standard_hours` / `equipment_requirement` / `is_quality_gate` / `workshop`） | 同上 | `test_create_routing_with_explicit_steps`、`test_duplicate_routing_sequence_is_rejected`、`test_negative_standard_hours_is_rejected`、`test_routing_snapshot_contains_quality_gate`、`test_routing_step_workshop_outside_scope_is_rejected` | 已通过阶段验收 |
+| 默认工艺 裁剪→缝制→整烫→检验→包装 | 同上（新建即见默认工序） | 同上 | `DEFAULT_ROUTING_STEPS` | 同上 | `test_create_routing_applies_default_steps`、`test_routing_requires_at_least_one_step`（显式空列表被拒） | 已通过阶段验收 |
+| 乐观锁与冻结 | 同上 | `PATCH /boms/{id}/`、`/routings/{id}/` | `version` 字段 | 同上 | `test_optimistic_lock_rejects_stale_version` | 已通过阶段验收 |
+| 数据范围与跨公司隔离 | — | 全部列表/详情 | `company` 范围（`scope_fields`） | 四层权限 | `test_cross_company_objects_are_rejected`、`test_planning_endpoints_require_authentication`、`test_view_only_user_cannot_create_bom`、`test_routing_permission_does_not_grant_bom_write` | 已通过阶段验收 |
+| 计划枚举字典 | — | `/api/v1/meta/`（3 个新键） | `BomStatus` / `RoutingStatus` / `BomLineType` | — | `test_meta_exposes_planning_enums` | 已通过阶段验收 |
+| 演示数据 | — | — | `seed_demo._engineering()`：BOM 1 条（5 行）+ 工艺路线 1 条（5 工序）+ 2 个审批模板 | — | `seed_demo` 二次执行新建 0 条 | 已通过阶段验收 |
+
+**明确未包含**（在 §9.5 / §10.6 / §10.7 / §10.9 逐条标注）：MES 工单与报工、QMS 检验单、
+快照表落库、BOM/工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备/工位的外键关联。
+（**MRP 已在本轮之后交付**，见 §一之七；此处仅保留本增量当时的边界。）
+
+## 一之七、阶段 3 第二步增量：MRP（本轮实际完成）
+
+| 交付项 | 页面（前端组件） | API | 数据实体 | 权限点 | 自动化用例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 运行 MRP（同步计算 + 落库快照） | `views/planning/MrpRunList.vue` | `POST /api/v1/planning/mrp-runs/` | `planning.MrpRun`（`parameters` / `summary` / `status`） | `planning.mrp.run` | `test_run_api_creates_run_with_counts_and_detail_endpoints`、`test_audit_and_outbox_event_written_with_business_data` | 已通过阶段验收（阶段 3 第二步） |
+| 时间分段净需求（按日 / 按周） | 同上（分段选择 + 详情页签） | `GET /mrp-runs/{id}/demands/` | `MrpDemandLine.bucket_date` + `mrp_bucket_date()` | `planning.mrp.view` | `test_net_requirement_nets_on_hand_and_on_order`、`test_week_bucket_normalises_to_monday`、`test_overdue_demand_lands_in_first_bucket`、`test_demand_outside_horizon_ignored` | 已通过阶段验收 |
+| 多层 BOM 展开（低层码只净算一次） | 同上（需求行 `level` / `path`） | 同上 | `MrpDemandLine.level` / `source_type=parent_item` / `path` | 同上 | `test_explosion_uses_parent_net_requirement`、`test_low_level_code_net_calculated_once` | 已通过阶段验收 |
+| 损耗计算 | 同上（用量由 BOM 快照带入） | 同上 | 取 `BomLine.gross_quantity`（含损耗） | 同上 | `test_explosion_uses_parent_net_requirement`（按含损耗用量展开） | 已通过阶段验收 |
+| 循环 BOM 检查与层级上限 | 同上（失败运行可见） | 同上 | `MrpRun.status=failed` + `error_message` | 同上 | `test_cycle_bom_rejected_and_failed_run_recorded` | 已通过阶段验收 |
+| 可用库存作为供给（排除冻结 / 占用、只认合格） | 同上（供给行页签） | `GET /mrp-runs/{id}/supplies/` | `MrpSupplyLine`（`source_type=on_hand`） | 同上 | `test_usable_stock_excludes_frozen_reserved_and_unqualified` | 已通过阶段验收 |
+| 采购在途作为供给 | 同上 | 同上 | `MrpSupplyLine`（`source_type=on_order`，引用采购订单） | 同上 | `test_purchase_on_order_reduces_net_requirement` | 已通过阶段验收 |
+| 缺料清单 / 采购建议 / 生产建议 | `views/planning/MrpSuggestionList.vue` | `GET /mrp-runs/{id}/suggestions/`、`GET /mrp-suggestions/` | `MrpSuggestion`（`suggestion_type` / `reason` / `detail`） | 同上 | `test_suggestion_type_rules_and_unexploded_materials` | 已通过阶段验收 |
+| 供需追溯 | 同上（需求行 `source_no` / `path`、建议 `detail.trace`） | 同上 | `source_type/source_id/source_no/source_line_no`、`detail.demand_sources` | 同上 | `test_run_api_creates_run_with_counts_and_detail_endpoints` | 已通过阶段验收 |
+| 计算快照（参数与汇总） | 同上（摘要卡片） | 同上 | `MrpRun.parameters` / `summary` / `started_at` / `finished_at` | 同上 | 同上 | 已通过阶段验收 |
+| 建议转单 → **草稿**采购申请（不绕过审批） | 同上（转采购申请按钮） | `POST /mrp-suggestions/{id}/convert/` | `MrpSuggestion.converted_document_*` + `integration.DocumentLink`（`generated_from`） | `planning.mrp.convert` + `procurement.requisition.create` | `test_convert_creates_draft_requisition_with_document_link`、`test_convert_requires_procurement_requisition_create` | 已通过阶段验收 |
+| 生产建议**不伪造工单**（MES 未实现即拒绝） | 同上（按钮给出明确提示） | 同上 | — | 同上 | `test_convert_production_suggestion_rejected` | 已通过阶段验收（边界明确） |
+| 重复转单 / 过期建议 / 取消 / 归档保护 | 同上（状态标签 + 取消按钮） | `POST /mrp-suggestions/{id}/cancel/`、`POST /mrp-runs/{id}/archive/` | `status`（`open/converted/cancelled`）、`cancel_reason`、`MrpRun.status=archived` | `planning.mrp.cancel` / `archive` | `test_convert_twice_rejected`、`test_convert_stale_suggestion_rejected`、`test_cancel_requires_reason_and_blocks_convert`、`test_archive_run_blocks_conversion_and_repeat_archive_rejected` | 已通过阶段验收 |
+| 数据范围（公司 / 仓库）与权限隔离 | — | 全部端点 | `scope_fields`（公司、以 `run__company_id` 作用于建议） | 四层权限 | `test_api_run_scoped_to_company_and_warehouse`、`test_anonymous_access_rejected`、`test_view_only_user_cannot_run_mrp`、`test_user_without_convert_permission_cannot_convert`、`test_mrp_permissions_do_not_grant_other_modules` | 已通过阶段验收 |
+| 审计与 Outbox（同事务） | — | — | `AuditLog`、`OutboxEvent`（`planning.mrp.completed` / `suggestion_converted`） | — | `test_audit_and_outbox_event_written_with_business_data`、`test_archive_api_requires_permission_and_is_audited` | 已通过阶段验收 |
+| 枚举字典 | — | `/api/v1/meta/`（6 个新键） | `MrpRunStatus` / `MrpBucket` / `MrpDemandSource` / `MrpSupplySource` / `MrpSuggestionType` / `MrpSuggestionStatus` | — | 由 `frontend/tests/views-compile.spec.ts` 与路由用例覆盖 | 已通过阶段验收 |
+
+## 一之八、文档同步与项目使用说明（本轮实际完成）
+
+| 交付项 | 位置 | 校验 | 状态 |
+| --- | --- | --- | --- |
+| 项目使用说明文档 | `docs/user-guide.md`（§一～§十一：启动 / 账号 / 菜单 / 操作 / 错误码 / 未执行项 / 同步规则） | 与代码逐项核对（权限 173 / 菜单 56 / 模型 86 / 表 92 / 迁移 19 / 角色 16） | 已完成 |
+| 机器可校验事实行 | `docs/user-guide.md` §11.5 `<!-- yishang-doc-sync: ... -->` | `tests/test_docs_sync.py`（7 条）与注册表 / 模型 / 迁移 / 内置角色比对，并执行 `build_user_guide.py --check` | 已完成（含反向验证） |
+| 使用说明网页版（可直接给客户） | `scripts/build_user_guide.py` → `docs/user-guide.html` + `frontend/public/guide.html`（访问 `/guide.html`） | 单文件自包含（CSS/JS 内联，无 CDN）；结构校验 28 表 / 55 目录项 / 锚点全命中；`--check` 防过期 | 已完成 |
+| 系统内入口 | `frontend/src/layouts/BasicLayout.vue` 顶部工具栏 + 个人中心「使用说明」 | `npm run typecheck` / `vitest` / `build` | 已完成 |
+| 文档按最新代码修正 | `acceptance.md`、`inventory-rules.md`、`api-conventions.md`、`requirements-matrix.md`、`README.md`、`progress.md` | 逐处修正过时陈述（71 张表→92、占用/释放已落地、MRP 非 Celery 任务、MRP 已打通等） | 已完成 |
+| 「代码更新后使用文档同步」规则 | `docs/user-guide.md` §十一（触发清单 / 收尾清单 / 核对方法 / 兜底机制） | 规则成文 + 用例兜底数量层面；正文仍靠人工 | 已完成（缺口已声明） |
+| 本轮测试 | `backend/tests` | `307 passed in 111.83s`；`ruff` / `check` / 迁移检查通过 | 已完成 |
+
+## 一之九、枚举值中文化（本轮实际完成）
+
+> 起因：界面把仓库类型、部门类型、计量单位类别等枚举显示为英文原始键。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 枚举字段随响应返回中文标签 | `apps/core/serializers.py::DisplayLabelsMixin`（`ReferenceIdSerializer` 继承，71 个 ModelSerializer 生效）+ `apps/identity/serializers.py` 7 个序列化器 | 全部列表 / 详情 API | 所有带 `choices` 的模型字段（59 个） | 写入与筛选仍用英文键；只读 `<field>_display` 返回中文；已显式声明的同名字段不覆盖；只加只读字段不产生迁移 | `tests/test_enum_labels.py`（4 条，含「任一 choices 字段缺 `_display` 即失败」的全量遍历） | 已通过阶段验收 |
+| 前端优先展示中文标签 | `frontend/src/components/ProTable.vue::displayValue()`、`EntityListPage.vue::renderCell()` | 全部列表页与详情抽屉 | — | 后端 `_display` 优先，缺失时退回原值（不显示 `undefined`）；前端 `meta` 字典仅作回退 | `frontend/tests/pro-table.spec.ts`（新增 2 条） | 已通过阶段验收 |
+| 历史非法枚举数据修复 | `apps/factory/migrations/0003_alter_department_department_type_and_more.py`（`RunPython` + `AlterField`） | — | `factory.Employee.gender`、`Employee.employment_type`、`ProductionLine.line_type`、`Department.department_type`、`Workshop.workshop_type` | 部门类型补 `procurement/sales/equipment`；车间类型补 `finishing`；按编码映射修正历史值；反向迁移为空操作 | 迁移执行后直连开发库复扫：非法枚举 0 条；`test_enum_labels.py::test_seed_demo_writes_only_valid_enum_values` | 已通过阶段验收 |
+| 演示数据源头修正 | `apps/core/management/commands/seed_demo.py` | — | 同上一行 | 部门 `supply→procurement`、`marketing→sales`；性别写英文键；用工性质统一 `full_time`；线体类型改合法值 | 同上 | 已通过阶段验收 |
+
+**本轮真实结果**：后端 **312** 项、前端 **131** 项自动化测试通过；`manage.py check` 无问题；
+`makemigrations --check --dry-run` 无漂移；`ruff` 通过；前端 `typecheck` 通过、`vite build` 成功。
+**未执行**：浏览器截图级 UI 校验（本机浏览器自动化被安全策略拒绝）——需人工核对页面中文标签。
 
 ## 二、技术方案（任务书 3.1）
 
@@ -225,7 +321,7 @@
 | REQ-7.3-06 | 7.3 | 有权限的人工重放 | `integration.outbox.retry` 权限点 + `{id}/retry/` | 已完成 | — |
 | REQ-7.3-07 | 7.3 | 保留业务关联关系 | `aggregate_type`/`aggregate_id`、`integration.DocumentLink` | 已完成 | — |
 | REQ-7.3-08 | 7.3 | `on_commit` 仅加速唤醒，不替代 Outbox | 实现约定 | 已完成 | — |
-| REQ-7.4-01 | 7.4 | Celery 适用任务（导入/导出/MRP/能源/告警/保养/通知/报表） | `config/celery.py`、各模块 `tasks.py` | 部分完成 | 框架与 `core/integration` 任务就绪；业务任务在阶段 2+；**未运行 Worker** |
+| REQ-7.4-01 | 7.4 | Celery 适用任务（导入/导出/MRP/能源/告警/保养/通知/报表） | `config/celery.py`、各模块 `tasks.py` | 部分完成 | 框架与 `core/integration` 任务就绪；业务任务在阶段 2+；**未运行 Worker**。注：**MRP 采用同步计算，不经 Celery**（ADR-09） |
 | REQ-7.4-02 | 7.4 | 任务可观测、超时、重试、失败原因 | `CELERY_TASK_TIME_LIMIT` 等 | 部分完成 | 配置就绪，未运行验证 |
 | REQ-7.4-03 | 7.4 | 调度任务不重复生成业务单据 | 设计约定 | 设计已完成 | 阶段 2 起实现并测试 |
 | REQ-7.4-04 | 7.4 | 长任务分批处理 | 设计约定 | 设计已完成 | 阶段 2 起 |
@@ -242,11 +338,13 @@
 
 | 编号 | 来源 | 需求 | 实现位置 | 状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| REQ-8.1-01 | 8.1 | 深蓝/科技蓝/白/浅灰，中文界面 | `frontend/src/styles`、各视图 | 已完成 | — |
-| REQ-8.1-02 | 8.1 | 左侧导航、顶部工具栏、标签页、面包屑 | `frontend/src/layouts` | 已完成 | — |
+| REQ-8.1-01 | 8.1 | 深蓝/科技蓝/白/浅灰，中文界面 | `frontend/src/styles/index.css`（设计令牌 + Element Plus 主题变量覆盖） | 已完成 | 品牌主色 `#1668dc` 统一到表格/按钮/标签/弹窗；主题变量由 `side-menu.spec.ts` 用 postcss 解析校验 |
+| REQ-8.1-02 | 8.1 | 左侧导航、顶部工具栏、标签页、面包屑 | `frontend/src/layouts/BasicLayout.vue`、`components/SideMenu.vue` | 已完成 | **一级目录与二级页面按层级区分**：`depth` 生成 `ys-menu-group--dN` / `ys-menu-node--dN`，配合分组底色、缩进圆点、选中高亮块；`side-menu.spec.ts` 同时校验 DOM 层级 class 与样式规则；窄屏（≤1200px）自动折叠为图标态由 `composables/useAutoCollapse.ts` 控制，手动偏好优先、跨断点重置 |
 | REQ-8.1-03 | 8.1 | 消息、待办、个人中心 | 顶部工具栏 + `system/NotificationList.vue` | 已完成 | — |
 | REQ-8.1-04 | 8.1 | 不使用与业务无关的装饰 | 全局 | 已完成 | — |
-| REQ-8.2-01 | 8.2 | 19 个一级菜单规划 | `permissions_registry.MENUS`（当前 43 项菜单，覆盖 9 个一级目录） | 部分完成 | **只登记已实现的页面**；未实施模块不在菜单中放伪可用页面，改为在「实施进度」页标记规划状态 |
+| REQ-8.1-05 | 8.1 | 同一元素在不同页面观感一致（本条为界面样式增量） | `frontend/src/styles/index.css` 共享类 + 各视图模板；`frontend/tests/styles.spec.ts` | 已完成 | 共享类 `.ys-panel` / `.ys-panel--flush` / `.ys-section-title` / `.ys-stat-cards` / `.ys-stat-card` / `.ys-stat__label` / `.ys-stat__value` / `.ys-stat__hint` / `.ys-code-block`；视图内重复定义由 4 份降为 0，用例断言「任何 scoped 样式不得重定义共享类」 |
+| REQ-8.1-06 | 8.1 | 窄屏可用（本条为响应式增量） | `frontend/src/composables/useAutoCollapse.ts`、`frontend/src/styles/index.css` 第 9 节、`frontend/tests/responsive.spec.ts` | 已完成 | 断点 1440（表格横向滚动）/ 1200（侧边栏自动折叠、内边距收窄）/ 992（标题竖排、统计卡整行、双列改单列、弹窗抽屉 92%）；JS 断点与 CSS 断点一致性由用例断言；**≤768px 手机布局与触摸手势未处理** |
+| REQ-8.2-01 | 8.2 | 19 个一级菜单规划 | `permissions_registry.MENUS`（当前 51 项：10 个目录 + 41 个页面，一级入口 11 项） | 部分完成 | **只登记已实现的页面**；未实施模块不在菜单中放伪可用页面，改为在「实施进度」页标记规划状态 |
 | REQ-8.2-02 | 8.2 | 各角色只显示有权访问的菜单 | `identity/menus/mine/` | 已完成 | 后端按权限下发，前端不硬编码 |
 | REQ-8.3-01 | 8.3 | 查询、分页、排序 | `components/ProTable.vue`、`EntityListPage.vue` | 已完成 | 分页结构对齐后端 |
 | REQ-8.3-02 | 8.3 | 新增、编辑、详情 | 各列表页 + 表单抽屉/对话框 | 已完成 | — |
@@ -330,12 +428,12 @@
 
 | 编号 | 来源 | 需求 | 实现位置 | 状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| REQ-9.5-01 | 9.5 | BOM 版本、生效日期、审核状态 | — | 未开始（阶段 3） | 设计归入 `planning`/`mes`，复用 `masterdata` 物料与 `workflow` 审批 |
-| REQ-9.5-02 | 9.5 | SKU 差异用料、标准用量、损耗 | — | 未开始（阶段 3） | 同上 |
-| REQ-9.5-03 | 9.5 | 替代料审批 | — | 未开始（阶段 3） | 复用 `workflow` 审批模板，不新建审批体系 |
-| REQ-9.5-04 | 9.5 | 工艺路线、标准工时、设备要求、工序质检点 | `Station.process_name` 为基础 | 未开始（阶段 3） | 工位已携带工序名，路线在阶段 3 建 |
-| REQ-9.5-05 | 9.5 | 默认工艺 裁剪→缝制→整烫→检验→包装 | 设计约定 | 设计已完成 | 阶段 3 作为默认工艺路线种子数据 |
-| REQ-9.5-06 | 9.5 | 工单下达保存版本快照 | 快照机制已在 `workflow.ApprovalInstance.template_snapshot` 验证 | 设计已完成 | 工单快照在阶段 3 实现（对应必测案例 13） |
+| REQ-9.5-01 | 9.5 | BOM 版本、生效日期、审核状态 | `planning.Bom`（`/api/v1/planning/boms/`、`views/planning/BomList.vue`） | **已完成（阶段 3 第一步）** | 版本 + 生效区间 + `workflow` 审批；同一「款式/SKU 范围」同时只有一个生效版本 |
+| REQ-9.5-02 | 9.5 | SKU 差异用料、标准用量、损耗 | `Bom.sku` / `BomLine.quantity` / `loss_rate` / `gross_quantity` | **已完成（阶段 3 第一步）** | 含损耗用量由后端计算（6 位小数 `ROUND_HALF_UP`），前端传值被忽略 |
+| REQ-9.5-03 | 9.5 | 替代料审批 | `BomLine.line_type=substitute` + `substitute_for` | **已完成（阶段 3 第一步）** | 替代料行随所属 BOM 版本一起走 `workflow`，不新建审批体系 |
+| REQ-9.5-04 | 9.5 | 工艺路线、标准工时、设备要求、工序质检点 | `planning.Routing` / `RoutingStep`（`/api/v1/planning/routings/`） | **已完成（阶段 3 第一步）** | `standard_hours` / `equipment_requirement` / `is_quality_gate`；与设备主数据的外键关联待阶段 4 |
+| REQ-9.5-05 | 9.5 | 默认工艺 裁剪→缝制→整烫→检验→包装 | `planning.models.DEFAULT_ROUTING_STEPS` | **已完成（阶段 3 第一步）** | 不传工序即套用（「检验」带质检点）；显式空列表被拒（`ROUTING_STEP_REQUIRED`） |
+| REQ-9.5-06 | 9.5 | 工单下达保存版本快照 | `services.build_bom_snapshot()` / `build_routing_snapshot()` | 部分完成（阶段 3 第一步） | 快照输出已实现并经真实库验证（服务与接口逐字段相等）；**快照落库依赖 MES 工单**（阶段 3 后续），对应必测案例 13 |
 
 ## 九、业务模块（任务书 10）
 
@@ -346,7 +444,7 @@
 
 | 编号 | 来源 | 需求 | 实现位置 | 状态 |
 | --- | --- | --- | --- | --- |
-| REQ-10.1-01 | 10.1 | 用户、角色、菜单、资源 | `identity`（`permissions_registry` 124 权限 / 43 菜单） | 已完成 |
+| REQ-10.1-01 | 10.1 | 用户、角色、菜单、资源 | `identity`（`permissions_registry` 157 权限 / 51 菜单） | 已完成 |
 | REQ-10.1-02 | 10.1 | 部门、字典、参数 | `factory.Department`、`core.Dictionary`；参数由 `settings.YISHANG` 环境变量注入 | 已完成 |
 | REQ-10.1-03 | 10.1 | 编码规则 | `core.CodeRule` + `CodeSequence`（`generate_code` 事务内取号） | 已完成 |
 | REQ-10.1-04 | 10.1 | 登录与操作日志 | `identity.LoginAttempt`、`core.AuditLog` | 已完成 |
@@ -384,20 +482,20 @@
 
 | 编号 | 来源 | 需求 | 状态 |
 | --- | --- | --- | --- |
-| REQ-10.3-01 | 10.3 | 销售计划 | 未开始 |
-| REQ-10.3-02 | 10.3 | 销售订单 | 未开始 |
-| REQ-10.3-03 | 10.3 | 颜色尺码矩阵 | 未开始（SKU 组合主数据已就绪） |
-| REQ-10.3-04 | 10.3 | 单价、折扣、金额 | 未开始（数值口径已定：Decimal + HALF_UP） |
-| REQ-10.3-05 | 10.3 | 交期、优先级 | 未开始 |
-| REQ-10.3-06 | 10.3 | 审核、变更、取消 | 未开始（复用 `workflow` 审批） |
-| REQ-10.3-07 | 10.3 | 库存占用 | 未开始（库存服务阶段 2） |
-| REQ-10.3-08 | 10.3 | 发货申请、分批发货 | 未开始 |
-| REQ-10.3-09 | 10.3 | 销售退货 | 未开始（先验收再定质量状态） |
-| REQ-10.3-10 | 10.3 | 分销商 | 未开始 |
-| REQ-10.3-11 | 10.3 | 历史分析、基础预测 | 未开始（要求可解释、展示样本期间与误差） |
-| REQ-10.3-12 | 10.3 | 应收与收款登记 | 未开始（**不等于完整财务记账**） |
-| REQ-10.3-13 | 10.3 | 已发货部分不得直接删除或修改数量 | 设计约定已文档化 |
-| REQ-10.3-14 | 10.3 | 订单变更保存版本 | 设计约定已文档化 |
+| REQ-10.3-01 | 10.3 | 销售计划 | 未开始（阶段 2 剩余） |
+| REQ-10.3-02 | 10.3 | 销售订单 | **已通过阶段验收**：`sales.SalesOrder`/`SalesOrderLine` + `/api/v1/sales/orders/`，页面 `views/sales/SalesOrderList.vue` |
+| REQ-10.3-03 | 10.3 | 颜色尺码矩阵 | 部分实现：订单行可关联成品 SKU（`SalesOrderLine.sku`，与库存物料一对一）；**矩阵批量录入界面未实现** |
+| REQ-10.3-04 | 10.3 | 单价、折扣、金额 | 部分实现：单价与行/单头金额、税额**全部由后端计算**（`compute_line_amount`、`recalculate_order_amounts`，HALF_UP）；**折扣字段未实现** |
+| REQ-10.3-05 | 10.3 | 交期、优先级 | **已通过阶段验收**：`order_date`/`expected_date`（单头与行）、`priority`（普通/加急），已进 meta 枚举 |
+| REQ-10.3-06 | 10.3 | 审核、变更、取消 | 部分实现：提交 → 审批 → 批准/驳回/撤回已打通（复用 `workflow` 并回写状态）；取消与关闭已实现且**已发货不可取消**；**变更版本快照未实现** |
+| REQ-10.3-07 | 10.3 | 库存占用 | **已通过阶段验收**：`POST /orders/{id}/reserve/`、`release/`；占用只改可用量、不写流水、幂等、只能占合格库存、库位/批次推荐 |
+| REQ-10.3-08 | 10.3 | 发货申请、分批发货 | 部分实现：发货单 → 出库过账（`require_full_reservation`，必须由本订单占用覆盖），支持分批发货；**发货申请单、运单与物流对接未实现** |
+| REQ-10.3-09 | 10.3 | 销售退货 | **已通过阶段验收**：`sales.SalesReturn`，收货过账进**待检** → 人工检验判定 → 合格回库/不合格；可退数量 = 已发货 − 已退货；退货入库继承原发货批次 |
+| REQ-10.3-10 | 10.3 | 分销商 | 未开始（阶段 2 剩余） |
+| REQ-10.3-11 | 10.3 | 历史分析、基础预测 | 未开始（阶段 3+；要求可解释、展示样本期间与误差） |
+| REQ-10.3-12 | 10.3 | 应收与收款登记 | 未开始（阶段 2 剩余；**不等于完整财务记账**） |
+| REQ-10.3-13 | 10.3 | 已发货部分不得直接删除或修改数量 | **已实现并有测试**：接口不提供 DELETE；`shipped_quantity`/`returned_quantity` 只读且由库存过账推进；已发货订单不可取消（`HAS_SHIPMENT`）；`ck_sales_order_line_shipped_within_quantity` 兜底 |
+| REQ-10.3-14 | 10.3 | 订单变更保存版本 | 未实现：`version` 目前只用于乐观锁（`expected_version`），**业务变更快照未落库**（阶段 2 剩余） |
 
 ### 10.4 供应商管理 SRM（阶段 2）
 
@@ -429,17 +527,17 @@
 
 | 编号 | 来源 | 需求 | 状态 |
 | --- | --- | --- | --- |
-| REQ-10.6-01 | 10.6 | 输入项（销售需求、生产计划、BOM、可用库存、在途、在制、占用、安全库存、提前期、批量规则） | 未开始 |
-| REQ-10.6-02 | 10.6 | 时间分段净需求、多层 BOM 展开、损耗 | 未开始 |
-| REQ-10.6-03 | 10.6 | 循环 BOM 检查 | 未开始 |
-| REQ-10.6-04 | 10.6 | 缺料清单、采购建议、生产建议 | 未开始 |
-| REQ-10.6-05 | 10.6 | 供需追溯、计算快照 | 未开始 |
-| REQ-10.6-06 | 10.6 | 建议审核转单 | 未开始（复用 `workflow`） |
-| REQ-10.6-07 | 10.6 | 销售订单与派生需求不得重复计算 | 设计约定已文档化（必测案例 12） |
-| REQ-10.6-08 | 10.6 | 已占用库存不得再作自由供给 | 设计约定已文档化 |
-| REQ-10.6-09 | 10.6 | 转单前重检有效性；同一建议不得重复转单 | 设计约定已文档化 |
-| REQ-10.6-10 | 10.6 | 重算不自动覆盖已执行采购单/工单 | 设计约定已文档化 |
-| REQ-10.6-11 | 10.6 | 第一版可解释排程，**不宣称自动最优排产** | 设计约定已文档化 |
+| REQ-10.6-01 | 10.6 | 输入项（销售需求、生产计划、BOM、可用库存、在途、在制、占用、安全库存、提前期、批量规则） | **部分完成（阶段 3 第二步）**：已接销售需求（`sales_order`）+ 生效 BOM（`get_effective_bom` + `gross_quantity`）+ 可用库存 + 采购在途 + 占用（从可用量中扣除）；**未接**生产计划、在制（`in_progress_supply=not_implemented`，待 MES）、安全库存、提前期、批量规则（`lead_time_mode=lot_for_lot`）——逐条登记在 `docs/assumptions.md` §四之六 |
+| REQ-10.6-02 | 10.6 | 时间分段净需求、多层 BOM 展开、损耗 | **已完成**：`day` / `week` 分段（`week` 归一到周一）、低层码分层净算、多层展开、损耗取含损耗用量 `gross_quantity`；用例 `test_net_requirement_nets_on_hand_and_on_order`、`test_explosion_uses_parent_net_requirement`、`test_low_level_code_net_calculated_once` |
+| REQ-10.6-03 | 10.6 | 循环 BOM 检查 | **已完成**：`BOM_CYCLE_DETECTED`，并落一条 `failed` 运行记录（`test_cycle_bom_rejected_and_failed_run_recorded`） |
+| REQ-10.6-04 | 10.6 | 缺料清单、采购建议、生产建议 | **已完成**：`MrpSuggestion`（`purchase` / `production`）+ 缺料清单页面；无 BOM 成品记入 `unexploded_materials`（`test_suggestion_type_rules_and_unexploded_materials`） |
+| REQ-10.6-05 | 10.6 | 供需追溯、计算快照 | **已完成**：需求行保存来源（`source_type/source_id/source_no/source_line_no` + `path`）、建议保存 `detail.trace`、运行保存 `parameters` / `summary` 快照 |
+| REQ-10.6-06 | 10.6 | 建议审核转单 | **已完成（采购路径）**：`convert_suggestion()` 生成**草稿采购申请** + `DocumentLink`（`generated_from`），后续仍走采购审批；**生产建议转单未实现**，返回 `PRODUCTION_ORDER_NOT_IMPLEMENTED`（等 MES） |
+| REQ-10.6-07 | 10.6 | 销售订单与派生需求不得重复计算 | **已完成**：同一物料在低层码分层中只净算一次、父件按净需求展开（`test_low_level_code_net_calculated_once`） |
+| REQ-10.6-08 | 10.6 | 已占用库存不得再作自由供给 | **已完成**：可用量 = `on_hand − frozen − reserved`，且只认合格质量状态（`test_usable_stock_excludes_frozen_reserved_and_unqualified`） |
+| REQ-10.6-09 | 10.6 | 转单前重检有效性；同一建议不得重复转单 | **已完成**：锁内重取 → 运行状态 → 未转单 → 运行仍是最新已完成（`SUGGESTION_STALE`）→ 物料启用 → 类型；`test_convert_twice_rejected`、`test_convert_stale_suggestion_rejected`、`test_convert_inactive_material_rejected` |
+| REQ-10.6-10 | 10.6 | 重算不自动覆盖已执行采购单/工单 | **已完成**：MRP 只读库存与在途，**不修改**任何已执行单据；重算只产生新运行，旧运行建议因 `SUGGESTION_STALE` / `MRP_RUN_NOT_ACTIVE` 不可再转单（`test_mrp_is_read_only_for_inventory`） |
+| REQ-10.6-11 | 10.6 | 第一版可解释排程，**不宣称自动最优排产** | **已完成**：`lot_for_lot` 可解释净算，参数与分段净算过程全部落库可见；**不包含**产能约束与最优排产，文档与 UI 均未作此宣称 |
 
 ### 10.7 MES 制造执行（阶段 3）
 
@@ -627,8 +725,8 @@
 
 | 编号 | 来源 | 闭环 | 基座实现位置 | 状态 |
 | --- | --- | --- | --- | --- |
-| REQ-12.1-01 | 12.1 | 订单到交付 | `integration.DocumentLink`（含 `quantity`） | 未打通（阶段 2–3） |
-| REQ-12.1-02 | 12.1 | 可从订单查看所有关联单据与数量 | `DocumentLink` 唯一约束 + 关系类型 | 基座已就绪 |
+| REQ-12.1-01 | 12.1 | 订单到交付 | `apps/sales/services.py` + 统一库存服务 | **部分打通**：销售侧「销售订单 → 库存占用 → 发货出库 → 退货 → 检验判定」与采购侧「申请 → 订单 → 到货 → 检验放行 → 合格库存」均已可用；**MRP 已打通**（销售需求 → 净算 → 采购建议转单，见 §一之七），**MES 工单 / 报工 / 成品入库未实现**，整条链路未打通（阶段 3） |
+| REQ-12.1-02 | 12.1 | 可从订单查看所有关联单据与数量 | `GET /api/v1/sales/orders/{id}/chain/`（+ `integration.DocumentLink`） | **销售侧已实现**：一次返回订单、行交付进度（已发/已退/未发）、发货单、退货单与关联库存单据；跨模块统一关系表 `DocumentLink` 仍为基座就绪 |
 | REQ-12.2-01 | 12.2 | 设备维修闭环 | 备件库存复用 `wms`，设备主数据在阶段 4 | 未打通（阶段 4） |
 | REQ-12.3-01 | 12.3 | 能源告警闭环 | `docs/energy-calculation.md` 第五节 | 未打通（阶段 5） |
 | REQ-12.4-01 | 12.4 | 客诉改善闭环 | `Identifier` 分型 + `DocumentLink` | 未打通（阶段 2/6） |
@@ -664,9 +762,10 @@
 | --- | --- | --- | --- |
 | REQ-14.1-01 | 单元测试 | `backend/tests/test_core_services.py`、`test_crm_api.py`、`test_srm_api.py`、`test_wms_inventory.py` 等 | 已完成（148 项） |
 | REQ-14.1-02 | MySQL 集成测试 | pytest 默认连 MySQL（`--reuse-db`） | 已完成 |
-| REQ-14.1-03 | API 权限测试 | `backend/tests/test_permissions.py`（17 项）、`test_auth_api.py`（12 项） | 已完成 |
-| REQ-14.1-04 | 并发事务测试 | `test_generate_code_unique_under_concurrency` | 部分完成（并发框架已验证；库存并发在阶段 2） |
-| REQ-14.1-05 | 前端组件测试 | `frontend/tests/*.spec.ts`（6 文件 63 项） | 已完成 |
+| REQ-14.1-03 | API 权限测试 | `backend/tests/test_permissions.py`（17 项）、`test_auth_api.py`（14 项，含 2 条登录 CSRF 回归） | 已完成 |
+| REQ-14.1-04 | 并发事务测试 | `test_generate_code_unique_under_concurrency`、`test_wms_inventory.py` 真实多连接并发 | 部分完成（并发框架已验证；库存并发已完成；**工程数据「唯一生效版本」与 MRP「同一建议并发转单」未做真实多连接验证**，见 `docs/test-report.md` §15.7 / §16.7） |
+| REQ-14.1-05 | 前端组件测试 | `frontend/tests/*.spec.ts`（9 文件 131 项） | 已完成 |
+| REQ-14.1-08 | 文档一致性校验 | `backend/tests/test_docs_sync.py`（7 项）比对 `docs/user-guide.md` §11.5 事实行与权限点 / 菜单 / 模型 / 迁移 / 内置角色，并校验网页版说明与 Markdown 源一致 | 已完成（并做过「故意改错→按预期失败」反向验证） |
 | REQ-14.1-06 | 端到端业务测试 | Playwright 配置就绪 | **未执行** |
 | REQ-14.1-07 | 部署与恢复测试 | — | **未执行**（阶段 7） |
 
@@ -685,7 +784,7 @@
 | 9 | 不合格库存不可发货 | ✅ 已执行（库存侧） | `test_rejected_stock_cannot_be_issued`、`test_quarantine_stock_cannot_be_issued`、`test_inspect_rejected_keeps_stock_blocked`；**销售发货侧的发货校验**待销售模块落地后复验 |
 | 10 | 已消耗库存不能任意冲销 | ✅ 已执行 | `test_reversal_blocked_when_stock_consumed`、`test_reversal_succeeds_after_stock_returned`、`test_double_reversal_is_rejected` |
 | 11 | 调拨数量守恒 | 部分 | 同仓移库守恒已测（`test_move_conserves_quantity`、`test_concurrent_transfer_keeps_total`）；**跨仓调拨与在途状态未实现**（`test_move_to_other_warehouse_is_rejected` 记录当前边界） |
-| 12 | MRP 不重复计算供需 | 未执行 | 阶段 3 |
+| 12 | MRP 不重复计算供需 | ✅ 已执行 | `test_low_level_code_net_calculated_once`（同一子件多层 BOM 只净算一次、父件按净需求展开）、`test_net_requirement_nets_on_hand_and_on_order`；真实 HTTP 链路见 `docs/test-report.md` §16.5 |
 | 13 | BOM 历史快照不受修改影响 | 部分 | 快照机制已验证（`test_template_snapshot_survives_template_change`）；BOM 在阶段 3 |
 | 14 | 报工、返工不重复计数 | 未执行 | 阶段 3 |
 | 15 | 跨夜排班冲突正确 | 部分 | 跨夜建模与校验已测（`test_shift_cross_day_is_derived_not_trusted_from_client`、`test_shift_break_cannot_exceed_span`）；人员冲突检查在阶段 3 |
@@ -694,7 +793,7 @@
 | 18 | Outbox 重放不重复产生结果 | ✅ 已执行 | `test_outbox_dispatch_creates_notification_once`、`test_dispatch_is_at_least_once_but_notification_not_duplicated`、`test_publish_event_deduplicates_by_dedup_key` |
 | 19 | 导入错误可定位到行 | 未执行 | 阶段 2 |
 | 20 | 敏感附件不能越权下载 | ✅ 已执行 | `test_attachment_download_requires_permission` |
-| 21 | 订单到交付链路通过 | 未执行 | **采购子链路已通过**（申请 → 订单 → 收货 → 待检 → 放行，见 `test_procurement.py`）；销售订单、MRP、MES 段落未开始 |
+| 21 | 订单到交付链路通过 | 部分 | **采购子链路已通过**（申请 → 订单 → 收货 → 待检 → 放行）；**销售订单 → MRP → 采购建议已打通**（`test_mrp.py` + `docs/test-report.md` §16.5 真实链路）；**MES 生产领料 / 报工 / 成品入库段未打通**（阶段 3 第三步） |
 | 22 | 备份可以恢复 | 未执行 | 阶段 7 |
 
 > 另有超出的已执行用例：审计只写不改（`test_audit_log_is_write_once`）、审计随业务事务回滚
@@ -777,7 +876,7 @@
 | 0 | 仓库检查、需求矩阵、架构、模型、环境 | **已完成**（Docker 未启动验证） |
 | 1 | 登录、权限、组织、主数据、基础审批、日志 | **已完成**（本地验证通过） |
 | 2 | 客户、供应商、采购、销售、WMS | **进行中**：客户与供应商主数据已完成（见 §一之二）；寻源/报价/评价、采购销售单据、库存余额未开始。补充要求：如需质检放行，**先实现最低可用的待检/放行状态** |
-| 3 | BOM、工艺、MRP、MES、QMS | 未开始 |
+| 3 | BOM、工艺、MRP、MES、QMS | **进行中**：BOM 与工艺路线版本快照已完成（见 §一之六）；**MRP 已完成**（见 §一之七）；MES、QMS 未开始。工单下达须保存该版本快照 |
 | 4 | 设备、备件、保养、点检、维修 | 未开始。备件主数据与库存由共享模块提供，**阶段 4 不重复创建库存体系** |
 | 5 | 采集、EMS、能源报表与告警 | 未开始 |
 | 6 | CRM 深化、EHS、物流、终端安全 | 未开始 |

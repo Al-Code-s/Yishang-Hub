@@ -112,7 +112,7 @@
         </el-descriptions>
 
         <h4 class="ys-section-title">字段变更摘要</h4>
-        <pre class="ys-audit__changes">{{ prettyChanges }}</pre>
+        <pre class="ys-code-block">{{ prettyChanges }}</pre>
       </template>
       <el-empty v-else description="未加载到审计详情" />
     </el-drawer>
@@ -213,20 +213,3 @@ function exportCsv(): void {
 onMounted(load)
 </script>
 
-<style scoped>
-.ys-section-title {
-  margin: 16px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
-.ys-audit__changes {
-  max-height: 320px;
-  padding: 12px;
-  overflow: auto;
-  font-size: 12px;
-  background: var(--ys-gray-50);
-  border: 1px solid var(--ys-gray-200);
-  border-radius: 4px;
-}
-</style>

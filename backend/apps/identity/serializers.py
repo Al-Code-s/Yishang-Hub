@@ -3,10 +3,11 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.core.models import Notification
+from apps.core.serializers import DisplayLabelsMixin
 from apps.identity.models import LoginAttempt, Menu, Permission, Role, RoleScopeGrant, User
 
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     company_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
     roles = serializers.SerializerMethodField()
@@ -108,14 +109,14 @@ class UpdateProfileSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True)
 
 
-class RoleScopeGrantSerializer(serializers.ModelSerializer):
+class RoleScopeGrantSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     class Meta:
         model = RoleScopeGrant
         fields = ("id", "dimension", "object_id")
         read_only_fields = fields
 
 
-class RoleSerializer(serializers.ModelSerializer):
+class RoleSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     permission_codes = serializers.SerializerMethodField()
     menu_codes = serializers.SerializerMethodField()
     scope_grants = RoleScopeGrantSerializer(many=True, read_only=True)
@@ -187,14 +188,14 @@ class SetRoleScopeSerializer(serializers.Serializer):
     )
 
 
-class PermissionSerializer(serializers.ModelSerializer):
+class PermissionSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     class Meta:
         model = Permission
         fields = ("id", "code", "name", "module", "resource", "action", "permission_type")
         read_only_fields = fields
 
 
-class MenuSerializer(serializers.ModelSerializer):
+class MenuSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     class Meta:
         model = Menu
         fields = (
@@ -214,14 +215,14 @@ class MenuSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LoginAttemptSerializer(serializers.ModelSerializer):
+class LoginAttemptSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     class Meta:
         model = LoginAttempt
         fields = ("id", "username", "user_id", "ip_address", "successful", "failure_reason", "created_at")
         read_only_fields = fields
 
 
-class NotificationSerializer(serializers.ModelSerializer):
+class NotificationSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ("id", "title", "body", "biz_type", "biz_id", "is_read", "read_at", "created_at")

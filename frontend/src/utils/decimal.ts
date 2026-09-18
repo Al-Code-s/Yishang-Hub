@@ -58,11 +58,11 @@ export function round(value: Numeric, places: number): Decimal {
 }
 
 /** 转成后端接受的字符串（DecimalField 使用字符串传输）。 */
-export function toApiString(value: Numeric, places = DECIMAL_PLACES.quantity): string {
+export function toApiString(value: Numeric, places: number = DECIMAL_PLACES.quantity): string {
   return round(value, places).toFixed(places)
 }
 
-export function formatDecimal(value: Numeric, places = DECIMAL_PLACES.quantity): string {
+export function formatDecimal(value: Numeric, places: number = DECIMAL_PLACES.quantity): string {
   if (value === null || value === undefined || value === '') {
     return '-'
   }
@@ -70,7 +70,7 @@ export function formatDecimal(value: Numeric, places = DECIMAL_PLACES.quantity):
 }
 
 /** 千分位展示，用于金额列表。 */
-export function formatAmount(value: Numeric, places = 2): string {
+export function formatAmount(value: Numeric, places: number = 2): string {
   if (value === null || value === undefined || value === '') {
     return '-'
   }

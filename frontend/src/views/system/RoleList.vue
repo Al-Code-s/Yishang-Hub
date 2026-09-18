@@ -692,19 +692,9 @@ onMounted(async () => {
   border-radius: 4px;
 }
 
-.ys-section-title {
-  margin: 16px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
 .ys-role__codes {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.ys-ml-4 {
-  margin-left: 4px;
 }
 </style>

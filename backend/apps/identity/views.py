@@ -11,7 +11,7 @@ from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.utils import timezone
 from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -59,7 +59,17 @@ class CsrfBootstrapView(APIView):
         return Response({"detail": "CSRF Cookie 已下发。"})
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class LoginView(APIView):
+    """口令登录。
+
+    任务书 6.1 要求「登录接口同样防护 CSRF」：这里清空 ``authentication_classes``
+    是为了让未登录的匿名请求不再触发 DRF 会话鉴权，但 DRF 的
+    ``SessionAuthentication`` **只对已登录会话**调用 ``enforce_csrf``，匿名请求不会校验，
+    因此必须显式用 ``csrf_protect`` 给 dispatch 加 Django 的 CSRF 校验，
+    否则登录接口会变成无 CSRF 防护的写接口。
+    """
+
     permission_classes = [AllowAny]
     authentication_classes: list[Any] = []
 

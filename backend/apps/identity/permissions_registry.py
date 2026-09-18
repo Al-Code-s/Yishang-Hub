@@ -107,8 +107,31 @@ PERMISSIONS: list[PermissionDef] = [
     # 基础资料 - 标识（条码 / 批次 / 卷号 / 箱码 / RFID / 载具）
     PermissionDef("masterdata.identifier.view", "查看标识"),
     PermissionDef("masterdata.identifier.create", "新增标识"),
+    PermissionDef("masterdata.identifier.update", "修改标识"),
     PermissionDef("masterdata.identifier.deactivate", "停用标识"),
     # 仓储 - 仓库 / 库区 / 储位
+    # 仓储 - 库存占用（销售发货「先占用、后发货」的业务规则依赖它）
+    PermissionDef("wms.inventory.reserve", "库存占用"),
+    PermissionDef("wms.inventory.release", "释放库存占用"),
+    # 销售管理 - 销售订单
+    PermissionDef("sales.order.view", "查看销售订单"),
+    PermissionDef("sales.order.create", "新增销售订单"),
+    PermissionDef("sales.order.update", "修改/取消销售订单"),
+    PermissionDef("sales.order.submit", "提交销售订单审批"),
+    PermissionDef("sales.order.close", "关闭销售订单"),
+    PermissionDef("sales.order.reserve", "销售订单库存占用"),
+    PermissionDef("sales.order.release", "释放销售订单库存占用"),
+    # 销售管理 - 发货
+    PermissionDef("sales.shipment.view", "查看销售发货单"),
+    PermissionDef("sales.shipment.create", "新增销售发货单"),
+    PermissionDef("sales.shipment.update", "修改/取消销售发货单"),
+    PermissionDef("sales.shipment.post", "销售发货出库过账"),
+    # 销售管理 - 退货
+    PermissionDef("sales.return.view", "查看销售退货单"),
+    PermissionDef("sales.return.create", "新增销售退货单"),
+    PermissionDef("sales.return.update", "修改/取消销售退货单"),
+    PermissionDef("sales.return.post", "销售退货收货过账"),
+    PermissionDef("sales.return.inspect", "销售退货检验判定"),
     # 采购管理 - 采购申请
     PermissionDef("procurement.requisition.view", "查看采购申请"),
     PermissionDef("procurement.requisition.create", "新增采购申请"),
@@ -173,6 +196,24 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("srm.supplier_qualification.view", "查看供应商资质"),
     PermissionDef("srm.supplier_qualification.create", "新增供应商资质"),
     PermissionDef("srm.supplier_qualification.update", "修改供应商资质"),
+    # 计划管理 - BOM（物料清单）
+    PermissionDef("planning.bom.view", "查看 BOM"),
+    PermissionDef("planning.bom.create", "新增 BOM"),
+    PermissionDef("planning.bom.update", "修改 BOM 草稿"),
+    PermissionDef("planning.bom.submit", "提交 BOM 审批"),
+    PermissionDef("planning.bom.obsolete", "作废 BOM 版本"),
+    # 计划管理 - 工艺路线
+    PermissionDef("planning.routing.view", "查看工艺路线"),
+    PermissionDef("planning.routing.create", "新增工艺路线"),
+    PermissionDef("planning.routing.update", "修改工艺路线草稿"),
+    PermissionDef("planning.routing.submit", "提交工艺路线审批"),
+    PermissionDef("planning.routing.obsolete", "作废工艺路线版本"),
+    # 计划管理 - MRP 运算
+    PermissionDef("planning.mrp.view", "查看 MRP 运行与建议"),
+    PermissionDef("planning.mrp.run", "运行 MRP 计算"),
+    PermissionDef("planning.mrp.convert", "MRP 建议转单"),
+    PermissionDef("planning.mrp.cancel", "取消 MRP 建议"),
+    PermissionDef("planning.mrp.archive", "归档 MRP 运行"),
     # 公共
     PermissionDef("core.dictionary.view", "查看数据字典"),
     PermissionDef("core.dictionary.create", "新增数据字典"),
@@ -276,7 +317,19 @@ MENUS: list[MenuDef] = [
         "crm.customer-contact", "客户联系人", "crm", "/crm/customer-contacts",
         "views/crm/CustomerContactList.vue", "Phone", 42, "page", "crm.customer_contact.view",
     ),
-    # 销售管理（50）预留：阶段 2 后续增量
+    MenuDef("sales", "销售管理", None, "/sales", "Layout", "Sell", 50, "directory"),
+    MenuDef(
+        "sales.order", "销售订单", "sales", "/sales/orders",
+        "views/sales/SalesOrderList.vue", "Document", 51, "page", "sales.order.view",
+    ),
+    MenuDef(
+        "sales.shipment", "销售发货", "sales", "/sales/shipments",
+        "views/sales/SalesShipmentList.vue", "Van", 52, "page", "sales.shipment.view",
+    ),
+    MenuDef(
+        "sales.return", "销售退货", "sales", "/sales/returns",
+        "views/sales/SalesReturnList.vue", "RefreshLeft", 53, "page", "sales.return.view",
+    ),
     MenuDef("srm", "供应商管理", None, "/srm", "Layout", "Shop", 60, "directory"),
     MenuDef(
         "srm.supplier", "供应商档案", "srm", "/srm/suppliers",
@@ -306,6 +359,23 @@ MENUS: list[MenuDef] = [
         "procurement.receipt", "采购收货", "procurement", "/procurement/receipts",
         "views/procurement/GoodsReceiptList.vue", "Van", 73, "page",
         "procurement.receipt.view",
+    ),
+    MenuDef("planning", "计划管理", None, "/planning", "Layout", "Calendar", 75, "directory"),
+    MenuDef(
+        "planning.bom", "物料清单（BOM）", "planning", "/planning/boms",
+        "views/planning/BomList.vue", "Files", 76, "page", "planning.bom.view",
+    ),
+    MenuDef(
+        "planning.routing", "工艺路线", "planning", "/planning/routings",
+        "views/planning/RoutingList.vue", "Guide", 77, "page", "planning.routing.view",
+    ),
+    MenuDef(
+        "planning.mrp", "MRP 运算", "planning", "/planning/mrp-runs",
+        "views/planning/MrpRunList.vue", "TrendCharts", 78, "page", "planning.mrp.view",
+    ),
+    MenuDef(
+        "planning.mrp_suggestion", "缺料与建议", "planning", "/planning/mrp-suggestions",
+        "views/planning/MrpSuggestionList.vue", "Warning", 79, "page", "planning.mrp.view",
     ),
     MenuDef("wms", "仓储管理", None, "/wms", "Layout", "Box", 80, "directory"),
     MenuDef(

@@ -176,9 +176,10 @@ Idempotency-Key: procurement-receipt-{action}-{id}-{version}
 - 事件与业务数据**同事务写入** `core.OutboxEvent`；后台轮询分发，**至少一次**语义，消费者必须幂等。
 - 重试超过 `max_attempts` 进入 `FAILED`，由有权限的人员人工处理/重放（`integration.outbox.retry`）。
 - `transaction.on_commit()` 可用于加速唤醒，**但不能代替持久化 Outbox**。
-- 长任务（大文件导入、Excel 导出、MRP、能源汇总、报表）通过 Celery 执行，要求：
+- 长任务（大文件导入、Excel 导出、能源汇总、报表）通过 Celery 执行，要求：
   任务可观测、有超时（`CELERY_TASK_TIME_LIMIT`）、有重试与失败原因、长任务分批处理、
   执行前后持久化状态、**调度任务不得重复生成业务单据**。
+- **MRP 运算是同步计算**（ADR-09），不经 Celery：它需要在同一事务内读供需、写运行快照并立即返回结果。
 - **数据库是任务业务结果的最终依据**，不把任务返回值当正式记录。
 
 ## 十、Excel 导入导出
@@ -199,3 +200,19 @@ Idempotency-Key: procurement-receipt-{action}-{id}-{version}
 
 - 使用 `drf-spectacular` 生成，路径：`/api/v1/schema/`（YAML/JSON）与 `/api/v1/docs/`（Swagger UI）。
 - 接口变更时**同步更新文档**；新增权限点需在注册表登记，否则启动自检失败。
+
+## 十二、枚举字段与中文标签（`_display`）
+
+- **英文枚举键是接口契约**：`status`、`warehouse_type`、`department_type` 等字段在
+  **请求筛选、写入、排序**中一律传英文键（如 `?warehouse_type=finished`）。
+- **中文标签随响应返回**：凡模型字段带 `choices`，序列化器自动附带同名只读字段
+  `<field>_display`（如 `"warehouse_type": "finished"` + `"warehouse_type_display": "成品仓"`）。
+  机制见 `apps/core/serializers.py::DisplayLabelsMixin`，由 `ReferenceIdSerializer` 统一继承；
+  幂等性上它**只增加只读字段，不改变请求契约**。
+- **前端只读 `_display`**：列表与详情优先展示 `_display`，缺失时才回退到原始值或前端 `meta` 字典
+  （`frontend/src/components/ProTable.vue`、`EntityListPage.vue`）；
+  **不允许前端硬编码枚举中文映射**，避免两端漂移。
+- **枚举字典接口** `/api/v1/meta/` 提供下拉选项，其中 `label` 为中文、`value` 为英文键。
+- **质量红线**：写入非法枚举值（不在 `choices` 内）视为数据缺陷。
+  `backend/tests/test_enum_labels.py` 全量遍历序列化器，任一 choices 字段缺 `_display` 即失败；
+  另有用例在 `seed_demo` 后对全库复扫非法枚举值。

@@ -40,6 +40,21 @@ const EMPTY_META: MetaPayload = {
   purchase_order_statuses: [],
   receipt_statuses: [],
   inspection_results: [],
+  sales_order_statuses: [],
+  sales_order_priorities: [],
+  shipment_statuses: [],
+  return_statuses: [],
+  return_dispositions: [],
+  reservation_statuses: [],
+  bom_statuses: [],
+  routing_statuses: [],
+  bom_line_types: [],
+  mrp_run_statuses: [],
+  mrp_buckets: [],
+  mrp_demand_sources: [],
+  mrp_supply_sources: [],
+  mrp_suggestion_types: [],
+  mrp_suggestion_statuses: [],
 }
 
 const STATUS_OPTIONS: EnumOption[] = [

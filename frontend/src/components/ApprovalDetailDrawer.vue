@@ -180,12 +180,6 @@ async function withdraw(): Promise<void> {
 </script>
 
 <style scoped>
-.ys-section-title {
-  margin: 20px 0 12px;
-  font-size: 14px;
-  color: var(--ys-navy-900);
-}
-
 .ys-step-comment {
   color: var(--ys-gray-700);
 }

@@ -2,7 +2,7 @@
   <div class="ys-layout">
     <aside class="ys-layout__aside" :class="{ 'ys-layout__aside--collapsed': collapsed }">
       <div class="ys-layout__brand">
-        <el-icon :size="20"><Shop /></el-icon>
+        <el-icon :size="18"><Shop /></el-icon>
         <span v-if="!collapsed" class="ys-layout__brand-title">意尚智造集成平台</span>
       </div>
       <div class="ys-layout__menu">
@@ -15,16 +15,25 @@
     <div class="ys-layout__main">
       <header class="ys-layout__header">
         <div class="ys-layout__header-left">
-          <el-button link @click="collapsed = !collapsed">
+          <el-button
+            link
+            class="ys-layout__collapse"
+            :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+            @click="toggleCollapsed"
+          >
             <el-icon :size="18"><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
           </el-button>
-          <el-breadcrumb separator="/">
+          <el-breadcrumb separator="/" class="ys-layout__breadcrumb">
             <el-breadcrumb-item>工作台</el-breadcrumb-item>
             <el-breadcrumb-item v-if="currentTitle">{{ currentTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>
 
         <div class="ys-layout__header-right">
+          <el-tooltip content="使用说明（新窗口打开）">
+            <el-button link @click="openGuide"><el-icon :size="18"><Reading /></el-icon></el-button>
+          </el-tooltip>
+
           <el-tooltip content="刷新当前页面数据">
             <el-button link @click="refreshCurrent"><el-icon><Refresh /></el-icon></el-button>
           </el-tooltip>
@@ -50,6 +59,7 @@
                   角色：{{ auth.roleNames.join('、') || '未分配' }}
                 </el-dropdown-item>
                 <el-dropdown-item divided @click="passwordVisible = true">修改密码</el-dropdown-item>
+                <el-dropdown-item @click="openGuide">使用说明</el-dropdown-item>
                 <el-dropdown-item @click="openDocs">接口文档</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
@@ -106,6 +116,7 @@ import { useRoute, useRouter } from 'vue-router'
 import NotificationDrawer from '@/components/NotificationDrawer.vue'
 import PasswordDialog from '@/components/PasswordDialog.vue'
 import SideMenu from '@/components/SideMenu.vue'
+import { useAutoCollapse } from '@/composables/useAutoCollapse'
 import { resetDynamicRoutes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
@@ -117,7 +128,8 @@ const tabsStore = useTabsStore()
 const route = useRoute()
 const router = useRouter()
 
-const collapsed = ref(false)
+/** 窄屏自动折叠侧边栏（断点见 composables/useAutoCollapse.ts） */
+const { collapsed, toggle: toggleCollapsed } = useAutoCollapse()
 const passwordVisible = ref(false)
 const notificationVisible = ref(false)
 const refreshKey = ref(0)
@@ -167,6 +179,11 @@ function refreshCurrent(): void {
 
 function openDocs(): void {
   window.open('/api/v1/docs/', '_blank', 'noopener')
+}
+
+/** 使用说明网页版：由 scripts/build_user_guide.py 从 docs/user-guide.md 生成 */
+function openGuide(): void {
+  window.open('/guide.html', '_blank', 'noopener')
 }
 
 async function logout(): Promise<void> {

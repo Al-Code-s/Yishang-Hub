@@ -436,3 +436,133 @@ class InventoryDocumentLine(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.document_id}-{self.line_no}"
+
+class ReservationStatus(models.TextChoices):
+    """库存占用记录状态。"""
+
+    ACTIVE = "active", "占用中"
+    CLOSED = "closed", "已结束"
+    CANCELLED = "cancelled", "已取消"
+
+
+class StockReservation(CompanyScopedModel):
+    """库存占用记录（任务书 10.8「占用 / 释放」）。
+
+    为什么占用**不写库存流水**：``InventoryTransaction`` 记录的是**实存量**增减，
+    占用只改变可用量、不移动实物；占用有自己的生命周期（占用 → 消耗 / 释放），
+    因此单独建表记录。一致性口径为：
+
+        ``InventoryBalance.reserved == 该维度所有未结占用数量之和``
+
+    该口径由 ``reconcile_inventory`` 校验，不由 signals 维护。
+
+    约束：
+    * ``request_key`` 单列唯一 —— 同一业务事件重复占用只产生一条记录（幂等）；
+    * ``quantity > 0``、``consumed_quantity >= 0``、``released_quantity >= 0``，
+      且 ``consumed_quantity + released_quantity <= quantity``；
+    * 未结数量 = ``quantity - consumed_quantity - released_quantity``。
+    """
+
+    material = models.ForeignKey(
+        "masterdata.Material", verbose_name="物料", on_delete=models.PROTECT,
+        related_name="stock_reservations", db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        "wms.Warehouse", verbose_name="仓库", on_delete=models.PROTECT,
+        related_name="stock_reservations",
+    )
+    location = models.ForeignKey(
+        "wms.Location", verbose_name="储位", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+",
+    )
+    batch_no = models.CharField("批次号", max_length=64, blank=True, default="")
+    roll_no = models.CharField("卷号", max_length=64, blank=True, default="")
+    quality_status = models.CharField(
+        "质量状态", max_length=16, choices=QualityStatus.choices,
+        default=QualityStatus.QUALIFIED, db_index=True,
+    )
+    dimension_key = models.CharField(
+        "维度键", max_length=DIMENSION_KEY_LENGTH, db_index=True, editable=False
+    )
+    quantity = models.DecimalField(
+        "占用数量", max_digits=QUANTITY_MAX_DIGITS, decimal_places=QUANTITY_DECIMAL_PLACES
+    )
+    consumed_quantity = models.DecimalField(
+        "已消耗数量", max_digits=QUANTITY_MAX_DIGITS,
+        decimal_places=QUANTITY_DECIMAL_PLACES, default=Decimal("0"),
+    )
+    released_quantity = models.DecimalField(
+        "已释放数量", max_digits=QUANTITY_MAX_DIGITS,
+        decimal_places=QUANTITY_DECIMAL_PLACES, default=Decimal("0"),
+    )
+    status = models.CharField(
+        "状态", max_length=16, choices=ReservationStatus.choices,
+        default=ReservationStatus.ACTIVE, db_index=True,
+    )
+    biz_type = models.CharField("来源单据类型", max_length=32, blank=True, default="", db_index=True)
+    biz_id = models.CharField("来源单据主键", max_length=64, blank=True, default="", db_index=True)
+    biz_no = models.CharField("来源单据编号", max_length=64, blank=True, default="")
+    request_key = models.CharField(
+        "占用幂等键", max_length=191, null=True, blank=True, unique=True, editable=False
+    )
+    remark = models.TextField("备注", blank=True, default="")
+
+    class Meta:
+        verbose_name = "库存占用"
+        verbose_name_plural = "库存占用"
+        ordering = ["-id"]
+        indexes = [
+            models.Index(fields=["dimension_key", "status"], name="idx_reservation_dimension"),
+            models.Index(fields=["biz_type", "biz_id"], name="idx_reservation_biz"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0), name="ck_reservation_quantity_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(consumed_quantity__gte=0) & Q(released_quantity__gte=0),
+                name="ck_reservation_consumed_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=Q(consumed_quantity__lte=F("quantity") - F("released_quantity")),
+                name="ck_reservation_within_quantity",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.material_id}@{self.warehouse_id}:{self.open_quantity}"
+
+    def save(self, *args, **kwargs):
+        if not self.dimension_key:
+            self.dimension_key = build_dimension_key(
+                company_id=self.company_id,
+                material_id=self.material_id,
+                warehouse_id=self.warehouse_id,
+                location_id=self.location_id,
+                batch_no=self.batch_no,
+                roll_no=self.roll_no,
+                quality_status=self.quality_status,
+            )
+        super().save(*args, **kwargs)
+
+    @property
+    def open_quantity(self) -> Decimal:
+        """未结占用数量。占用中与已结束记录都可读取该值（结束记录为 0）。"""
+        zero = Decimal("0")
+        return (
+            (self.quantity or zero)
+            - (self.consumed_quantity or zero)
+            - (self.released_quantity or zero)
+        )
+
+    @property
+    def is_open(self) -> bool:
+        return self.status == ReservationStatus.ACTIVE and self.open_quantity > Decimal("0")
+
+    def refresh_status(self, *, save: bool = True) -> str:
+        """按数量口径收敛状态：未结为 0 时结束。"""
+        if self.status == ReservationStatus.ACTIVE and self.open_quantity <= Decimal("0"):
+            self.status = ReservationStatus.CLOSED
+            if save:
+                self.save(update_fields=["status", "updated_at"])
+        return self.status

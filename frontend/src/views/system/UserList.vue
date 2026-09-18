@@ -621,8 +621,4 @@ onMounted(async () => {
 .ys-user__role {
   margin-right: 4px;
 }
-
-.ys-ml-4 {
-  margin-left: 4px;
-}
 </style>

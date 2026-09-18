@@ -95,6 +95,21 @@ export interface MetaPayload {
   purchase_order_statuses: EnumOption[]
   receipt_statuses: EnumOption[]
   inspection_results: EnumOption[]
+  sales_order_statuses: EnumOption[]
+  sales_order_priorities: EnumOption[]
+  shipment_statuses: EnumOption[]
+  return_statuses: EnumOption[]
+  return_dispositions: EnumOption[]
+  reservation_statuses: EnumOption[]
+  bom_statuses: EnumOption[]
+  routing_statuses: EnumOption[]
+  bom_line_types: EnumOption[]
+  mrp_run_statuses: EnumOption[]
+  mrp_buckets: EnumOption[]
+  mrp_demand_sources: EnumOption[]
+  mrp_supply_sources: EnumOption[]
+  mrp_suggestion_types: EnumOption[]
+  mrp_suggestion_statuses: EnumOption[]
 }
 
 export interface EnumOption {
@@ -1209,4 +1224,624 @@ export interface GoodsReceiptInput {
   supplier_delivery_no?: string
   remark?: string
   lines: ReceiptLineInput[]
+}
+
+export interface SalesOrderLine extends Stamped {
+  id: number
+  order_id: number
+  line_no: number
+  material_id: number
+  material_code: string
+  material_name: string
+  sku_id: number | null
+  sku_code: string
+  color_name: string
+  size_name: string
+  quantity: string
+  shipped_quantity: string
+  returned_quantity: string
+  remaining_quantity: string
+  returnable_quantity: string
+  price: string
+  amount: string
+  uom_id: number | null
+  uom_name: string
+  expected_date: string | null
+  remark: string
+}
+
+export interface SalesOrder extends Stamped {
+  id: number
+  company_id: number
+  company_name: string
+  order_no: string
+  customer_id: number
+  customer_code: string
+  customer_name: string
+  status: string
+  status_display: string
+  salesman_id: number | null
+  salesman_name: string
+  order_date: string | null
+  expected_date: string | null
+  priority: string
+  priority_display: string
+  warehouse_id: number | null
+  warehouse_name: string
+  currency: string
+  /** 税率按百分比记录（0~100） */
+  tax_rate: string
+  payment_terms: string
+  delivery_address: string
+  total_amount: string
+  tax_amount: string
+  amount_with_tax: string
+  approval_instance_id: number | null
+  approved_at: string | null
+  closed_at: string | null
+  remark: string
+  lines: SalesOrderLine[]
+}
+
+export interface SalesOrderLineInput {
+  material_id: number
+  quantity: string
+  sku_id?: number | null
+  price?: string
+  uom_id?: number | null
+  expected_date?: string | null
+  remark?: string
+}
+
+export interface SalesOrderInput {
+  order_no?: string
+  customer_id: number
+  order_date?: string | null
+  expected_date?: string | null
+  priority?: string
+  warehouse_id?: number | null
+  salesman_id?: number | null
+  currency?: string
+  tax_rate?: string
+  payment_terms?: string
+  delivery_address?: string
+  remark?: string
+  lines: SalesOrderLineInput[]
+}
+
+export interface SalesShipmentLine extends Stamped {
+  id: number
+  shipment_id: number
+  line_no: number
+  order_line_id: number
+  order_line_no: number
+  material_id: number
+  material_code: string
+  material_name: string
+  quantity: string
+  location_id: number | null
+  location_name: string
+  batch_no: string
+  roll_no: string
+  remark: string
+}
+
+export interface SalesShipment extends Stamped {
+  id: number
+  company_id: number
+  company_name: string
+  shipment_no: string
+  sales_order_id: number
+  order_no: string
+  customer_id: number
+  customer_name: string
+  status: string
+  status_display: string
+  warehouse_id: number
+  warehouse_name: string
+  shipped_at: string | null
+  shipped_by_name: string
+  receiver_name: string
+  receiver_phone: string
+  delivery_address: string
+  carrier: string
+  tracking_no: string
+  issue_document_id: number | null
+  remark: string
+  lines: SalesShipmentLine[]
+}
+
+export interface ShipmentLineInput {
+  order_line_id: number
+  quantity: string
+  location_id?: number | null
+  batch_no?: string
+  roll_no?: string
+  remark?: string
+}
+
+export interface ShipmentInput {
+  shipment_no?: string
+  sales_order_id: number
+  warehouse_id?: number | null
+  receiver_name?: string
+  receiver_phone?: string
+  delivery_address?: string
+  carrier?: string
+  tracking_no?: string
+  remark?: string
+  lines: ShipmentLineInput[]
+}
+
+export interface SalesReturnLine extends Stamped {
+  id: number
+  return_doc_id: number
+  line_no: number
+  order_line_id: number
+  order_line_no: number
+  material_id: number
+  material_code: string
+  material_name: string
+  quantity: string
+  location_id: number | null
+  location_name: string
+  batch_no: string
+  roll_no: string
+  remark: string
+}
+
+export interface SalesReturn extends Stamped {
+  id: number
+  company_id: number
+  company_name: string
+  return_no: string
+  sales_order_id: number
+  order_no: string
+  shipment_id: number | null
+  shipment_no: string
+  customer_id: number
+  customer_name: string
+  status: string
+  status_display: string
+  warehouse_id: number
+  warehouse_name: string
+  reason: string
+  received_at: string | null
+  received_by_name: string
+  inspection_result: string
+  inspection_result_display: string
+  inspected_at: string | null
+  inspected_by_name: string
+  inspection_remark: string
+  receipt_document_id: number | null
+  quality_document_id: number | null
+  remark: string
+  lines: SalesReturnLine[]
+}
+
+export interface ReturnLineInput {
+  order_line_id: number
+  quantity: string
+  location_id?: number | null
+  batch_no?: string
+  roll_no?: string
+  remark?: string
+}
+
+export interface ReturnInput {
+  return_no?: string
+  sales_order_id: number
+  shipment_id?: number | null
+  warehouse_id?: number | null
+  reason?: string
+  remark?: string
+  lines: ReturnLineInput[]
+}
+
+/** 订单到交付链路（任务书 12.1）。 */
+export interface SalesOrderChain {
+  order: {
+    id: number
+    order_no: string
+    status: string
+    status_display: string
+    amount_with_tax: string
+  }
+  lines: {
+    line_id: number
+    line_no: number
+    material_id: number
+    material_code: string
+    material_name: string
+    quantity: string
+    shipped_quantity: string
+    returned_quantity: string
+    remaining_quantity: string
+  }[]
+  shipments: {
+    id: number
+    shipment_no: string
+    status: string
+    shipped_at: string | null
+    issue_document_id: number | null
+  }[]
+  returns: { id: number; return_no: string; status: string; inspection_result: string }[]
+  inventory_documents: {
+    id: number
+    document_no: string
+    document_type: string
+    status: string
+  }[]
+}
+
+/** 库存占用记录（WMS 只读视图）。 */
+export interface StockReservation extends Stamped {
+  id: number
+  company_id: number
+  material_id: number
+  material_code: string
+  material_name: string
+  warehouse_id: number
+  warehouse_name: string
+  location_id: number | null
+  batch_no: string
+  roll_no: string
+  quality_status: string
+  quantity: string
+  consumed_quantity: string
+  released_quantity: string
+  open_quantity: string
+  status: string
+  status_display: string
+  biz_type: string
+  biz_id: string
+  biz_no: string
+  remark: string
+}
+
+/** BOM 明细行。`gross_quantity`（含损耗用量）由后端计算，前端传入会被忽略。 */
+export interface BomLine extends Stamped {
+  id: number
+  bom_id: number
+  line_no: number
+  material_id: number
+  material_code: string
+  material_name: string
+  quantity: string
+  loss_rate: string
+  gross_quantity: string
+  uom_id: number | null
+  uom_name: string
+  line_type: string
+  line_type_display: string
+  substitute_for_id: number | null
+  substitute_for_line_no: number | null
+  position: string
+  is_key_material: boolean
+  remark: string
+}
+
+/** BOM（物料清单）版本。同一「款式 + SKU 范围」同时只有一个已审核版本生效。 */
+export interface Bom extends Stamped {
+  id: number
+  company_id: number
+  company_name: string
+  code: string
+  style_id: number
+  style_code: string
+  style_name: string
+  sku_id: number | null
+  sku_code: string
+  scope_label: string
+  version_no: number
+  status: string
+  status_display: string
+  effective_from: string | null
+  effective_to: string | null
+  is_active: boolean
+  approval_instance_id: number | null
+  submitted_at: string | null
+  approved_at: string | null
+  approved_by_id: number | null
+  approved_by_name: string
+  remark: string
+  lines: BomLine[]
+  line_count: number
+}
+
+export interface BomLineInput {
+  material_id: number
+  quantity: string
+  loss_rate?: string
+  uom_id?: number | null
+  line_type?: string
+  substitute_for_line_no?: number | null
+  position?: string
+  is_key_material?: boolean
+  remark?: string
+}
+
+export interface BomInput {
+  code?: string
+  style_id: number
+  sku_id?: number | null
+  effective_from?: string | null
+  effective_to?: string | null
+  remark?: string
+  lines: BomLineInput[]
+}
+
+/** 工序。`is_quality_gate` 表示该工序是质检点（MES 必须产生检验记录）。 */
+export interface RoutingStep extends Stamped {
+  id: number
+  routing_id: number
+  sequence: number
+  name: string
+  workshop_id: number | null
+  workshop_name: string
+  workcenter: string
+  equipment_requirement: string
+  standard_hours: string
+  is_quality_gate: boolean
+  is_outsourced: boolean
+  remark: string
+}
+
+/** 工艺路线版本。版本与审核规则和 BOM 一致。 */
+export interface Routing extends Stamped {
+  id: number
+  company_id: number
+  company_name: string
+  code: string
+  style_id: number
+  style_code: string
+  style_name: string
+  sku_id: number | null
+  sku_code: string
+  scope_label: string
+  version_no: number
+  status: string
+  status_display: string
+  effective_from: string | null
+  effective_to: string | null
+  is_active: boolean
+  approval_instance_id: number | null
+  submitted_at: string | null
+  approved_at: string | null
+  approved_by_id: number | null
+  approved_by_name: string
+  remark: string
+  steps: RoutingStep[]
+  step_count: number
+  quality_gate_count: number
+}
+
+export interface RoutingStepInput {
+  sequence?: number
+  name: string
+  workshop_id?: number | null
+  workcenter?: string
+  equipment_requirement?: string
+  standard_hours?: string
+  is_quality_gate?: boolean
+  is_outsourced?: boolean
+  remark?: string
+}
+
+export interface RoutingInput {
+  code?: string
+  style_id: number
+  sku_id?: number | null
+  effective_from?: string | null
+  effective_to?: string | null
+  remark?: string
+  steps?: RoutingStepInput[]
+}
+
+/** BOM 快照（不可变结构，MES 工单下达时保存同一份内容）。 */
+export interface BomSnapshot {
+  bom_id: number
+  bom_code: string
+  status: string
+  version_no: number
+  style_id: number
+  sku_id: number | null
+  scope_key: string
+  effective_from: string | null
+  effective_to: string | null
+  line_count: number
+  lines: {
+    line_no: number
+    material_id: number
+    material_code: string
+    quantity: string
+    loss_rate: string
+    gross_quantity: string
+    uom_id: number | null
+    line_type: string
+    substitute_for_line_no: number | null
+    position: string
+    is_key_material: boolean
+  }[]
+}
+
+/** 工艺路线快照。 */
+export interface RoutingSnapshot {
+  routing_id: number
+  routing_code: string
+  status: string
+  version_no: number
+  style_id: number
+  sku_id: number | null
+  scope_key: string
+  effective_from: string | null
+  effective_to: string | null
+  step_count: number
+  steps: {
+    sequence: number
+    name: string
+    workshop_id: number | null
+    workcenter: string
+    equipment_requirement: string
+    standard_hours: string
+    is_quality_gate: boolean
+    is_outsourced: boolean
+  }[]
+}
+
+
+/** MRP 运行的净算过程分段（可解释性：期初、供给、需求、净需求、期末）。 */
+export interface MrpBucketTrace {
+  bucket_date: string
+  opening: string
+  supply: string
+  demand: string
+  net_requirement: string
+  closing: string
+}
+
+/** MRP 运行记录。 */
+export interface MrpRun extends Stamped {
+  id: number
+  company_id: number
+  company_name: string
+  run_no: string
+  status: string
+  status_display: string
+  bucket: string
+  bucket_display: string
+  horizon_start: string
+  horizon_end: string
+  warehouse_id: number | null
+  warehouse_name: string
+  parameters: Record<string, unknown>
+  summary: {
+    item_count?: number
+    level_count?: number
+    demand_line_count?: number
+    demand_quantity?: string
+    supply_line_count?: number
+    supply_quantity?: string
+    suggestion_count?: number
+    purchase_suggestion_count?: number
+    production_suggestion_count?: number
+    suggestion_quantity?: string
+    unexploded_materials?: string[]
+    bucket_count?: number
+    buckets?: string[]
+  }
+  demand_count: number
+  supply_count: number
+  suggestion_count: number
+  started_at: string | null
+  finished_at: string | null
+  error_message: string
+  archived_at: string | null
+  archived_by_id: number | null
+  archived_by_name: string
+  remark: string
+}
+
+export interface MrpRunInput {
+  company_id?: number | null
+  horizon_start?: string | null
+  horizon_end?: string | null
+  bucket?: string
+  warehouse_id?: number | null
+  remark?: string
+}
+
+/** MRP 需求行（销售需求或父件派生需求，含来源路径用于供需追溯）。 */
+export interface MrpDemandLine extends Stamped {
+  id: number
+  run_id: number
+  line_no: number
+  level: number
+  source_type: string
+  source_type_display: string
+  source_id: string
+  source_no: string
+  source_line_no: number | null
+  material_id: number
+  material_code: string
+  material_name: string
+  sku_id: number | null
+  sku_code: string
+  style_id: number | null
+  style_code: string
+  warehouse_id: number | null
+  warehouse_name: string
+  quantity: string
+  due_date: string | null
+  bucket_date: string
+  path: string
+  exploded: boolean
+  note: string
+}
+
+/** MRP 供给行（现有可用库存 / 采购在途）。 */
+export interface MrpSupplyLine extends Stamped {
+  id: number
+  run_id: number
+  line_no: number
+  source_type: string
+  source_type_display: string
+  material_id: number
+  material_code: string
+  material_name: string
+  warehouse_id: number | null
+  warehouse_name: string
+  quantity: string
+  available_date: string
+  bucket_date: string
+  reference_type: string
+  reference_id: string
+  reference_no: string
+  remark: string
+}
+
+/** MRP 建议（缺料清单）：采购建议可转草稿采购申请，生产建议待 MES 工单落地。 */
+export interface MrpSuggestion extends Stamped {
+  id: number
+  run_id: number
+  run_no: string
+  run_status: string
+  line_no: number
+  suggestion_type: string
+  suggestion_type_display: string
+  status: string
+  status_display: string
+  material_id: number
+  material_code: string
+  material_name: string
+  sku_id: number | null
+  sku_code: string
+  style_id: number | null
+  style_code: string
+  warehouse_id: number | null
+  warehouse_name: string
+  quantity: string
+  uom_id: number | null
+  uom_name: string
+  due_date: string
+  bucket_date: string
+  reason: string
+  detail: {
+    level?: number
+    bom_id?: number | null
+    bom_code?: string | null
+    bom_version_no?: number | null
+    trace?: MrpBucketTrace[]
+    demand_sources?: string[]
+  }
+  converted_document_type: string
+  converted_document_id: string
+  converted_document_no: string
+  converted_at: string | null
+  converted_by_id: number | null
+  converted_by_name: string
+  cancel_reason: string
+  remark: string
+  /** 前端按钮提示用；真正的拦截在后端服务层 */
+  convertible: boolean
 }

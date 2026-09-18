@@ -330,12 +330,30 @@ class MetaView(APIView):
         from apps.factory.models import Department, Employee, ProductionLine, Workshop
         from apps.identity.models import DataScopeType, PermissionType
         from apps.masterdata.models import IdentifierType, MaterialCategory, UoM
+        from apps.planning.models import (
+            BomLineType,
+            BomStatus,
+            MrpBucket,
+            MrpDemandSource,
+            MrpRunStatus,
+            MrpSuggestionStatus,
+            MrpSuggestionType,
+            MrpSupplySource,
+            RoutingStatus,
+        )
         from apps.procurement.models import (
             InspectionResult,
             OrderStatus,
             ReceiptStatus,
             RequisitionStatus,
             RequisitionType,
+        )
+        from apps.sales.models import (
+            OrderPriority,
+            ReturnDisposition,
+            ReturnStatus,
+            SalesOrderStatus,
+            ShipmentStatus,
         )
         from apps.srm.models import (
             AdmissionStatus,
@@ -349,6 +367,7 @@ class MetaView(APIView):
             DocumentType,
             LocationType,
             QualityStatus,
+            ReservationStatus,
             TransactionType,
             WarehouseType,
             ZoneType,
@@ -390,6 +409,37 @@ class MetaView(APIView):
                     {"value": v, "label": n} for v, n in OrderStatus.choices
                 ],
                 "receipt_statuses": [{"value": v, "label": n} for v, n in ReceiptStatus.choices],
+                "bom_statuses": [{"value": v, "label": n} for v, n in BomStatus.choices],
+                "routing_statuses": [{"value": v, "label": n} for v, n in RoutingStatus.choices],
+                "bom_line_types": [{"value": v, "label": n} for v, n in BomLineType.choices],
+                "mrp_run_statuses": [{"value": v, "label": n} for v, n in MrpRunStatus.choices],
+                "mrp_buckets": [{"value": v, "label": n} for v, n in MrpBucket.choices],
+                "mrp_demand_sources": [
+                    {"value": v, "label": n} for v, n in MrpDemandSource.choices
+                ],
+                "mrp_supply_sources": [
+                    {"value": v, "label": n} for v, n in MrpSupplySource.choices
+                ],
+                "mrp_suggestion_types": [
+                    {"value": v, "label": n} for v, n in MrpSuggestionType.choices
+                ],
+                "mrp_suggestion_statuses": [
+                    {"value": v, "label": n} for v, n in MrpSuggestionStatus.choices
+                ],
+                "sales_order_statuses": [
+                    {"value": v, "label": n} for v, n in SalesOrderStatus.choices
+                ],
+                "sales_order_priorities": [
+                    {"value": v, "label": n} for v, n in OrderPriority.choices
+                ],
+                "shipment_statuses": [{"value": v, "label": n} for v, n in ShipmentStatus.choices],
+                "return_statuses": [{"value": v, "label": n} for v, n in ReturnStatus.choices],
+                "return_dispositions": [
+                    {"value": v, "label": n} for v, n in ReturnDisposition.choices
+                ],
+                "reservation_statuses": [
+                    {"value": v, "label": n} for v, n in ReservationStatus.choices
+                ],
                 "inspection_results": [
                     {"value": v, "label": n} for v, n in InspectionResult.choices
                 ],

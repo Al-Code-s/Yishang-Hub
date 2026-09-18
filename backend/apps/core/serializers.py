@@ -5,7 +5,53 @@ from rest_framework import serializers
 from apps.core.models import Attachment, AuditLog, CodeRule, Dictionary, DictionaryItem
 
 
-class ReferenceIdSerializer(serializers.ModelSerializer):
+class DisplayLabelsMixin:
+    """为「带 choices 的字段」自动补一个 ``<field>_display`` 只读字段。
+
+    背景：枚举值在数据库里是稳定的英文键（例如 ``warehouse_type="raw"``、
+    ``department_type="management"``）。直接渲染到界面就会显示英文，与任务书
+    8.1「中文业务界面」不符；而这个翻译在 Django 里本来就存在
+    （``get_<field>_display()``），没有理由让每个模块各写一遍、更不该由前端硬编码。
+
+    约定：
+    * 只对**序列化器 ``Meta.fields`` 中确实包含**、且模型字段**确实有 choices** 的字段生效；
+    * 已经被模块显式声明的 ``<field>_display`` 不覆盖（保留模块自己的口径）；
+    * 新增字段一律 ``read_only``，因此不影响写入、也不需要迁移；
+    * 写入与筛选仍然使用**英文键**，只有展示层拿到中文标签。
+    """
+
+    def get_fields(self) -> dict[str, serializers.Field]:
+        from django.core.exceptions import FieldDoesNotExist
+
+        fields = super().get_fields()
+        model = getattr(getattr(self, "Meta", None), "model", None)
+        if model is None:
+            return fields
+
+        for name in list(fields):
+            display_name = f"{name}_display"
+            if display_name in fields:
+                continue
+            try:
+                model_field = model._meta.get_field(name)
+            except FieldDoesNotExist:
+                continue
+            if not getattr(model_field, "choices", None):
+                continue
+            if not getattr(model_field, "concrete", False):
+                continue
+            if not hasattr(model, f"get_{name}_display"):
+                continue
+            verbose = getattr(model_field, "verbose_name", "") or name
+            fields[display_name] = serializers.CharField(
+                source=f"get_{name}_display",
+                read_only=True,
+                label=f"{verbose}（中文标签）",
+            )
+        return fields
+
+
+class ReferenceIdSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
     """把 ``<外键>_id`` 字段声明为可写的主键关联字段。
 
     背景：DRF 在序列化器 fields 中遇到 ``company_id`` 这类名称时，会因为模型上存在

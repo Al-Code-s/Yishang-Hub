@@ -133,6 +133,34 @@
     "permission_code": "crm.customer_contact.view"
   },
   {
+    "code": "sales",
+    "path": "/sales",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "sales.order",
+    "path": "/sales/orders",
+    "component": "views/sales/SalesOrderList.vue",
+    "menu_type": "page",
+    "permission_code": "sales.order.view"
+  },
+  {
+    "code": "sales.shipment",
+    "path": "/sales/shipments",
+    "component": "views/sales/SalesShipmentList.vue",
+    "menu_type": "page",
+    "permission_code": "sales.shipment.view"
+  },
+  {
+    "code": "sales.return",
+    "path": "/sales/returns",
+    "component": "views/sales/SalesReturnList.vue",
+    "menu_type": "page",
+    "permission_code": "sales.return.view"
+  },
+  {
     "code": "srm",
     "path": "/srm",
     "component": "Layout",
@@ -187,6 +215,41 @@
     "component": "views/procurement/GoodsReceiptList.vue",
     "menu_type": "page",
     "permission_code": "procurement.receipt.view"
+  },
+  {
+    "code": "planning",
+    "path": "/planning",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "planning.bom",
+    "path": "/planning/boms",
+    "component": "views/planning/BomList.vue",
+    "menu_type": "page",
+    "permission_code": "planning.bom.view"
+  },
+  {
+    "code": "planning.routing",
+    "path": "/planning/routings",
+    "component": "views/planning/RoutingList.vue",
+    "menu_type": "page",
+    "permission_code": "planning.routing.view"
+  },
+  {
+    "code": "planning.mrp",
+    "path": "/planning/mrp-runs",
+    "component": "views/planning/MrpRunList.vue",
+    "menu_type": "page",
+    "permission_code": "planning.mrp.view"
+  },
+  {
+    "code": "planning.mrp_suggestion",
+    "path": "/planning/mrp-suggestions",
+    "component": "views/planning/MrpSuggestionList.vue",
+    "menu_type": "page",
+    "permission_code": "planning.mrp.view"
   },
   {
     "code": "wms",

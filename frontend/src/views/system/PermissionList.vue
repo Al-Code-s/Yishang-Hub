@@ -15,7 +15,7 @@
 
     <el-alert v-if="errorMessage" type="error" :closable="false" show-icon :title="errorMessage" />
 
-    <el-tabs v-model="activeTab" class="ys-permission__tabs">
+    <el-tabs v-model="activeTab" class="ys-panel ys-panel--flush">
       <el-tab-pane :label="`权限点（${permissionCount}）`" name="permissions">
         <div class="ys-filter-bar">
           <el-input
@@ -171,13 +171,6 @@ onMounted(load)
 </script>
 
 <style scoped>
-.ys-permission__tabs {
-  padding: 0 12px 12px;
-  background: #fff;
-  border: 1px solid var(--ys-gray-200);
-  border-radius: 6px;
-}
-
 .ys-permission__module {
   margin-right: 4px;
   font-weight: 600;

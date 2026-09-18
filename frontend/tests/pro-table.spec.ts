@@ -62,6 +62,57 @@ describe('ProTable', () => {
     expect(wrapper.text()).toContain('暂无数据')
   })
 
+  it('枚举列优先展示后端返回的中文标签，而不是英文键', async () => {
+    const enumColumns: ProTableColumn[] = [
+      { prop: 'code', label: '仓库编码' },
+      { prop: 'warehouse_type', label: '仓库类型' },
+      { prop: 'warehouse_type_display', label: '仓库类型标签' },
+    ]
+    const wrapper = mount(ProTable, {
+      props: {
+        columns: enumColumns,
+        rows: [
+          {
+            id: 1,
+            code: 'WH-FG-01',
+            warehouse_type: 'finished',
+            warehouse_type_display: '成品仓',
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      },
+      global: { plugins: [ElementPlus] },
+    })
+    await nextTick()
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('成品仓')
+    expect(text).not.toContain('finished')
+  })
+
+  it('没有中文标签时退回原始值，不显示 undefined', async () => {
+    const enumColumns: ProTableColumn[] = [{ prop: 'warehouse_type', label: '仓库类型' }]
+    const wrapper = mount(ProTable, {
+      props: {
+        columns: enumColumns,
+        rows: [{ id: 1, warehouse_type: 'raw' }],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      },
+      global: { plugins: [ElementPlus] },
+    })
+    await nextTick()
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('raw')
+    expect(text).not.toContain('undefined')
+  })
+
   it('有错误信息时展示告警而不是静默空白', async () => {
     const wrapper = mount(ProTable, {
       props: {

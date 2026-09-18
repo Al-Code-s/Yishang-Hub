@@ -28,7 +28,7 @@
 | `self` | 仅本人 | 按 `created_by` / `applicant` 等归属字段过滤 |
 | `custom` | 自定义组织范围 | 多维度 `RoleScopeGrant`，各维度内部取并集 |
 
-## 三、权限编码清单（生成自注册表，实际共 139 条）
+## 三、权限编码清单（生成自注册表，实际共 173 条）
 
 ### analytics（1 条）
 
@@ -125,7 +125,7 @@
 | `integration.outbox.retry` | 重试发件箱事件 |
 | `integration.outbox.view` | 查看发件箱事件 |
 
-### masterdata（26 条）
+### masterdata（27 条）
 
 | 权限编码 | 名称 |
 | --- | --- |
@@ -134,6 +134,7 @@
 | `masterdata.color.view` | 查看颜色 |
 | `masterdata.identifier.create` | 新增标识 |
 | `masterdata.identifier.deactivate` | 停用标识 |
+| `masterdata.identifier.update` | 修改标识 |
 | `masterdata.identifier.view` | 查看标识 |
 | `masterdata.material.create` | 新增物料 |
 | `masterdata.material.deactivate` | 启用/停用物料 |
@@ -156,6 +157,26 @@
 | `masterdata.uom.update` | 修改计量单位 |
 | `masterdata.uom.view` | 查看计量单位 |
 
+### planning（15 条）
+
+| 权限编码 | 名称 |
+| --- | --- |
+| `planning.bom.create` | 新增 BOM |
+| `planning.bom.obsolete` | 作废 BOM 版本 |
+| `planning.bom.submit` | 提交 BOM 审批 |
+| `planning.bom.update` | 修改 BOM 草稿 |
+| `planning.bom.view` | 查看 BOM |
+| `planning.mrp.archive` | 归档 MRP 运行 |
+| `planning.mrp.cancel` | 取消 MRP 建议 |
+| `planning.mrp.convert` | MRP 建议转单 |
+| `planning.mrp.run` | 运行 MRP 计算 |
+| `planning.mrp.view` | 查看 MRP 运行与建议 |
+| `planning.routing.create` | 新增工艺路线 |
+| `planning.routing.obsolete` | 作废工艺路线版本 |
+| `planning.routing.submit` | 提交工艺路线审批 |
+| `planning.routing.update` | 修改工艺路线草稿 |
+| `planning.routing.view` | 查看工艺路线 |
+
 ### procurement（15 条）
 
 | 权限编码 | 名称 |
@@ -176,6 +197,27 @@
 | `procurement.requisition.update` | 修改/取消采购申请 |
 | `procurement.requisition.view` | 查看采购申请 |
 
+### sales（16 条）
+
+| 权限编码 | 名称 |
+| --- | --- |
+| `sales.order.close` | 关闭销售订单 |
+| `sales.order.create` | 新增销售订单 |
+| `sales.order.release` | 释放销售订单库存占用 |
+| `sales.order.reserve` | 销售订单库存占用 |
+| `sales.order.submit` | 提交销售订单审批 |
+| `sales.order.update` | 修改/取消销售订单 |
+| `sales.order.view` | 查看销售订单 |
+| `sales.return.create` | 新增销售退货单 |
+| `sales.return.inspect` | 销售退货检验判定 |
+| `sales.return.post` | 销售退货收货过账 |
+| `sales.return.update` | 修改/取消销售退货单 |
+| `sales.return.view` | 查看销售退货单 |
+| `sales.shipment.create` | 新增销售发货单 |
+| `sales.shipment.post` | 销售发货出库过账 |
+| `sales.shipment.update` | 修改/取消销售发货单 |
+| `sales.shipment.view` | 查看销售发货单 |
+
 ### srm（10 条）
 
 | 权限编码 | 名称 |
@@ -191,7 +233,7 @@
 | `srm.supplier_qualification.update` | 修改供应商资质 |
 | `srm.supplier_qualification.view` | 查看供应商资质 |
 
-### wms（16 条）
+### wms（18 条）
 
 | 权限编码 | 名称 |
 | --- | --- |
@@ -200,6 +242,8 @@
 | `wms.document.reverse` | 库存单据冲销 |
 | `wms.document.update` | 修改库存单据草稿 |
 | `wms.document.view` | 查看库存单据 |
+| `wms.inventory.release` | 释放库存占用 |
+| `wms.inventory.reserve` | 库存占用 |
 | `wms.inventory.view` | 查看库存余额与流水 |
 | `wms.location.create` | 新增储位 |
 | `wms.location.update` | 修改储位 |
@@ -224,7 +268,7 @@
 | `workflow.template.update` | 修改审批模板 |
 | `workflow.template.view` | 查看审批模板 |
 
-## 四、菜单树与页面映射（生成自注册表，实际共 47 项）
+## 四、菜单树与页面映射（生成自注册表，实际共 56 项）
 
 | 菜单编码 | 名称 | 路由 | 组件 | 所需权限 | 类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -247,6 +291,10 @@
 | `crm` | 客户管理 | /crm | Layout | - | directory |
 | 　└ `crm.customer` | 客户档案 | /crm/customers | views/crm/CustomerList.vue | `crm.customer.view` | page |
 | 　└ `crm.customer-contact` | 客户联系人 | /crm/customer-contacts | views/crm/CustomerContactList.vue | `crm.customer_contact.view` | page |
+| `sales` | 销售管理 | /sales | Layout | - | directory |
+| 　└ `sales.order` | 销售订单 | /sales/orders | views/sales/SalesOrderList.vue | `sales.order.view` | page |
+| 　└ `sales.shipment` | 销售发货 | /sales/shipments | views/sales/SalesShipmentList.vue | `sales.shipment.view` | page |
+| 　└ `sales.return` | 销售退货 | /sales/returns | views/sales/SalesReturnList.vue | `sales.return.view` | page |
 | `srm` | 供应商管理 | /srm | Layout | - | directory |
 | 　└ `srm.supplier` | 供应商档案 | /srm/suppliers | views/srm/SupplierList.vue | `srm.supplier.view` | page |
 | 　└ `srm.supplier-contact` | 供应商联系人 | /srm/supplier-contacts | views/srm/SupplierContactList.vue | `srm.supplier_contact.view` | page |
@@ -255,6 +303,11 @@
 | 　└ `procurement.requisition` | 采购申请 | /procurement/requisitions | views/procurement/RequisitionList.vue | `procurement.requisition.view` | page |
 | 　└ `procurement.order` | 采购订单 | /procurement/orders | views/procurement/PurchaseOrderList.vue | `procurement.order.view` | page |
 | 　└ `procurement.receipt` | 采购收货 | /procurement/receipts | views/procurement/GoodsReceiptList.vue | `procurement.receipt.view` | page |
+| `planning` | 计划管理 | /planning | Layout | - | directory |
+| 　└ `planning.bom` | 物料清单（BOM） | /planning/boms | views/planning/BomList.vue | `planning.bom.view` | page |
+| 　└ `planning.routing` | 工艺路线 | /planning/routings | views/planning/RoutingList.vue | `planning.routing.view` | page |
+| 　└ `planning.mrp` | MRP 运算 | /planning/mrp-runs | views/planning/MrpRunList.vue | `planning.mrp.view` | page |
+| 　└ `planning.mrp_suggestion` | 缺料与建议 | /planning/mrp-suggestions | views/planning/MrpSuggestionList.vue | `planning.mrp.view` | page |
 | `wms` | 仓储管理 | /wms | Layout | - | directory |
 | 　└ `wms.warehouse` | 仓库与储位 | /wms/warehouses | views/wms/WarehouseList.vue | `wms.warehouse.view` | page |
 | 　└ `wms.inventory-balance` | 库存余额 | /wms/inventory-balances | views/wms/InventoryBalanceList.vue | `wms.inventory.view` | page |
@@ -326,8 +379,9 @@
 | 3 （库存数据范围） | `test_wms_inventory.py::test_api_enforces_warehouse_scope`：仓库范围外的仓库 ID 不可查询、不可建单 |
 | 2 （库存操作权限） | `test_wms_inventory.py::test_inventory_endpoints_require_permission`：无 `wms.document.post` 的用户过账返回 403 |
 | 1 （库存未登录） | `test_wms_inventory.py::test_inventory_endpoints_require_login`：余额/流水/单据三类接口未登录均被拒 |
+| 1 / 2 / 3 / 4 （MRP） | `test_mrp.py`：`test_anonymous_access_rejected`（匿名 403）、`test_view_only_user_cannot_run_mrp`、`test_user_without_convert_permission_cannot_convert`、`test_convert_requires_procurement_requisition_create`（转单同时要求 `planning.mrp.convert` 与 `procurement.requisition.create`）、`test_api_run_scoped_to_company_and_warehouse`（公司 / 仓库范围）、`test_mrp_permissions_do_not_grant_other_modules`（权限不外溢）、`test_archive_api_requires_permission_and_is_audited` |
 
-其余必测案例（并发、幂等、MRP、排班等）属于阶段 2+，见 `docs/test-report.md` 的「未执行」清单。
+其余必测案例（部分并发场景、排班冲突、表计复位等）属于后续阶段，见 `docs/test-report.md` 的「未执行」清单。
 
 ## 八、安全限制（硬性）
 

@@ -146,6 +146,45 @@ def test_session_reports_must_change_password_flag(api_client, registry_permissi
     assert response.json()["user"]["must_change_password"] is True
 
 
+def test_login_requires_csrf_token(company):
+    """登录接口本身也必须校验 CSRF（任务书 6.1「登录接口同样防护 CSRF」）。
+
+    回归背景：``LoginView`` 清空了 ``authentication_classes``，而 DRF 的
+    ``SessionAuthentication`` 只对**已登录会话**调用 ``enforce_csrf``，
+    匿名请求不会被校验；缺少 Django 层的 ``csrf_protect`` 时登录会变成
+    无 CSRF 防护的写接口。
+    """
+    from django.test import Client
+
+    make_user(username="csrf_login", company=company, is_superuser=True)  # noqa: F841
+    plain = Client(enforce_csrf_checks=True)
+    response = plain.post(
+        LOGIN_URL,
+        data={"username": "csrf_login", "password": "Tst!Passw0rd2026"},
+        content_type="application/json",
+    )
+    assert response.status_code == 403
+    assert LoginAttempt.objects.count() == 0
+
+
+def test_login_succeeds_with_csrf_token(company):
+    """携带正确 CSRF 令牌（先取 Cookie 再登录）时登录正常。"""
+    from django.test import Client
+
+    make_user(username="csrf_login_ok", company=company, is_superuser=True)
+    plain = Client(enforce_csrf_checks=True)
+    boot = plain.get(CSRF_URL)
+    token = boot.cookies["yishang_csrftoken"].value
+    response = plain.post(
+        LOGIN_URL,
+        data={"username": "csrf_login_ok", "password": "Tst!Passw0rd2026"},
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=token,
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["user"]["username"] == "csrf_login_ok"
+
+
 def test_write_requests_require_csrf_token(client, company):
     """未携带 CSRF 令牌的写操作必须被拒绝（DRF 视图之外的 Django 校验同样生效）。"""
     from django.test import Client

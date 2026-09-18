@@ -55,6 +55,8 @@ backend/
 │   ├── srm/                供应商、联系人、资质（寻源/报价/评分在阶段 2 后续增量）
 │   ├── wms/                仓库、库区、储位、库存余额与流水、库存单据（统一库存服务）
 │   ├── procurement/        采购申请、采购订单、采购收货（收货过账与放行调用 wms 库存服务）
+│   ├── sales/              销售订单、库存占用、发货出库、销售退货（库存变更全部调用 wms 库存服务）
+│   ├── planning/           BOM / 工艺路线（版本化工程数据）+ MRP（净算 / 建议 / 建议转单）
 │   ├── workflow/           审批模板、实例、节点、待办
 │   ├── integration/        Outbox 事件、单据关系（内部协同中心）
 │   └── analytics/          看板与报表聚合
@@ -62,11 +64,12 @@ backend/
 ├── manage.py  pyproject.toml  uv.lock
 ```
 
-**已创建**：`core / identity / factory / masterdata / crm / srm / wms / procurement / workflow / integration / analytics`。
+**已创建**：`core / identity / factory / masterdata / crm / srm / wms / procurement / sales / planning / workflow / integration / analytics`。
 
-**未创建的模块**：`sales / planning / mes / qms / eam / ems / ehs / logistics / iot /
+**未创建的模块**：`mes / qms / eam / ems / ehs / logistics / iot /
 endpoint_security` 当前**不创建目录**。任务书 20.3 要求「不创建大量空壳模块冒充完成」，
-因此这些模块在阶段 2–6 按需建立（`crm`、`srm` 于阶段 2 第一步、`procurement` 于阶段 2 第三步按此原则建立）。
+因此这些模块在阶段 3–6 按需建立（`crm`、`srm` 于阶段 2 第一步，`procurement` 于阶段 2 第三步，
+`sales` 于阶段 2 第四步，`planning` 于阶段 3 第一步（BOM 与工艺路线）、阶段 3 第二步（MRP），均按此原则建立）。
 
 **命名约定**：顶层不创建 `platform.py`（与标准库同名），平台级能力归属 `core`。
 
@@ -164,3 +167,10 @@ migrate ← 一次性发布步骤，由单个实例执行
 | ADR-03c | 库存流水为**只追加**（模型层拒绝 update/delete） | 普通 CRUD 模型 | 账实一致与审计要求；模型 `save()`/`delete()` 抛 `ImmutableLedgerError` |
 | ADR-04 | 看板默认轮询，不引入 WebSocket | ASGI + Channels | 任务书 3.1 要求第一版避免过早引入复杂实时基础设施 |
 | ADR-05 | 阶段 0/1 不创建未实施模块目录 | 预建空壳 | 任务书 20.3：不以空壳模块冒充完成 |
+| ADR-06 | 工程数据（BOM / 工艺路线）**版本化 + 审批后冻结**，变更只能派生新版本 | 就地修改已审核版本 / 只留审计快照 | 已下达工单引用的版本内容必须不变（任务书 9.5、14.2 案例 13）；「同一范围唯一生效版本」由服务层 `select_for_update` 保证（MySQL 无部分唯一索引） |
+| ADR-07 | 工程版本范围唯一键用 `scope_key` 规范化字符串 | 直接对 `(company, style, sku, version_no)` 建唯一索引 | 同 ADR-03：MySQL 唯一索引不约束 NULL，「款式通用」多版本会冲突不到 |
+| ADR-08 | 快照由 `build_*_snapshot()` 输出 dict，**不预先建快照表** | 现在就建空的工单快照表 | 任务书 20.3：不建空壳；快照归属方是 MES 工单，阶段 3 后续增量落库 |
+| ADR-09 | MRP 采用**同步计算 + 落库快照**（不投 Celery） | 异步任务 + 轮询结果 | 任务书 4.4「不将所有操作都异步化」、7.4「数据库是任务业务结果的最终依据」；演示规模下单次净算为毫秒级，同步执行让"运算—结果—转单"在同一个请求-响应周期内可解释、可复验；数据量增长后可再评估异步化 |
+| ADR-10 | MRP 内核拆分为**纯计算 `_compute()` + 落库 `_persist()`** | 边算边写表 | 计算逻辑可被测试直接调用（无副作用），落库集中在单一事务内完成；`MrpRun.parameters` / `summary` 固化本次口径，重算只产生新运行，不覆盖历史 |
+| ADR-11 | 生产建议**不伪造 MES 工单**，`convert_suggestion` 直接拒绝（`PRODUCTION_ORDER_NOT_IMPLEMENTED`） | 先建一个"占位工单" | 任务书 20.3「不创建大量空壳模块冒充完成」「不用模拟结果冒充真实」；错误码让前端能给出明确提示，MES 落地后再打开该分支 |
+| ADR-12 | MRP 对库存 / 采购**只读**，转单只产出**草稿**单据 | MRP 直接生成采购订单 / 工单 | 任务书 10.6「转单前重新检查建议有效性」「不得重复转单」，以及任务书 4.3「禁止在 View 中编写库存逻辑」；草稿单据仍走采购审批，审批与过账是不同动作 |

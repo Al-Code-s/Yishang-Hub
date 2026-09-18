@@ -147,8 +147,11 @@
    必测案例 11 的**同仓移库守恒**部分已通过；**跨仓在途**部分**未执行**。
 2. **盘点与范围冻结**：`adjustment` 类型已可用于调整，但盘点单、盘点范围内冻结变动、
    差异审批流程尚未实现。
-3. **冻结/解冻与占用/释放的业务入口**：数量桶已建模并有约束，但尚无 `freeze`/`unfreeze`/`reserve`/`release`
-   业务服务动作（需由销售订单、工单等调用方驱动，属阶段 2 后续与阶段 3）。
+3. **冻结/解冻与占用/释放的业务入口**：**占用 / 释放已有业务入口**——销售订单「占用库存」与
+   销售发货、销售退货、MRP 只读扣减都经统一库存服务的 `reserve_stock()` /
+   `release_reservation()` / `release_reservations_for_biz()` 完成（阶段 2 销售增量）。
+   **冻结 / 解冻仍无业务入口**：数量桶已建模并有约束，但 `freeze` / `unfreeze` 服务动作未实现，
+   待盘点范围冻结等场景随阶段交付。
 4. **库位推荐与标签打印**：未实现。
 5. **库存成本**：`InventoryBalance` 只保存**数量**，未保存金额；移动加权平均属阶段 7 深化。
 6. **`allow_negative_stock` 开关**：已建模为仓库字段，但服务层**不考虑**该开关，始终拒绝负库存。
@@ -174,3 +177,57 @@
 服务内部幂等键按 `receipt_id + line_no` 派生，因此传入同一个外部 `Idempotency-Key` 时
 不会出现「第二行被判定为重复请求而跳过」的问题（`test_multi_line_receipt_inspect_releases_every_line_once` 已固化）。
 `GoodsReceipt.quality_document_id` 记录最后一次放行生成的单据，用于追溯。
+
+## 十、库存占用与释放（阶段 2 第四步新增）
+
+销售发货遵循「**先占用、后发货**」。占用由统一库存服务提供，业务模块不得自行实现。
+
+### 10.1 占用的三条硬规则
+
+1. **占用不写库存流水。** `InventoryTransaction` 记录的是**实存量**增减；占用只把
+   「可用量」转为「占用量」，实物没有移动。占用有自己的生命周期（`active → closed / cancelled`），
+   因此单独建表 `wms_stockreservation`。
+2. **一致性口径**：`InventoryBalance.reserved == 该维度所有未结占用数量之和`，
+   其中未结数量 = `quantity - consumed_quantity - released_quantity`。
+   该口径由 `reconcile_inventory` 校验，**不由 signals 维护**。
+3. **只能占用合格库存**：待检（`quarantine`）与不合格（`rejected`）库存不能用于销售或领用。
+
+### 10.2 幂等
+
+每次占用携带固定 `dedup_key`（销售侧为 `sales-order-{order_id}-line-{line_id}`），
+写入 `wms_stockreservation.request_key`（**单列唯一**）。重复点击「库存占用」：
+先命中已存在的占用记录并直接返回，**不会重复扣减可用量**；并发下靠唯一约束 +
+捕获 `IntegrityError` 兜底。占用记录先落库、再对余额加锁，顺序刻意如此——
+余额加锁失败时整个事务回滚，不会留下「占了量但没有记录」的中间态。
+
+### 10.3 结束状态：`closed` 与 `cancelled` 的区别
+
+| 结束方式 | 状态 | 含义 |
+| --- | --- | --- |
+| 被发货消耗（`consumed_quantity` 累加） | `closed` | 占用转化为实际出库 |
+| 被释放归还（`released_quantity` 累加，且从未被消耗） | `cancelled` | 订单取消 / 人工释放，可用量已归还 |
+
+部分消耗 + 部分释放时收敛为 `closed`（存在真实消耗事实）。
+
+### 10.4 出库维度必须与占用维度一致
+
+占用维度 = 公司 + 物料 + 仓库 + 储位 + 批次 + 卷号 + 质量状态（即 `dimension_key`）。
+发货过账时，**发货单行留空的储位 / 批次 / 卷号由占用维度推导**
+（`stock.open_reservation_hint`），因此前端不填储位是正常用法；
+若用户显式填写了与占用不同的维度，`require_full_reservation` 会拒绝出库
+（`RESERVATION_REQUIRED`），而不是悄悄扣别的维度。
+
+发货出库必须**全部**由**本单据来源**（`biz_type` + `biz_id`）的占用覆盖：
+不会动用其他订单的占用，也不会把一个订单的占用挪给另一个订单。
+
+### 10.5 库位推荐与「分散库存」
+
+未指定储位/批次时，`stock.choose_reservation_dimension` 按「**可用量最大的合格维度**」占用。
+若该维度不足而仓库总量足够（库存分散在多个储位/批次），返回
+`STOCK_SPLIT_ACROSS_DIMENSIONS` 并给出最大维度可用量与总量，引导先移库合并或指定储位、批次。
+**跨维度自动拆分占用尚未实现**（见 `docs/assumptions.md`）。
+
+### 10.6 锁顺序
+
+占用、释放、过账三处的加锁顺序统一为「**余额 → 占用**」，且多维度时按
+`dimension_key` 升序加锁，与 `_lock_balances` 一致，避免相反顺序造成死锁（任务书 5.6）。

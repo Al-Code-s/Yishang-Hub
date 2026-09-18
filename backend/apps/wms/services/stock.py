@@ -47,6 +47,8 @@ from apps.wms.models import (
     InventoryTransaction,
     Location,
     QualityStatus,
+    ReservationStatus,
+    StockReservation,
     TransactionType,
     Warehouse,
     build_dimension_key,
@@ -357,40 +359,57 @@ def _assert_quality_allowed(
             )
 
 
+def _lock_or_create_balance(dimension: Dimension) -> InventoryBalance:
+    """对单个维度加锁；余额行不存在时**并发安全创建**后重新加锁。
+
+    注意：尚不存在的余额行无法靠 `select_for_update()` 保护（任务书 5.6），
+    因此这里用「唯一约束 + 捕获 IntegrityError」的创建方式，而不是先查后建。
+    """
+    balance = InventoryBalance.objects.select_for_update().filter(
+        dimension_key=dimension.key
+    ).first()
+    if balance is not None:
+        return balance
+    try:
+        with transaction.atomic():
+            InventoryBalance.objects.create(**dimension.as_balance_fields())
+            logger.info("库存余额行创建 dimension_key=%s", dimension.key)
+    except IntegrityError:
+        pass  # 其他事务抢先创建，下面重新取锁即可
+    balance = (
+        InventoryBalance.objects.select_for_update().filter(dimension_key=dimension.key).first()
+    )
+    if balance is None:
+        raise StateConflict("库存余额行并发创建失败，请重试。", code="BALANCE_CREATE_RACE")
+    return balance
+
+
 def _lock_balances(movements: list[Movement]) -> dict[str, InventoryBalance]:
-    """按维度键升序加锁。固定顺序可显著降低并发死锁概率（任务书 5.6）。"""
+    """按维度键**升序**加锁。固定顺序可显著降低并发死锁概率（任务书 5.6）。"""
     dimensions: dict[str, Dimension] = {}
     for movement in movements:
         dimensions.setdefault(movement.dimension.key, movement.dimension)
-
-    balances: dict[str, InventoryBalance] = {}
-    for key in sorted(dimensions):
-        dimension = dimensions[key]
-        balance = InventoryBalance.objects.select_for_update().filter(dimension_key=key).first()
-        if balance is None:
-            # 余额行不存在时 select_for_update() 不提供保护：先并发安全创建，再重新加锁。
-            try:
-                with transaction.atomic():
-                    InventoryBalance.objects.create(**dimension.as_balance_fields())
-                    logger.info("库存余额行创建 dimension_key=%s", key)
-            except IntegrityError:
-                pass  # 其他事务抢先创建，下面重新取锁即可
-            balance = InventoryBalance.objects.select_for_update().filter(dimension_key=key).first()
-            if balance is None:
-                raise StateConflict(
-                    "库存余额行并发创建失败，请重试。", code="BALANCE_CREATE_RACE"
-                )
-        balances[key] = balance
-    return balances
+    return {key: _lock_or_create_balance(dimensions[key]) for key in sorted(dimensions)}
 
 
-def _assert_available(movements: list[Movement], balances: dict[str, InventoryBalance]) -> None:
-    """在锁内重新校验可用量（锁外校验不作为依据）。"""
+def _assert_available(
+    movements: list[Movement],
+    balances: dict[str, InventoryBalance],
+    *,
+    released: Mapping[str, Decimal] | None = None,
+) -> None:
+    """在锁内重新校验可用量（锁外校验不作为依据）。
+
+    `released` 是本次过账将要消耗的**本单据来源占用**：占用量本身已经从可用量中扣除，
+    因此这部分数量要加回可用量，否则「先占用、后发货」会被误判为可用不足。
+    """
+    released = released or {}
     for movement in movements:
         if movement.delta >= ZERO:
             continue
         balance = balances[movement.dimension.key]
-        available = balance.available
+        from_reservation = released.get(movement.dimension.key, ZERO)
+        available = balance.available + from_reservation
         required = -movement.delta
         if available < required:
             warehouse_allows_negative = getattr(balance.warehouse, "allow_negative_stock", False)
@@ -400,6 +419,7 @@ def _assert_available(movements: list[Movement], balances: dict[str, InventoryBa
                     **movement.dimension.describe(),
                     "required": str(required),
                     "available": str(available),
+                    "released_from_reservation": str(from_reservation),
                     "warehouse_allows_negative": bool(warehouse_allows_negative),
                     "hint": "数据库非负约束始终生效；即使仓库开启允许负库存，也需先补做入库或库存调整单。",
                 },
@@ -413,15 +433,30 @@ def _write_movements(
     *,
     user: Any,
     reason: str = "",
+    consumption: ReservationConsumption | None = None,
 ) -> None:
-    """同一事务内更新【余额 + 流水】。流水只追加，重复执行由 dedup_key 唯一约束兜底。"""
+    """同一事务内更新【余额 + 流水 + 占用】。
+
+    流水只追加，重复执行由 `dedup_key` 唯一约束兜底。占用消耗先并入余额，
+    这样每条流水的 `reserved_after` 都是本次操作后的真实占用量。
+    """
     operator = user if getattr(user, "pk", None) else None
+    plan = consumption or EMPTY_CONSUMPTION
+    touched: dict[str, InventoryBalance] = {}
+
+    for reservation, take in plan.rows:
+        balance = balances[reservation.dimension_key]
+        balance.reserved = (balance.reserved or ZERO) - take
+        reservation.consumed_quantity = (reservation.consumed_quantity or ZERO) + take
+        reservation.refresh_status(save=False)
+        touched[reservation.dimension_key] = balance
+
     for movement in movements:
         balance = balances[movement.dimension.key]
         before = balance.on_hand or ZERO
         after = before + movement.delta
         balance.on_hand = after
-        balance.save()
+        touched[movement.dimension.key] = balance
         InventoryTransaction.objects.create(
             company_id=balance.company_id,
             document=document,
@@ -443,6 +478,13 @@ def _write_movements(
             dedup_key=movement.dedup_key,
             operator=operator,
         )
+
+    for key in sorted(touched):
+        touched[key].save()
+    for reservation, _take in plan.rows:
+        reservation.save()
+
+
 def _record_document_audit(
     document: InventoryDocument,
     *,
@@ -468,12 +510,16 @@ def post_document(
     user: Any,
     idempotency_key: str | None = None,
     reason: str = "",
+    require_full_reservation: bool = False,
 ) -> InventoryDocument:
     """库存单据过账：唯一的库存变动入口。
 
     幂等语义（任务书 7.2）：
     * 单据已过账且 `idempotency_key` 与库中一致 → 直接返回原单据，不重复扣减；
     * 同一幂等键被**其他**单据占用 → 拒绝，避免「同键不同内容」被静默接受。
+
+    `require_full_reservation=True` 时要求出库数量**全部来自本单据来源的占用**
+    （销售发货使用）：未完成占用就出库会被拒绝，而不是占用他人库存。
     """
     if getattr(document, "pk", None) is None:
         raise ValidationFailed("单据必须先保存后才能过账。", code="DOCUMENT_NOT_SAVED")
@@ -488,6 +534,7 @@ def post_document(
                     idempotency_key=idempotency_key,
                     reason=reason,
                     attempt=attempt,
+                    require_full_reservation=require_full_reservation,
                 )
         except OperationalError as exc:
             if not _is_retryable(exc) or attempt >= MAX_LOCK_RETRIES:
@@ -508,6 +555,7 @@ def _post_locked(
     idempotency_key: str | None,
     reason: str,
     attempt: int,
+    require_full_reservation: bool = False,
 ) -> InventoryDocument:
     require_codes(user, "wms.document.post")
     document = (
@@ -561,8 +609,15 @@ def _post_locked(
 
     movements = _plan_movements(document, lines)
     balances = _lock_balances(movements)
-    _assert_available(movements, balances)
-    _write_movements(document, movements, balances, user=user, reason=reason)
+    # 出库先锁定「本单据来源」的占用，再校验可用量：占用可抵消本次出库需求。
+    # 未占用部分仍按普通出库校验，例如生产领料不经过销售占用。
+    consumption = _plan_reservation_consumption(document, movements)
+    if require_full_reservation:
+        _assert_reservation_covers(document, movements, consumption)
+    _assert_available(movements, balances, released=consumption.totals)
+    _write_movements(
+        document, movements, balances, user=user, reason=reason, consumption=consumption
+    )
 
     before_status = document.status
     if not document.document_no:
@@ -582,6 +637,10 @@ def _post_locked(
             "status": {"before": before_status, "after": document.status},
             "document_no": {"before": "", "after": document.document_no},
             "line_count": {"before": 0, "after": len(lines)},
+            "reserved_consumed": {
+                "before": 0,
+                "after": sum(consumption.totals.values(), ZERO),
+            },
         },
         reason=reason,
     )
@@ -596,6 +655,7 @@ def _post_locked(
             "line_count": len(lines),
             "biz_type": document.biz_type,
             "biz_id": document.biz_id,
+            "reserved_consumed": sum(consumption.totals.values(), ZERO),
         },
         dedup_key=f"wms.document.posted:{document.pk}",
     )
@@ -798,10 +858,18 @@ def release_quality(
 __all__ = [
     "Dimension",
     "Movement",
+    "ReservationConsumption",
     "allocate_document_no",
+    "choose_reservation_dimension",
     "create_document",
+    "document_line_hint",
+    "open_reservation_hint",
+    "open_reserved_quantity",
     "post_document",
     "release_quality",
+    "release_reservation",
+    "release_reservations_for_biz",
+    "reserve_stock",
     "reverse_document",
     "update_draft_document",
 ]
@@ -940,3 +1008,543 @@ def update_draft_document(
                 actor=user,
             )
     return locked
+
+# --------------------------------------------------------------------------
+# 库存占用（任务书 10.8「占用 / 释放」）
+# --------------------------------------------------------------------------
+#
+# 占用只改变**可用量**，不移动实物，因此不写库存流水（流水记录实存量增减，
+# 并在 `reserved_after` 中快照占用结果）。占用记录本身承载完整生命周期：
+# 占用 → 消耗（出库）或 释放（取消）。一致性口径见 `docs/inventory-rules.md`：
+# `InventoryBalance.reserved == 该维度未结占用之和`。
+
+
+@dataclass(frozen=True)
+class ReservationConsumption:
+    """出库过账时对**来源单据**占用量的消耗计划。
+
+    `totals` 以维度键为键，用于可用量校验；`rows` 是需要落账的占用明细。
+    只有在过账单据带有 `biz_type` / `biz_id` 且存在同来源未结占用时才会产生。
+    """
+
+    totals: dict[str, Decimal]
+    rows: tuple[tuple[StockReservation, Decimal], ...] = ()
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.rows
+
+
+EMPTY_CONSUMPTION = ReservationConsumption(totals={}, rows=())
+
+
+def _assert_location_matches_warehouse(location: Any, warehouse: Any) -> None:
+    """校验储位归属，避免用他人储位 ID 越过仓库数据范围（任务书 6.4）。"""
+    location_id = _fk_id(location)
+    if not location_id:
+        return
+    warehouse_id = _fk_id(warehouse)
+    actual = (
+        Location.objects.filter(pk=location_id).values_list("zone__warehouse_id", flat=True).first()
+    )
+    if actual is None:
+        raise ObjectNotFound("储位不存在。", details={"location_id": location_id})
+    if actual != warehouse_id:
+        raise ValidationFailed(
+            "储位与仓库不一致。",
+            code="LOCATION_WAREHOUSE_MISMATCH",
+            details={"location_id": location_id, "warehouse_id": warehouse_id},
+        )
+
+
+def reserve_stock(
+    *,
+    user: Any,
+    company: Any,
+    warehouse: Warehouse,
+    material: Material,
+    quantity: Any,
+    biz_type: str,
+    biz_id: Any,
+    biz_no: str = "",
+    location: Location | None = None,
+    batch_no: str | None = None,
+    roll_no: str | None = None,
+    quality_status: str = QualityStatus.QUALIFIED,
+    dedup_key: str | None = None,
+    reason: str = "",
+) -> StockReservation:
+    """占用库存：把可用量转为占用量，**不改实存量**。
+
+    * 只能占用**合格**库存：待检与不合格库存不能用于销售或领用（任务书 10.8）；
+    * 可用量不足时拒绝，不产生部分占用；
+    * `dedup_key` 唯一，同一业务事件重复调用只产生一条占用记录（幂等）。
+    """
+    require_codes(user, "wms.inventory.reserve")
+    if not str(biz_type or "").strip() or _fk_id(biz_id) is None:
+        raise ValidationFailed("占用必须关联来源单据。", code="BIZ_REFERENCE_REQUIRED")
+    amount = Decimal(quantity or 0)
+    if amount <= ZERO:
+        raise ValidationFailed("占用数量必须大于 0。", code="INVALID_LINE_QUANTITY")
+    if quality_status != QualityStatus.QUALIFIED:
+        raise ValidationFailed(
+            "只能占用合格库存；待检与不合格库存必须先完成质量放行或处置。",
+            code="QUALITY_NOT_RELEASED",
+            details={"quality_status": quality_status},
+        )
+    _assert_location_matches_warehouse(location, warehouse)
+
+    dimension = Dimension(
+        company_id=_fk_id(company),
+        material_id=_fk_id(material),
+        warehouse_id=_fk_id(warehouse),
+        location_id=_fk_id(location),
+        batch_no=batch_no,
+        roll_no=roll_no,
+        quality_status=quality_status,
+    )
+    request_key = str(dedup_key or f"{biz_type}:{_fk_id(biz_id)}:{dimension.key}")[:191]
+
+    with transaction.atomic():
+        existing = StockReservation.objects.filter(request_key=request_key).first()
+        if existing is not None:
+            logger.info("库存占用幂等重放 request_key=%s", request_key)
+            return existing
+
+        # 先落占用记录：`request_key` 唯一约束是并发下防重的最强保障。
+        # 放在余额加锁之前，重复请求不会重复扣减可用量。
+        try:
+            with transaction.atomic():
+                reservation = StockReservation.objects.create(
+                    company_id=dimension.company_id,
+                    material_id=dimension.material_id,
+                    warehouse_id=dimension.warehouse_id,
+                    location_id=dimension.location_id,
+                    batch_no=dimension.batch_no or "",
+                    roll_no=dimension.roll_no or "",
+                    quality_status=dimension.quality_status,
+                    dimension_key=dimension.key,
+                    quantity=amount,
+                    biz_type=biz_type[:32],
+                    biz_id=str(_fk_id(biz_id))[:64],
+                    biz_no=biz_no[:64],
+                    request_key=request_key,
+                    remark=reason,
+                )
+        except IntegrityError:
+            existing = StockReservation.objects.filter(request_key=request_key).first()
+            if existing is None:
+                raise
+            logger.info("库存占用并发重放 request_key=%s", request_key)
+            return existing
+
+        balance = _lock_or_create_balance(dimension)
+        available = balance.available
+        if available < amount:
+            raise InsufficientStock(
+                "可用库存不足，无法占用。",
+                details={
+                    **dimension.describe(),
+                    "required": str(amount),
+                    "available": str(available),
+                },
+            )
+        balance.reserved = (balance.reserved or ZERO) + amount
+        balance.save()
+
+        record_audit(
+            action=AuditAction.CREATE,
+            instance=reservation,
+            changes={
+                "quantity": {"before": "0", "after": str(amount)},
+                "status": {"before": "", "after": reservation.status},
+                "on_hand": {"before": str(balance.on_hand), "after": str(balance.on_hand)},
+                "reserved": {
+                    "before": str((balance.reserved or ZERO) - amount),
+                    "after": str(balance.reserved),
+                },
+            },
+            reason=reason,
+            object_repr=str(reservation),
+            company=reservation.company,
+            actor=user,
+        )
+        publish_event(
+            event_type="wms.reservation.created",
+            aggregate_type="wms.StockReservation",
+            aggregate_id=reservation.pk,
+            payload={
+                "reservation_id": reservation.pk,
+                "material_id": dimension.material_id,
+                "warehouse_id": dimension.warehouse_id,
+                "quantity": str(amount),
+                "biz_type": biz_type,
+                "biz_id": str(_fk_id(biz_id)),
+            },
+            dedup_key=f"wms.reservation.created:{reservation.pk}",
+        )
+        logger.info("库存占用完成 reservation=%s qty=%s", reservation.pk, amount)
+        return reservation
+
+
+@transaction.atomic
+def release_reservation(
+    reservation: StockReservation, *, user: Any, quantity: Any = None, reason: str = ""
+) -> StockReservation:
+    """释放（部分或全部）占用：占用量转回可用量，**不改实存量**。
+
+    * `quantity=None` 表示释放全部未结数量；
+    * 已结束的占用再次释放是**幂等**的：不重复扣减占用量，直接返回原记录；
+    * 释放数量超过未结数量时拒绝，不静默截断。
+    """
+    require_codes(user, "wms.inventory.release")
+    if not str(reason or "").strip():
+        raise ValidationFailed("释放占用必须填写原因。", code="REASON_REQUIRED")
+    current = StockReservation.objects.filter(pk=reservation.pk).first()
+    if current is None:
+        raise ObjectNotFound("库存占用记录不存在。", details={"reservation_id": reservation.pk})
+    if not current.is_open:
+        logger.info("库存占用释放幂等重放 reservation=%s", current.pk)
+        return current
+
+    # 加锁顺序固定为「余额 → 占用」，与过账时 `_plan_reservation_consumption` 一致，
+    # 避免两处用相反顺序加锁造成死锁（任务书 5.6）。
+    _lock_or_create_balance(_dimension_of(current))
+    locked = StockReservation.objects.select_for_update().filter(pk=reservation.pk).first()
+    if locked is None:
+        raise ObjectNotFound("库存占用记录不存在。", details={"reservation_id": reservation.pk})
+    if not locked.is_open:
+        logger.info("库存占用释放幂等重放 reservation=%s", locked.pk)
+        return locked
+
+    open_quantity = locked.open_quantity
+    amount = open_quantity if quantity is None else Decimal(quantity)
+    if amount <= ZERO:
+        raise ValidationFailed("释放数量必须大于 0。", code="INVALID_LINE_QUANTITY")
+    if amount > open_quantity:
+        raise ValidationFailed(
+            "释放数量超过未结占用数量。",
+            code="OVER_RELEASE",
+            details={"requested": str(amount), "open": str(open_quantity)},
+        )
+
+    balance = InventoryBalance.objects.select_for_update().filter(
+        dimension_key=locked.dimension_key
+    ).first()
+    if balance is None:  # pragma: no cover - 占用存在时余额行必然存在
+        raise StateConflict(
+            "库存余额行不存在，占用记录与库存不一致。", code="RESERVATION_INCONSISTENT"
+        )
+    reserved = balance.reserved or ZERO
+    if reserved < amount:
+        raise StateConflict(
+            "库存占用量小于占用记录未结数量，数据不一致，拒绝释放。",
+            code="RESERVATION_INCONSISTENT",
+            details={"reserved": str(reserved), "requested": str(amount)},
+        )
+    before_reserved = reserved
+    balance.reserved = reserved - amount
+    balance.save()
+
+    locked.released_quantity = (locked.released_quantity or ZERO) + amount
+    before_status = locked.status
+    locked.refresh_status(save=False)
+    if locked.status == ReservationStatus.CLOSED and (locked.consumed_quantity or ZERO) <= ZERO:
+        # 从未被消耗、仅通过释放结束：标记为「已取消」，与「发货消耗后关闭」区分开，
+        # 便于排查「占用去哪了」（任务书 5.5 状态口径）。
+        locked.status = ReservationStatus.CANCELLED
+    locked.save()
+
+    record_audit(
+        action=AuditAction.UPDATE,
+        instance=locked,
+        changes={
+            "released_quantity": {
+                "before": str((locked.released_quantity or ZERO) - amount),
+                "after": str(locked.released_quantity),
+            },
+            "status": {"before": before_status, "after": locked.status},
+            "reserved": {"before": str(before_reserved), "after": str(balance.reserved)},
+        },
+        reason=reason,
+        object_repr=str(locked),
+        company=locked.company,
+        actor=user,
+    )
+    publish_event(
+        event_type="wms.reservation.released",
+        aggregate_type="wms.StockReservation",
+        aggregate_id=locked.pk,
+        payload={
+            "reservation_id": locked.pk,
+            "quantity": str(amount),
+            "biz_type": locked.biz_type,
+            "biz_id": locked.biz_id,
+        },
+        dedup_key=f"wms.reservation.released:{locked.pk}:{locked.released_quantity}",
+    )
+    logger.info("库存占用释放 reservation=%s qty=%s", locked.pk, amount)
+    return locked
+
+
+def release_reservations_for_biz(
+    *, user: Any, biz_type: str, biz_id: Any, reason: str
+) -> list[StockReservation]:
+    """释放某来源单据下**所有**未结占用（订单取消、发货完成后清理）。
+
+    没有未结占用时返回空列表，重复调用不产生副作用。
+    """
+    require_codes(user, "wms.inventory.release")
+    if not str(biz_type or "").strip():
+        raise ValidationFailed("缺少来源单据类型。", code="BIZ_REFERENCE_REQUIRED")
+    ids = list(
+        StockReservation.objects.filter(
+            biz_type=biz_type, biz_id=str(_fk_id(biz_id)), status=ReservationStatus.ACTIVE
+        )
+        # 与余额加锁顺序一致：先按维度键、再按主键，避免多维度释放时互相死锁
+        .order_by("dimension_key", "id")
+        .values_list("id", flat=True)
+    )
+    released: list[StockReservation] = []
+    for reservation_id in ids:
+        reservation = StockReservation.objects.filter(pk=reservation_id).first()
+        if reservation is None or not reservation.is_open:
+            continue
+        released.append(release_reservation(reservation, user=user, reason=reason))
+    return released
+
+
+def open_reserved_quantity(
+    *, biz_type: str, biz_id: Any, dimension_key: str, for_update: bool = False
+) -> Decimal:
+    """某来源单据在指定维度上的未结占用数量。
+
+    发货前用它校验「先占用后发货」；`for_update=True` 时加行锁，
+    与过账在同一事务内使用，避免校验与扣减之间被其他事务插入。
+    """
+    queryset = StockReservation.objects.filter(
+        biz_type=biz_type,
+        biz_id=str(_fk_id(biz_id)),
+        dimension_key=dimension_key,
+        status=ReservationStatus.ACTIVE,
+    ).order_by("id")
+    if for_update:
+        queryset = queryset.select_for_update()
+    total = ZERO
+    for reservation in queryset:
+        total += reservation.open_quantity
+    return total
+
+
+def document_line_hint(
+    *, document_id: Any, material_id: Any
+) -> dict[str, Any] | None:
+    """返回某库存单据中该物料**第一行**的库存维度（储位 / 批次 / 卷号）。
+
+    退货入库时用它**继承原发货批次的维度**，避免退货货物被记到与出库无关的
+    维度上，导致批次追溯断链（任务书 9.4 标识与追溯）。
+    """
+    line = (
+        InventoryDocumentLine.objects.filter(
+            document_id=_fk_id(document_id), material_id=_fk_id(material_id)
+        )
+        .order_by("line_no")
+        .first()
+    )
+    if line is None:
+        return None
+    return {
+        "location_id": line.location_id,
+        "batch_no": line.batch_no or "",
+        "roll_no": line.roll_no or "",
+        "quality_status": line.quality_status,
+    }
+
+
+def choose_reservation_dimension(
+    *,
+    company: Any,
+    warehouse: Warehouse,
+    material: Material,
+    quantity: Any,
+    quality_status: str = QualityStatus.QUALIFIED,
+) -> dict[str, Any] | None:
+    """库位 / 批次推荐：为占用挑选一个**完整库存维度**（任务书 10.8「库位推荐」）。
+
+    规则：
+
+    * 只考虑**合格**库存；待检与不合格库存不参与占用（任务书 10.8）；
+    * 在「储位 + 批次 + 卷号」分组中优先选择**可用量最大**的一组；
+    * 单组不足但仓库总量足够时，说明库存**分散在多个维度**，报明确错误，
+      引导先移库合并或指定储位/批次后重试（跨维度自动拆分占用尚未实现，
+      见 `docs/assumptions.md`）；
+    * 仓库内没有任何余额行时返回 `None`，由 `reserve_stock` 报「可用量不足」。
+
+    返回 `{"location": Location | None, "batch_no": str, "roll_no": str}`。
+    """
+    groups: dict[tuple[int | None, str, str], Decimal] = {}
+    for row in (
+        InventoryBalance.objects.filter(
+            company_id=_fk_id(company),
+            warehouse_id=_fk_id(warehouse),
+            material_id=_fk_id(material),
+            quality_status=quality_status,
+        )
+        .order_by("id")
+        .only("id", "location_id", "batch_no", "roll_no", "on_hand", "frozen", "reserved")
+    ):
+        key = (row.location_id, row.batch_no or "", row.roll_no or "")
+        groups[key] = groups.get(key, ZERO) + row.available
+    if not groups:
+        return None
+    amount = Decimal(quantity or 0)
+    best = max(groups, key=lambda key: groups[key])
+    if groups[best] < amount and sum(groups.values(), ZERO) >= amount:
+        raise StateConflict(
+            "该物料合格库存分散在多个储位/批次，单个维度不足以完成占用；"
+            "请先在仓储管理中移库合并，或指定储位、批次后重试。",
+            code="STOCK_SPLIT_ACROSS_DIMENSIONS",
+            details={
+                "required": str(amount),
+                "largest_dimension_available": str(groups[best]),
+                "total_available": str(sum(groups.values(), ZERO)),
+                "dimension_count": len(groups),
+            },
+        )
+    location_id, batch_no, roll_no = best
+    return {
+        "location": Location.objects.filter(pk=location_id).first() if location_id else None,
+        "batch_no": batch_no,
+        "roll_no": roll_no,
+    }
+
+
+def open_reservation_hint(
+    *, biz_type: str, biz_id: Any, material_id: Any
+) -> dict[str, Any] | None:
+    """返回来源单据某物料**未结占用**的库存维度提示（储位 / 批次 / 卷号）。
+
+    销售发货单行可以不指定储位：出库维度由占用决定，保证
+    「占用维度 = 出库维度」，避免前端选错储位导致 `RESERVATION_REQUIRED`。
+    """
+    reservation = (
+        StockReservation.objects.filter(
+            biz_type=biz_type,
+            biz_id=str(_fk_id(biz_id)),
+            material_id=_fk_id(material_id),
+            status=ReservationStatus.ACTIVE,
+        )
+        .order_by("id")
+        .first()
+    )
+    if reservation is None:
+        return None
+    return {
+        "location_id": reservation.location_id,
+        "batch_no": reservation.batch_no,
+        "roll_no": reservation.roll_no,
+        "quality_status": reservation.quality_status,
+        "dimension_key": reservation.dimension_key,
+    }
+
+
+def _dimension_of(reservation: StockReservation) -> Dimension:
+    """由占用记录还原库存维度。"""
+    return Dimension(
+        company_id=reservation.company_id,
+        material_id=reservation.material_id,
+        warehouse_id=reservation.warehouse_id,
+        location_id=reservation.location_id,
+        batch_no=reservation.batch_no,
+        roll_no=reservation.roll_no,
+        quality_status=reservation.quality_status,
+    )
+
+
+def _assert_reservation_covers(
+    document: InventoryDocument, movements: list[Movement], consumption: ReservationConsumption
+) -> None:
+    """销售发货专用：出库数量必须**全部**由本单据来源的占用覆盖。
+
+    「先占用、后发货」是销售出库的业务规则。这里在锁内校验，
+    避免「占用校验通过 → 扣减前被其他发货单抢走占用」的时间窗。
+    """
+    if document.document_type != DocumentType.ISSUE:
+        raise ValidationFailed(
+            "只有出库单据需要校验库存占用。", code="RESERVATION_CHECK_NOT_APPLICABLE"
+        )
+    if not document.biz_type or not document.biz_id:
+        raise ValidationFailed(
+            "要求占用出库时，库存单据必须带来源单据（biz_type / biz_id）。",
+            code="BIZ_REFERENCE_REQUIRED",
+        )
+    required: dict[str, Decimal] = {}
+    dimensions: dict[str, Dimension] = {}
+    for movement in movements:
+        if movement.delta >= ZERO:
+            continue
+        key = movement.dimension.key
+        required[key] = required.get(key, ZERO) + (-movement.delta)
+        dimensions.setdefault(key, movement.dimension)
+    missing: list[dict[str, Any]] = []
+    for key in sorted(required):
+        covered = consumption.totals.get(key, ZERO)
+        if covered < required[key]:
+            missing.append(
+                {
+                    **dimensions[key].describe(),
+                    "dimension_key": key,
+                    "required": str(required[key]),
+                    "reserved": str(covered),
+                }
+            )
+    if missing:
+        raise StateConflict(
+            "发货数量未被库存占用覆盖，请先完成库存占用。",
+            code="RESERVATION_REQUIRED",
+            details={"lines": missing, "biz_type": document.biz_type, "biz_id": document.biz_id},
+        )
+
+
+def _plan_reservation_consumption(
+    document: InventoryDocument, movements: list[Movement]
+) -> ReservationConsumption:
+    """计算本次出库要消耗多少**本单据来源**的占用。
+
+    只消耗 `biz_type` + `biz_id` 相同的占用，不会动用其他单据的占用；
+    未占用部分仍按普通出库校验可用量（例如生产领料不走占用）。
+    """
+    if not document.biz_type or not document.biz_id:
+        return EMPTY_CONSUMPTION
+    required: dict[str, Decimal] = {}
+    for movement in movements:
+        if movement.delta >= ZERO:
+            continue
+        key = movement.dimension.key
+        required[key] = required.get(key, ZERO) + (-movement.delta)
+    if not required:
+        return EMPTY_CONSUMPTION
+
+    reservations = list(
+        StockReservation.objects.select_for_update()
+        .filter(
+            biz_type=document.biz_type,
+            biz_id=str(document.biz_id),
+            dimension_key__in=sorted(required),
+            status=ReservationStatus.ACTIVE,
+        )
+        .order_by("dimension_key", "id")
+    )
+    totals: dict[str, Decimal] = {}
+    rows: list[tuple[StockReservation, Decimal]] = []
+    for reservation in reservations:
+        taken = totals.get(reservation.dimension_key, ZERO)
+        remaining = required[reservation.dimension_key] - taken
+        if remaining <= ZERO:
+            continue
+        take = min(reservation.open_quantity, remaining)
+        if take <= ZERO:
+            continue
+        totals[reservation.dimension_key] = taken + take
+        rows.append((reservation, take))
+    return ReservationConsumption(totals=totals, rows=tuple(rows))

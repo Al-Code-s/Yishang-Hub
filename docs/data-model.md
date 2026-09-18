@@ -77,6 +77,13 @@ version       PositiveIntegerField 乐观并发计数
 | `factory_employee` | `uq_employee_company_no` | `user` 为 OneToOne 可空：员工不一定有登录账号 |
 | `factory_shift` | `uq_shift_company_code` | `cross_day` 标记跨夜班次 |
 | `factory_team` / `factory_teammember` | `code` / `uq_team_member` | 班组与成员，成员带 `start_date/end_date` |
+| `factory_department.department_type` | choices：`management` 职能部门 / `production` 生产部门 / `quality` 质量部门 / `warehouse` 仓储部门 / `procurement` 采购部门 / `sales` 销售部门 / `equipment` 设备部门 / `other` 其他 | 枚举键存英文，接口同时返回 `department_type_display` 中文标签 |
+| `factory_workshop.workshop_type` | choices：`cutting` 裁剪 / `sewing` 缝制 / `ironing` 整烫 / `finishing` 整烫包装 / `inspection` 检验 / `packing` 包装 / `other` 其他 | 同上，返回 `workshop_type_display` |
+
+> **枚举约定（全平台）**：数据库与接口的**筛选、写入**一律使用英文枚举键；
+> 展示用中文由后端在响应中附带 `<field>_display` 只读字段（见 `docs/api-conventions.md` §十二），
+> 前端不得硬编码枚举中文映射。历史非法枚举值已由 `factory/0003` 修正，并用
+> `backend/tests/test_enum_labels.py` 防止再次写入（`seed_demo` 全库复扫）。
 
 ### masterdata（服饰主数据）
 
@@ -116,6 +123,12 @@ version       PositiveIntegerField 乐观并发计数
 | `wms_inventorytransaction` | `company, material, warehouse, location, batch_no, roll_no, quality_status, transaction_type, direction, quantity, document, document_line, document_no, biz_no, idempotency_key, occurred_at, created_by` + `uq_inventory_txn_idempotency` | 库存流水，**只追加**：模型 `save()` 对已有行抛 `ImmutableLedgerError`，`delete()` 总是抛异常 |
 | `wms_inventorydocument` | `company, document_no(UNIQUE with company), document_type, status, warehouse, target_warehouse, reason, biz_no, idempotency_key, posted_at, posted_by, reversed_at, reversed_by, reversal_of` | 库存单据头；状态机 `draft → posted → reversed`，`cancelled` 仅限草稿 |
 | `wms_inventorydocumentline` | `document, line_no, material, location, target_location, batch_no, roll_no, quantity, target_quality_status, remark` + `uq_inventory_doc_line_no`、`ck_inventory_line_quantity_positive` | 单据行；数量必须 > 0 |
+
+**库存占用表（阶段 2 第四步新增，迁移 `wms/0003`）**：
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `wms_stockreservation` | `company, material, warehouse, location, batch_no, roll_no, quality_status, dimension_key, quantity, consumed_quantity, released_quantity, status, biz_type, biz_id, biz_no, request_key(UNIQUE), remark` + `ck_reservation_quantity_positive`、`ck_reservation_consumed_non_negative`、`ck_reservation_within_quantity`、`idx_reservation_dimension`、`idx_reservation_biz` | 库存占用记录。**占用不写库存流水**：流水只记实存量增减，占用有自己的生命周期（`active → closed`（消耗结束）/ `cancelled`（释放结束））。一致性口径：`InventoryBalance.reserved == 该维度未结占用之和`。`request_key` 单列唯一是并发幂等的最终保障 |
 
 > `dimension_key` = `sha256("company|material|warehouse|location|normalize(batch)|normalize(roll)|normalize(quality)")[:32]`，
 > 单列 `UNIQUE NOT NULL`，彻底绕过 MySQL 「NULL 不相等」导致的联合唯一索引失效问题（见本文第六节）。
@@ -170,6 +183,52 @@ certificate_no 非空 → dedup_key = "<supplier_id>|<qualification_type>|<casef
 **数量口径（本模块硬规则）**：订单可收数量 = `quantity - received_quantity - 已有草稿收货单数量`，
 因此**草稿也占用额度**；超出即 `OVER_RECEIPT`。收货过账只把库存置为 `quarantine`，
 只有经 `release_quality` 放行后该批次才可领用或销售（`docs/inventory-rules.md`）。
+### sales（销售，阶段 2 第四步）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `sales_salesorder` | `company, order_no, customer, status, salesman, order_date, expected_date, priority, warehouse, currency, tax_rate, payment_terms, delivery_address, total_amount, tax_amount, amount_with_tax, approval_instance_id, approved_at, closed_at` + `uq_sales_order_company_no`、`ck_sales_order_tax_rate_range` | 单号 `SO{YYYYMMDD}{SEQ:4}`；状态机 `draft → submitted → approved → partially_shipped → shipped`，另有 `closed / rejected / cancelled`；金额字段**全部由后端计算**后落库 |
+| `sales_salesorderline` | `order, line_no, material, sku, quantity, shipped_quantity, returned_quantity, price, amount, uom, expected_date` + `uq_sales_order_line_no`、`ck_sales_order_line_quantity_positive`、`ck_sales_order_line_progress_non_negative`、`ck_sales_order_line_shipped_within_quantity`、`ck_sales_order_line_returned_within_shipped` | `shipped_quantity` / `returned_quantity` **只读**，只能由库存过账推进；`remaining_quantity` / `returnable_quantity` 为计算属性 |
+| `sales_salesshipment` | `company, shipment_no, sales_order, customer, status, warehouse, shipped_at, shipped_by, receiver_name, receiver_phone, delivery_address, carrier, tracking_no, issue_document_id` + `uq_shipment_company_no` | 单号 `SH{YYYYMMDD}{SEQ:4}`；`issue_document_id` 指向 `wms.InventoryDocument`（出库）；销售侧**不写库存余额与流水表** |
+| `sales_salesshipmentline` | `shipment, line_no, order_line, material, quantity, location, batch_no, roll_no` + `uq_shipment_line_no`、`ck_shipment_line_quantity_positive` | 只能引用**同一订单**的订单行；行上留空的储位/批次/卷号由**占用维度**推导（`stock.open_reservation_hint`） |
+| `sales_salesreturn` | `company, return_no, sales_order, shipment, customer, status, warehouse, reason, received_at, received_by, inspection_result, inspected_at, inspected_by, inspection_remark, receipt_document_id, quality_document_id` + `uq_sales_return_company_no` | 单号 `SR{YYYYMMDD}{SEQ:4}`；状态机 `draft → posted`（待检）`→ inspected`；收货用 `receipt_document_id`、质量转换用 `quality_document_id` |
+| `sales_salesreturnline` | `return_doc, line_no, order_line, material, quantity, location, batch_no, roll_no` + `uq_return_line_no`、`ck_return_line_quantity_positive` | 可退数量 = 已发货 − 已退货（超出即 `OVER_RETURN`）；行未填维度时**继承原发货出库单据的批次**并写回本行 |
+
+### planning（BOM 与工艺路线版本 阶段 3 第一步；MRP 阶段 3 第二步）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `planning_bom` | `company, code, style, sku, version_no, scope_key, status, effective_from, effective_to, is_active, approval_instance_id, submitted_at, approved_at, approved_by, remark` + `uq_bom_company_code`、`uq_bom_scope_version`、`ck_bom_version_positive`、`ck_bom_effective_range` | 编号 `BOM{YYYYMMDD}{SEQ:4}`；状态机 `draft → submitted → approved / rejected`，另有 `obsolete`；`scope_key` 由 `engineering_scope_key(style_id, sku_id)` 生成（见 §六 第 10 条）；`sku` 为空表示款式通用版本 |
+| `planning_bomline` | `bom, line_no, material, quantity, loss_rate, uom, line_type, substitute_for, position, is_key_material, remark` + `uq_bom_line_no`、`ck_bom_line_quantity_positive`、`ck_bom_line_loss_non_negative`、`ck_bom_line_loss_lt_one` | `quantity` 是**单位成品净用量**；`gross_quantity` 是**计算属性**（`quantity × (1 + loss_rate)`，按 6 位小数 `ROUND_HALF_UP`），**不落库**，避免同一口径存两份而漂移；`line_type=substitute` 时 `substitute_for` 必须指向同一 BOM 的正常用料行 |
+| `planning_routing` | 与 `planning_bom` 同构（`code` / `style` / `sku` / `version_no` / `scope_key` / `status` / 生效区间 / 审批字段） + `uq_routing_company_code`、`uq_routing_scope_version`、`ck_routing_version_positive` | 编号 `RT{YYYYMMDD}{SEQ:4}`；版本与审批规则与 BOM **完全一致**（共用服务骨架） |
+| `planning_routingstep` | `routing, sequence, name, workshop, workcenter, equipment_requirement, standard_hours, is_quality_gate, remark` + `uq_routing_step_sequence`、`ck_routing_step_sequence_positive`、`ck_routing_step_hours_non_negative` | `is_quality_gate` 对应任务书 9.5 的「工序质检点」；`standard_hours` 是单件标准工时（小时），供 OEE 理论产能与工序效率使用；`workshop` 受数据范围校验 |
+
+**为什么本轮不建快照表**：任务书 9.5 要求「工单下达保存版本快照」，快照的归属方是**工单**（MES），
+因此本轮只提供 `services.build_bom_snapshot()` / `build_routing_snapshot()` 输出不可变 dict
+（含版本号、生效区间、明细行 / 工序，含损耗用量与质检点标记），
+由阶段 3 后续的工单模型在**下达时**保存，**不预先创建空表**（任务书 4.3、20.3）。
+
+**「同一范围同时只有一个生效版本」为何不靠索引**：MySQL 没有部分唯一索引
+（`UNIQUE ... WHERE status='approved'`），因此由服务层在 `transaction.atomic()` +
+`select_for_update()` 内切换版本状态，并在锁内重新校验；数据库层只保证
+`(company, scope_key, version_no)` 不重复。
+
+**MRP 表（阶段 3 第二步）**
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `planning_mrprun` | `company, run_no, status, bucket, horizon_start, horizon_end, warehouse, parameters(JSON), summary(JSON), started_at, finished_at, error_message, archived_at, archived_by, remark` + `uq_mrp_run_company_no`、`ck_mrp_horizon_ordered` | 一次 MRP 计算的**快照**：`run_no` 编号 `MRP{YYYYMMDD}{SEQ:4}`；`status` ∈ `completed / archived / failed`；`parameters` 固化本次口径（`bucket` / `lead_time_mode=lot_for_lot` / `in_progress_supply=not_implemented` / `frozen_and_reserved=excluded_from_available` / `include_substitutes=false` / `demand_sources=['sales_order']`），`summary` 存汇总（需求 / 供给 / 建议数量与计数、`buckets`、`unexploded_materials`）；**失败也落一条 `failed` 行并写 `error_message`**，便于排查 |
+| `planning_mrdemandline` | `run, line_no, level, source_type, source_id, source_no, source_line_no, material, sku, style, warehouse, quantity, due_date, bucket_date, path, exploded, note` + `uq_mrp_demand_line_no`、`ck_mrp_demand_quantity_positive` | **展开后**的需求行：`level=0` 为销售订单需求，`level≥1` 来自父件净需求展开（`source_type=parent_item`）；`path` 保存来源链、`bucket_date` 为分段键（`week` 归一到周一）；`exploded` 标记该行是否已继续展开下级 |
+| `planning_mrpsupplyline` | `run, line_no, source_type, reference_type, reference_id, reference_no, material, sku, style, warehouse, quantity, available_date, bucket_date` + `uq_mrp_supply_line_no`、`ck_mrp_supply_quantity_positive` | 本次计算**认到的供给**：`on_hand`（可用量 = `on_hand − frozen − reserved`，只认合格质量状态）与 `on_order`（采购订单未收数量，按承诺交期落段）；`in_progress` 枚举已定义但当前**不产生行**（MES 未实现） |
+| `planning_mrsuggestion` | `run, line_no, suggestion_type, status, material, sku, style, warehouse, uom, quantity, bucket_date, due_date, reason, detail(JSON), converted_document_type/id/no, converted_at, converted_by, cancel_reason, remark` + `uq_mrp_suggestion_line_no`、`ck_mrp_suggestion_quantity_positive` | 缺料建议：`suggestion_type` ∈ `purchase / production`，`status` ∈ `open / converted / cancelled`；`detail` 保存 `level` / `bom_code` / `bom_version_no` / `trace` / `demand_sources`；转单后记录目标单据（当前只有 `procurement.PurchaseRequisition`，且必为**草稿**） |
+
+**MRP 为何不建「供需平衡表」**：净算结果（净需求）本身可由需求行与供给行在同一分段内复算，
+把中间量落库会引入第二份口径；因此只落**输入快照（需求行 / 供给行）**与**输出建议**，
+中间计算过程通过 `MrpRun.parameters` + 分段净算展示（前端建议详情页签）复现。
+
+**MRP 不写库存**：`mrp.py` 对 `wms.InventoryBalance` / `StockLedger` **只读**，
+由 `test_mrp_is_read_only_for_inventory` 锁定；建议转单只创建**草稿采购申请**，不产生采购承诺。
+
 ### workflow / integration
 
 | 表 | 关键字段 | 说明 |
@@ -294,6 +353,18 @@ COMMIT
 
    对应任务书必测案例 6、7（要求必须在真实独立事务与连接上执行）。
 
+10. **已落地的同思路实现三（工程数据，阶段 3 第一步）**：`planning_bom.scope_key` /
+    `planning_routing.scope_key` 把「款式 / SKU 范围」压成非空字符串
+    （`engineering_scope_key()` → `"style:1"` 或 `"style:1:sku:3"`），
+    唯一约束建在 `(company, scope_key, version_no)` 上，而不是直接对含可空列
+    `(company, style, sku, version_no)` 建唯一索引 —— 原因见上文第 1 条：
+    MySQL 唯一索引不约束 NULL，多行「款式通用」版本会互相冲突不到。
+    已由 `backend/tests/test_planning.py::test_scope_version_unique_constraint_is_enforced`
+    在真实 MySQL 上以 `IntegrityError` 验证。
+
+    > 同一个坑在库里出现了三次（供应商资质编号、库存维度、工程版本范围），
+    > 处理方式统一为「显式规范化键 + 单列/固定列数唯一约束 + 服务层语义校验」。
+
 ## 七、状态与删除策略
 
 - 主数据被使用后**优先停用**（`is_active=false`），不物理删除；所有主数据资源只提供 `set-active`，不提供 `DELETE`。
@@ -305,7 +376,11 @@ COMMIT
 
 ## 八、迁移规范
 
-- 使用 Django migrations，**迁移文件随代码提交**（当前 `core` 2 个、`identity`/`factory`/`masterdata`/`wms`/`workflow`/`integration`/`analytics` 各 1 个）。
+- 使用 Django migrations，**迁移文件随代码提交**（当前 12 个 App 共 **19 个迁移文件**：
+  `core` 3、`wms` 3、`factory` 3、`planning` 2，`identity`/`masterdata`/`workflow`/`integration`/`crm`/`srm`/
+  `procurement`/`sales` 各 1；`analytics` 不建表故无迁移）。`planning/0002` 新增 4 张 MRP 表与 8 个约束；
+  `factory/0003` 先 `RunPython` 修正历史非法枚举值，再扩展 `Department.department_type` 与
+  `Workshop.workshop_type` 的 choices（反向迁移为显式空操作）。
 - **生产启动时不自动执行 `makemigrations`**；`compose.yaml` 中迁移是独立的一次性步骤（`migrate` 服务），
   不由多个 Web 实例并发执行。
 - 上线前执行**空库 + 已有数据升级**两类测试。
