@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">权限与菜单</h2>
         <p class="ys-page__description">
-          权限点是代码内的唯一契约：后端 `apps/identity/permissions_registry.py` 定义，
-          启动检查会校验代码中声明的权限编码是否都已登记，因此这里只读，不允许在界面上临时新增权限。
+          这里列出平台支持的全部权限项，供配置角色时勾选。权限项由系统内置，本页只读，
+          不允许在界面上临时新增，避免出现界面上有、实际不生效的权限。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -34,8 +34,10 @@
             :name="group.module"
           >
             <template #title>
-              <span class="ys-permission__module">{{ group.module }}</span>
-              <span class="ys-muted">（{{ group.permissions.length }}）</span>
+              <span class="ys-permission__module">
+                {{ moduleDisplayName(group.module, group.module_name) }}
+              </span>
+              <span class="ys-muted">· {{ group.permissions.length }} 项</span>
             </template>
             <el-table :data="group.permissions" border size="small">
               <el-table-column prop="code" label="权限编码" min-width="240" />
@@ -85,6 +87,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/http'
 import { identityApi } from '@/api/identity'
 import type { MenuNode, PermissionGroup } from '@/types/models'
+import { moduleDisplayName } from '@/utils/permissionLabels'
 
 const activeTab = ref('permissions')
 const groups = ref<PermissionGroup[]>([])
@@ -106,6 +109,7 @@ const filteredGroups = computed(() => {
   return groups.value
     .map((group) => ({
       module: group.module,
+      module_name: group.module_name,
       permissions: group.permissions.filter(
         (item) =>
           item.code.toLowerCase().includes(needle) ||
@@ -176,4 +180,5 @@ onMounted(load)
   font-weight: 600;
   color: var(--ys-navy-900);
 }
+
 </style>

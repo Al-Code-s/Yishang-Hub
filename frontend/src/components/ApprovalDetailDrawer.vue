@@ -8,7 +8,7 @@
         <el-descriptions-item label="状态">{{ instance.status_display }}</el-descriptions-item>
         <el-descriptions-item label="申请事项" :span="2">{{ instance.title }}</el-descriptions-item>
         <el-descriptions-item label="申请人">{{ instance.applicant_name }}</el-descriptions-item>
-        <el-descriptions-item label="金额">{{ formatAmount(instance.amount, 4) }}</el-descriptions-item>
+        <el-descriptions-item label="金额">{{ formatAmount(instance.amount) }}</el-descriptions-item>
         <el-descriptions-item label="审批模板">{{ instance.template_name }}</el-descriptions-item>
         <el-descriptions-item label="模板版本">v{{ instance.template_version }}</el-descriptions-item>
         <el-descriptions-item label="提交时间">

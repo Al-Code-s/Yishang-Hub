@@ -15,7 +15,9 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import FieldDoesNotExist
 from django.db import IntegrityError, models, transaction
 from django.db.models import F
 from django.utils import timezone
@@ -161,6 +163,101 @@ def record_audit(
 # --------------------------------------------------------------------------
 # 发件箱
 # --------------------------------------------------------------------------
+
+
+def _resolve_audit_model(object_type: str) -> type[models.Model] | None:
+    """把审计里存的 ``app_label.ModelName`` 解析成模型；解析不到返回 ``None``。"""
+    if not object_type or "." not in object_type:
+        return None
+    app_label, _, model_name = object_type.partition(".")
+    try:
+        return apps.get_model(app_label, model_name)
+    except (LookupError, ValueError):
+        return None
+
+
+def object_type_label(value: str) -> str:
+    """把审计里的对象类型（``app_label.ModelName``）转成中文名称。
+
+    背景：``record_audit`` 默认把对象类型存成 ``"masterdata.Material"`` 这类
+    内部标识（见 ``record_audit`` 的默认值），它同时被「审计日志」页面和工作台
+    「最近业务动态」渲染。直接显示 ``masterdata.Material`` 对业务人员没有意义，
+    属于开发视角的文案。
+
+    做法：按 ``app_label.ModelName`` 解析模型，取模型的 ``verbose_name``
+    （本项目的模型 ``verbose_name`` 一律为中文）。解析不到时**原样返回**，
+    不猜测、不编造名称。
+    """
+    model = _resolve_audit_model(value)
+    if model is None:
+        return value
+    return str(model._meta.verbose_name) or value
+
+
+def display_value(value: Any) -> str:
+    """把审计里的原始值转成界面上能读的文字（空值、布尔、列表都翻译好）。"""
+    if value is None or value == "":
+        return "空"
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    if isinstance(value, list | tuple | set):
+        return "、".join(display_value(item) for item in value) or "空"
+    if isinstance(value, Mapping):
+        return "、".join(f"{key}={display_value(item)}" for key, item in value.items())
+    return str(value)
+
+
+# 变更摘要里**非模型字段**的键。这些键由 record_audit 的调用方自定义（例如
+# 角色数据范围、单据行数），解析不到模型字段，只能显式登记中文名。
+# 新增这类键时在这里补一行；未登记的键会退回原键名，不会猜测含义。
+AUDIT_CHANGE_LABELS: dict[str, str] = {
+    "grants": "数据范围",
+    "horizon": "计划范围（天）",
+    "inventory_document": "关联库存单据",
+    "line_count": "明细行数",
+    "nodes": "审批节点数",
+    "nodes_changed": "流程节点有无变更",
+    "on_hand": "实存量",
+    "order_no": "订单编号",
+    "reserved": "占用量",
+    "reserved_consumed": "占用是否已消耗",
+    "reserved_lines": "占用明细行数",
+    "reserved_quantity": "占用数量",
+    "step": "审批节点",
+    "step_count": "工序数",
+}
+
+
+def describe_changes(object_type: str, changes: Mapping[str, Any] | None) -> list[dict[str, str]]:
+    """把「字段变更摘要」转成界面可直接展示的中文条目。
+
+    摘要的键一般是数据库字段名（英文，例如 ``company_id``）：能解析到模型时用字段的
+    ``verbose_name``。少数键由调用方自定义、不是模型字段（见 ``AUDIT_CHANGE_LABELS``），
+    按登记表翻译；两边都查不到时保留原键名，不猜测含义。
+    """
+    model = _resolve_audit_model(object_type)
+    rows: list[dict[str, str]] = []
+    for field, payload in (changes or {}).items():
+        label = AUDIT_CHANGE_LABELS.get(field, field)
+        if model is not None and field not in AUDIT_CHANGE_LABELS:
+            try:
+                label = str(model._meta.get_field(field).verbose_name)
+            except FieldDoesNotExist:
+                label = field
+        before: Any = payload
+        after: Any = payload
+        if isinstance(payload, Mapping):
+            before = payload.get("before")
+            after = payload.get("after")
+        rows.append(
+            {
+                "field": field,
+                "label": label,
+                "before": display_value(before),
+                "after": display_value(after),
+            }
+        )
+    return rows
 
 
 def publish_event(

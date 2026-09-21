@@ -14,6 +14,7 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.identity.models import DataScopeType, Role, RoleScopeGrant, ScopeDimension, User
+from apps.identity.permissions_registry import MODULE_LABELS, PERMISSION_CODES
 from apps.masterdata.models import Material, MaterialCategory, UoM
 from apps.wms.models import Location, Warehouse, Zone
 from tests.conftest import make_role, make_user
@@ -24,6 +25,7 @@ MATERIALS_URL = "/api/v1/masterdata/materials/"
 WAREHOUSES_URL = "/api/v1/wms/warehouses/"
 LOCATIONS_URL = "/api/v1/wms/locations/"
 ATTACHMENTS_URL = "/api/v1/attachments/"
+PERMISSION_GROUPS_URL = "/api/v1/identity/permissions/grouped/"
 
 
 @pytest.fixture
@@ -326,3 +328,43 @@ def test_users_have_distinct_roles(registry_permissions, company):
     assert user.has_permission_codes(["masterdata.uom.view", "masterdata.uom.create"])
     assert user.active_roles()
     assert User.objects.filter(username="multi_role").exists()
+
+
+def test_every_permission_module_has_chinese_label():
+    """一级分组的中文名必须覆盖全部模块。
+
+    角色配置界面的一级分组显示为「模块编码（中文名）」（如 core（公共基础）），
+    漏登记某个模块就会退回成纯英文分组，业务人员无法判断该勾哪一组。
+    """
+    modules = {code.split(".")[0] for code in PERMISSION_CODES}
+    missing = sorted(modules - set(MODULE_LABELS))
+    assert not missing, f"以下权限模块缺少中文名：{missing}"
+
+
+def test_module_label_check_reports_missing_module(monkeypatch):
+    """启动检查 yishang.E002：模块漏登记中文名时必须报错而不是静默通过。"""
+    from apps.core import checks
+
+    monkeypatch.setattr(checks, "MODULE_LABELS", {"identity": "用户与权限"})
+    errors = checks.check_permission_module_labels(None)
+    assert errors, "缺少中文名时应返回错误"
+    assert errors[0].id == "yishang.E002"
+    assert "core" in errors[0].msg
+
+
+def test_permission_groups_api_returns_module_chinese_name(api_client, registry_permissions, company):
+    """分组接口要带上中文名，前端两处界面（权限与菜单页、角色权限对话框）共用同一份数据。"""
+    role = make_role(code="perm_reader", permission_codes=["identity.permission.view"])
+    user = make_user(username="perm_reader", role=role, company=company)
+    api_client.force_authenticate(user=user)
+
+    response = api_client.get(PERMISSION_GROUPS_URL)
+
+    assert response.status_code == 200
+    groups = {item["module"]: item for item in response.json()}
+    assert groups["core"]["module_name"] == "公共基础"
+    assert groups["identity"]["module_name"] == "用户与权限"
+    # 每个分组都必须带中文名（前端靠它渲染一级标题）
+    assert all(item["module_name"] for item in groups.values())
+    # 权限点总数与注册表一致，避免分组接口漏项
+    assert sum(len(item["permissions"]) for item in groups.values()) == len(PERMISSION_CODES)

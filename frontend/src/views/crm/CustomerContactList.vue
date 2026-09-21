@@ -2,7 +2,7 @@
   <entity-list-page
     title="客户联系人"
     entity-label="联系人"
-    description="联系人通过所属客户继承公司数据范围：看不到客户的人，也看不到其联系人。同一客户下只能有一个主联系人，切换主联系人会自动取消原主联系人标记。"
+    description="联系人的可见范围跟随所属客户：看不到某个客户，也就看不到它的联系人。同一客户只能有一个主联系人，切换主联系人时会自动取消原标记。"
     :api="api"
     :columns="columns"
     :filters="filters"

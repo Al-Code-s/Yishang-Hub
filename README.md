@@ -158,12 +158,12 @@ npm run build
 
 | 项目 | 命令 | 结果 |
 | --- | --- | --- |
-| 后端测试 | `pytest backend/tests -q --reuse-db` | **312 passed**（MySQL 上运行，含文档同步与枚举标签用例） |
+| 后端测试 | `pytest backend/tests -q --reuse-db` | **313 passed**（MySQL 上运行，含文档同步、枚举标签与角色绑定用例） |
 | 后端检查 | `manage.py check` | 无问题 |
 | 迁移一致性 | `makemigrations --check --dry-run` | No changes detected |
 | 代码风格 | `ruff check apps config tests` | All checks passed |
 | 前端类型 | `npm run typecheck` | 通过（退出码 0） |
-| 前端测试 | `npm run test` | **9 文件 / 131 项 passed** |
+| 前端测试 | `npm run test` | **10 文件 / 135 项 passed** |
 | 文档同步 | `python scripts/build_user_guide.py --check` | 网页版说明与 Markdown 源一致（`pytest` 已含该校验） |
 | 前端构建 | `npm run build` | 构建成功 |
 

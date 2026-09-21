@@ -81,6 +81,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { formatNumericText } from '@/utils/decimal'
+
 /** 列定义。formatter 只在没有对应插槽时生效。 */
 export interface ProTableColumn {
   prop: string
@@ -110,7 +112,7 @@ const props = withDefaults(
   {
     loading: false,
     errorMessage: '',
-    errorHint: '如持续失败，请把页面提示与后端日志中的 request_id 一起反馈给系统管理员。',
+    errorHint: '如持续失败，请把这条提示和发生时间一并反馈给系统管理员。',
     emptyText: '暂无数据',
     actionWidth: 200,
     rowKey: 'id',
@@ -144,6 +146,12 @@ function displayValue(row: Record<string, unknown>, prop: string): string {
   }
   if (Array.isArray(value)) {
     return value.length === 0 ? '-' : value.map((item) => String(item)).join('、')
+  }
+  // 数值列（后端 Decimal 以字符串返回，如 "12.000000"）统一按界面口径显示：
+  // 2 位小数 + 千分位。纯整数文本（手机号、税号、数字型编码）不在此列，不参与格式化。
+  const numeric = formatNumericText(value)
+  if (numeric !== null) {
+    return numeric
   }
   return String(value)
 }

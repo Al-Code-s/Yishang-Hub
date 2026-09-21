@@ -24,8 +24,9 @@
             <el-icon :size="18"><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
           </el-button>
           <el-breadcrumb separator="/" class="ys-layout__breadcrumb">
-            <el-breadcrumb-item>工作台</el-breadcrumb-item>
-            <el-breadcrumb-item v-if="currentTitle">{{ currentTitle }}</el-breadcrumb-item>
+            <el-breadcrumb-item v-for="node in breadcrumb" :key="node.code">
+              {{ node.name }}
+            </el-breadcrumb-item>
           </el-breadcrumb>
         </div>
 
@@ -117,7 +118,7 @@ import NotificationDrawer from '@/components/NotificationDrawer.vue'
 import PasswordDialog from '@/components/PasswordDialog.vue'
 import SideMenu from '@/components/SideMenu.vue'
 import { useAutoCollapse } from '@/composables/useAutoCollapse'
-import { resetDynamicRoutes } from '@/router'
+import { menuTrail, resetDynamicRoutes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import { useTabsStore } from '@/stores/tabs'
@@ -137,6 +138,8 @@ const refreshKey = ref(0)
 const tabs = computed(() => tabsStore.tabs)
 const activePath = computed(() => route.path)
 const currentTitle = computed(() => (route.meta.title as string | undefined) ?? '')
+/** 面包屑来自菜单层级（一级目录 / 页面），不再固定显示「工作台」 */
+const breadcrumb = computed(() => menuTrail(auth.menus, route.path))
 const avatarText = computed(() => (auth.displayName || '用户').slice(0, 1))
 const canViewNotifications = computed(() => auth.hasPermission('core.notification.view'))
 

@@ -141,7 +141,7 @@ describe('共享样式类：唯一定义处 + 实际使用', () => {
     ['views/system/PermissionList.vue', 'ys-panel'],
     ['views/system/ProgressView.vue', 'ys-stat__value'],
     ['views/workspace/Index.vue', 'ys-stat-cards'],
-    ['views/system/AuditLogList.vue', 'ys-code-block'],
+    ['views/planning/BomList.vue', 'ys-code-block'],
   ])('%s 已改用共享类 %s，不再手写同款样式', (file, className) => {
     const source = fs.readFileSync(path.join(srcDir, file), 'utf-8')
     expect(source).toContain(className)

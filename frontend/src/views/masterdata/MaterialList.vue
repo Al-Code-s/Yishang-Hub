@@ -2,7 +2,7 @@
   <entity-list-page
     title="物料档案"
     entity-label="物料"
-    description="面料 / 辅料 / 半成品 / 成品 / 包装物 / 备品备件 / 消耗品的统一物料主数据。米与公斤不做无条件换算，面料卷的实际换算依据记录在卷记录上。"
+    description="面料、辅料、半成品、成品、包装物、备品备件、消耗品的统一档案。米与公斤不做固定换算，面料卷的实际米数、重量与换算依据记录在卷记录上。"
     :api="api"
     :columns="columns"
     :filters="filters"
@@ -39,13 +39,13 @@ const columns: ProTableColumn[] = [
     prop: 'purchase_price',
     label: '采购价',
     width: 110,
-    formatter: (row) => formatAmount(row.purchase_price as string, 4),
+    formatter: (row) => formatAmount(row.purchase_price as string),
   },
   {
     prop: 'safe_stock',
     label: '安全库存',
     width: 110,
-    formatter: (row) => formatAmount(row.safe_stock as string, 3),
+    formatter: (row) => formatAmount(row.safe_stock as string),
   },
   { prop: 'is_active', label: '状态', width: 90 },
 ]

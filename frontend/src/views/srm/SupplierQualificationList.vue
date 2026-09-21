@@ -2,7 +2,7 @@
   <entity-list-page
     title="供应商资质"
     entity-label="资质"
-    description="登记供应商资质证书及有效期，为后续「资质到期提醒」提供数据依据。未填写到期日时显示「未登记到期日」，不会当成未过期。证书编号留空不参与去重。"
+    description="登记供应商资质证书及有效期，用于资质到期提醒。未填写到期日时显示「未登记到期日」，不会被当成未过期或已过期。证书编号留空时不参与重复校验。"
     :api="api"
     :columns="columns"
     :filters="filters"

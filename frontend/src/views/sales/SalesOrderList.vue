@@ -4,7 +4,7 @@
       ref="pageRef"
       title="销售订单"
       entity-label="销售订单"
-      description="销售订单：草稿 → 提交审批 → 批准 → 库存占用 → 发货出库。库存占用只改可用量、不动实存量；发货过账必须由本订单的占用覆盖，未占用不允许出库。"
+      description="销售订单流程：草稿 → 提交审批 → 批准 → 占用库存 → 发货出库。占用只减少可用量，不改变实存量；发货必须由本订单的占用覆盖，没有占用不允许出库。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -104,7 +104,7 @@
         <el-descriptions-item label="要求交期">{{ detailRow.expected_date || '-' }}</el-descriptions-item>
         <el-descriptions-item label="优先级">{{ detailRow.priority_display }}</el-descriptions-item>
         <el-descriptions-item label="发货仓库">{{ detailRow.warehouse_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="价税合计">{{ detailRow.amount_with_tax }}</el-descriptions-item>
+        <el-descriptions-item label="价税合计">{{ formatAmount(detailRow.amount_with_tax) }}</el-descriptions-item>
         <el-descriptions-item label="业务员">{{ detailRow.salesman_name || '-' }}</el-descriptions-item>
         <el-descriptions-item label="收货地址" :span="2">
           {{ detailRow.delivery_address || '-' }}
@@ -112,8 +112,8 @@
         <el-descriptions-item label="发货出库单据">
           {{ chain?.shipments?.[0]?.issue_document_id ?? '未发货' }}
         </el-descriptions-item>
-        <el-descriptions-item label="审批实例">
-          {{ detailRow.approval_instance_id ?? '-' }}
+        <el-descriptions-item label="审批单号">
+          {{ detailRow.approval_instance_id ?? '未提交审批' }}
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ detailRow.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -126,10 +126,10 @@
             {{ line.material_code }} {{ line.material_name }}
           </template>
         </el-table-column>
-        <el-table-column prop="quantity" label="订单数量" width="110" />
+        <el-table-column prop="quantity" label="订单数量" width="110" :formatter="numberFormatter" />
         <el-table-column prop="shipped_quantity" label="已发货" width="100" />
         <el-table-column prop="returned_quantity" label="已退货" width="100" />
-        <el-table-column prop="remaining_quantity" label="未发货" width="100" />
+        <el-table-column prop="remaining_quantity" label="未发货" width="100" :formatter="numberFormatter" />
       </el-table>
 
       <el-divider content-position="left">关联单据（订单到交付链路）</el-divider>
@@ -254,7 +254,7 @@
         </el-row>
 
         <el-divider content-position="left">
-          订单明细（金额由后端计算：行金额 = 数量 × 未税单价，舍入到 4 位）
+          订单明细（金额由系统自动计算：行金额 = 数量 × 未税单价）
         </el-divider>
         <el-table :data="form.lines" border size="small">
           <el-table-column label="物料" min-width="220">
@@ -271,12 +271,12 @@
           </el-table-column>
           <el-table-column label="数量" width="140">
             <template #default="{ row }">
-              <el-input v-model="row.quantity" placeholder="0.000000" />
+              <el-input v-model="row.quantity" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="未税单价" width="130">
             <template #default="{ row }">
-              <el-input v-model="row.price" placeholder="0.000000" />
+              <el-input v-model="row.price" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="行交期" width="150">
@@ -322,7 +322,13 @@ import { customerOptions, materialOptions, warehouseOptions } from '@/composable
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption, SalesOrder, SalesOrderChain, SalesOrderInput } from '@/types/models'
-import { DECIMAL_PLACES, toApiString } from '@/utils/decimal'
+import {
+  DECIMAL_PLACES,
+  formatAmount,
+  numberFormatter,
+  toApiString,
+  toEditableText,
+} from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
@@ -478,14 +484,14 @@ function openEdit(row: SalesOrder | Record<string, unknown>): void {
   form.priority = order.priority || 'normal'
   form.order_date = order.order_date
   form.expected_date = order.expected_date
-  form.tax_rate = order.tax_rate ?? '0'
+  form.tax_rate = toEditableText(order.tax_rate ?? '0')
   form.payment_terms = order.payment_terms ?? ''
   form.delivery_address = order.delivery_address ?? ''
   form.remark = order.remark ?? ''
   form.lines = (order.lines ?? []).map((line) => ({
     material_id: line.material_id,
-    quantity: line.quantity,
-    price: line.price,
+    quantity: toEditableText(line.quantity),
+    price: toEditableText(line.price),
     expected_date: line.expected_date,
   }))
   if (form.lines.length === 0) {

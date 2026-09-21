@@ -837,62 +837,10 @@ a {
   font-size: 13px;
 }
 
-/* ======================= 7. 登录页 ======================= */
-.ys-login {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  padding: 24px;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(43, 124, 233, 0.35), transparent 55%),
-    linear-gradient(135deg, var(--ys-navy-900) 0%, var(--ys-navy-700) 55%, var(--ys-blue-600) 100%);
-}
+/* 登录页样式已移入 frontend/src/views/LoginView.vue（页面级视觉，单独维护）。
+   全局样式表只保留设计令牌与跨页面共享的业务类。 */
 
-.ys-login__card {
-  width: 400px;
-  max-width: 100%;
-  padding: 34px 32px 28px;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 24px 60px rgba(4, 18, 38, 0.42);
-}
-
-.ys-login__brand {
-  margin-bottom: 22px;
-  text-align: center;
-}
-
-.ys-login__brand h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ys-navy-900);
-}
-
-.ys-login__brand p {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--ys-gray-500);
-}
-
-.ys-login__error {
-  margin-bottom: 16px;
-}
-
-.ys-login__submit {
-  width: 100%;
-  margin-top: 4px;
-  letter-spacing: 0.2em;
-}
-
-.ys-login__hint {
-  margin: 18px 0 0;
-  text-align: center;
-}
-
-/* ======================= 8. 业务页面辅助类 ======================= */
+/* ======================= 7. 业务页面辅助类 ======================= */
 .ys-line-add {
   margin-top: 8px;
 }
@@ -910,7 +858,7 @@ a {
   margin-top: 12px;
 }
 
-/* ======================= 9. 窄屏响应式 =======================
+/* ======================= 8. 窄屏响应式 =======================
    断点约定（`useAutoCollapse.ts` 的 NARROW_BREAKPOINT 必须与这里保持一致）：
    - ≤1440px：表格改为容器内横向滚动，不再挤压列宽
    - ≤1200px：侧边栏自动折叠；页面内边距与统计卡收窄

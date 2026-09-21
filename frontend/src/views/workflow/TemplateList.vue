@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">审批模板</h2>
         <p class="ys-page__description">
-          首版支持顺序多级审批，并用金额区间与部门范围做条件路由。
-          节点一旦变更，模板版本号自增，已提交单据继续使用提交时的快照，历史不受影响。
+          配置审批流程：按顺序逐级审批，并可以按金额区间、部门范围决定走哪个流程。
+          流程修改后版本号自动递增，已提交的单据继续按提交时的流程审批，不受影响。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -232,7 +232,7 @@
             </template>
           </el-table-column>
           <template #empty>
-            <el-empty description="未配置节点：提交后会返回 APPROVAL_NO_MATCHING_NODE" :image-size="60" />
+            <el-empty description="尚未配置审批节点：提交后将找不到审批人，请先添加节点" :image-size="60" />
           </template>
         </el-table>
         <el-button class="ys-node-add" plain @click="addNode">添加节点</el-button>
@@ -261,7 +261,7 @@
           <el-descriptions-item label="说明">{{ detail.description || '-' }}</el-descriptions-item>
         </el-descriptions>
 
-        <h4 class="ys-section-title">节点快照</h4>
+        <h4 class="ys-section-title">本单据使用的流程节点</h4>
         <el-table :data="detail.nodes" border size="small">
           <el-table-column prop="seq" label="顺序" width="70" />
           <el-table-column prop="name" label="节点" min-width="120" />
@@ -272,7 +272,7 @@
           </el-table-column>
           <el-table-column label="金额区间" min-width="150">
             <template #default="{ row }">
-              {{ row.amount_min || row.amount_max ? `${row.amount_min ?? '-∞'} ~ ${row.amount_max ?? '+∞'}` : '不限' }}
+              {{ row.amount_min || row.amount_max ? `${row.amount_min ? formatNumber(row.amount_min) : '-∞'} ~ ${row.amount_max ? formatNumber(row.amount_max) : '+∞'}` : '不限' }}
             </template>
           </el-table-column>
         </el-table>
@@ -290,6 +290,7 @@ import { userApi } from '@/api/identity'
 import { workflowApi } from '@/api/modules'
 import { companyOptions, roleOptions } from '@/composables/optionLoaders'
 import { useAuthStore } from '@/stores/auth'
+import { formatNumber } from '@/utils/decimal'
 import type { ApprovalTemplate, EnumOption } from '@/types/models'
 
 interface NodeForm {

@@ -2,7 +2,7 @@
   <entity-list-page
     title="供应商联系人"
     entity-label="联系人"
-    description="联系人通过所属供应商继承公司数据范围。同一供应商下只能有一个主联系人，切换主联系人会自动取消原主联系人标记。"
+    description="联系人的可见范围跟随所属供应商。同一供应商只能有一个主联系人，切换主联系人时会自动取消原标记。"
     :api="api"
     :columns="columns"
     :filters="filters"

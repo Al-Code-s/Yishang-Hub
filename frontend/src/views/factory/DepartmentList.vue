@@ -4,7 +4,7 @@
       ref="pageRef"
       title="部门"
       entity-label="部门"
-      description="部门层级必须同公司且不能形成循环；已使用的部门只能停用，不能删除。"
+      description="部门层级必须属于同一家公司，且不能互为上级形成循环。已被使用的部门只能停用，不能删除。"
       :api="api"
       :columns="columns"
       :filters="filters"

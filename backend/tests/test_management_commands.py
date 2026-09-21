@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from apps.core.models import CodeRule, Dictionary
-from apps.identity.models import Menu, Permission, Role, User
+from apps.identity.models import Menu, Permission, Role, User, UserRole
 from apps.identity.permissions_registry import MENUS, PERMISSIONS
 
 pytestmark = pytest.mark.django_db
@@ -126,3 +126,29 @@ def test_seed_demo_does_not_reset_existing_demo_passwords(settings):
     call_command("seed_demo", verbosity=0)
     user.refresh_from_db()
     assert user.check_password("Changed!Passw0rd9") is True
+
+
+def test_bootstrap_system_binds_super_admin_role_to_admin_account():
+    """管理员账号必须挂上内置的「超级管理员」角色。
+
+    账号的权限来自 ``is_superuser``（后端 ``permission_codes()`` 直接返回 ``{"*"}``），
+    但角色绑定让「角色 → 权限」矩阵与账号实际能力一致：
+    个人中心与用户管理里能看到真实角色，而不是「未分配」。
+
+    用户反馈过「超级管理员好像什么也新增不了」——那是前端把 ``["*"]`` 当成普通编码
+    比较导致按钮被隐藏（已在 ``frontend/tests/auth-store.spec.ts`` 加回归用例），
+    与本用例一起保证「账号 → 角色 → 权限」三段都可核对。
+    """
+    call_command("bootstrap_system", "--admin-password", "Boot!Str0ng2026", verbosity=0)
+
+    admin = User.objects.get(username="admin")
+    role = Role.objects.get(code="super_admin")
+
+    assert admin.roles.filter(code="super_admin").exists()
+    assert role.data_scope_type == "all"
+    assert role.permissions.count() == len(PERMISSIONS)
+    assert admin.has_permission_codes(["wms.warehouse.create", "identity.role.create"]) is True
+
+    # 幂等：重复执行只补齐，不产生重复绑定
+    call_command("bootstrap_system", "--admin-password", "Boot!Str0ng2026", verbosity=0)
+    assert UserRole.objects.filter(user=admin, role=role).count() == 1

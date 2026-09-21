@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">工作台</h2>
         <p class="ys-page__description">
-          卡片数值全部由业务数据实时计算，每张卡片在鼠标悬停时显示数据来源、统计口径与所需权限。
-          无对应权限的卡片后端不会返回，因此本页不会出现「看得见但看不到数」的指标。
+          这里汇总与您当前工作直接相关的信息：待办审批、我的申请、未读通知，以及您有权查看的档案数量。
+          数字全部由业务数据实时统计，不需要人工汇总；鼠标悬停在卡片上可以看到统计口径。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -16,11 +16,10 @@
     <el-alert v-if="errorMessage" type="error" :closable="false" show-icon :title="errorMessage" />
 
     <el-alert class="ys-dashboard__banner" type="info" :closable="false" show-icon>
-      <template #title>当前阶段说明</template>
+      <template #title>当前可用的业务范围</template>
       <div>
-        本平台当前处于阶段 1（登录、权限、组织、主数据、基础审批、审计）。
-        采购、销售、生产、仓储、质量、设备、能源等模块将在后续阶段直接在本平台内实现，
-        本页不展示这些模块的占位卡片。
+        现在可以办理：基础资料、工厂与排班、客户与供应商、采购、销售、仓储、生产计划（用料清单与物料需求运算）、审批与内部协同。
+        质量、设备、能源、安全环保等模块将在后续版本上线；尚未上线的功能不会出现在左侧菜单里，也不会有可以点开的空页面。
         <router-link to="/system/progress">查看实施进度</router-link>
       </div>
     </el-alert>
@@ -74,22 +73,25 @@
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" class="ys-dashboard__approval">
-          <div class="ys-stat__label">数据中心时间</div>
+          <div class="ys-stat__label">数据统计时间</div>
           <div class="ys-dashboard__approval-time">{{ formatDateTime(dashboard?.generated_at) }}</div>
           <div class="ys-muted">业务时区 {{ dashboard?.business_timezone || 'Asia/Shanghai' }}</div>
         </el-card>
       </el-col>
     </el-row>
 
-    <h3 class="ys-section-title">主数据规模（按数据范围统计）</h3>
-    <el-empty v-if="cards.length === 0 && !loading" description="当前账号没有任何主数据查看权限" />
+    <h3 class="ys-section-title">基础资料与组织概览</h3>
+    <el-empty
+      v-if="cards.length === 0 && !loading"
+      description="当前账号还没有可查看的档案权限，请联系系统管理员分配"
+    />
     <div class="ys-stat-cards">
       <el-tooltip
         v-for="card in cards"
         :key="card.key"
         placement="top"
         effect="light"
-        :content="`来源：${card.definition.source} ｜ 时间字段：${card.definition.time_field} ｜ 口径：${card.definition.scope} ｜ 权限：${card.definition.permission}`"
+        :content="`统计口径：${card.definition.scope} ｜ 统计时间：${formatDateTime(card.definition.updated_at)}`"
       >
         <el-card shadow="never" class="ys-stat-card">
           <div class="ys-stat__label">{{ card.label }}</div>
@@ -105,14 +107,14 @@
         <el-card shadow="never">
           <template #header>
             <div class="ys-dashboard__card-header">
-              <span>内部协同发件箱状态（实时）</span>
+              <span>跨模块业务事件处理情况</span>
               <el-button v-if="canViewOutbox" link type="primary" @click="goto('/integration/outbox')">
-                打开发件箱
+                查看事件与协同
               </el-button>
             </div>
           </template>
           <div v-if="!canViewOutbox" class="ys-muted">
-            当前账号没有 integration.outbox.view 权限，后端不会返回发件箱统计。
+            当前账号没有查看内部协同事件的权限，这里不显示统计数据。
           </div>
           <template v-else>
             <el-alert v-if="outboxError" type="error" :closable="false" show-icon :title="outboxError" />
@@ -138,11 +140,11 @@
               :key="row.id"
               :timestamp="formatDateTime(row.created_at)"
             >
-              {{ row.actor_name || '系统' }} {{ row.object_type }} {{ row.object_repr }}
+              {{ activityText(row) }}
             </el-timeline-item>
           </el-timeline>
           <div v-if="!canViewAudit" class="ys-muted">
-            当前账号没有 core.audit.view 权限，这里只显示本人最近的操作记录。
+            当前账号没有查看全部操作日志的权限，这里只显示您本人的操作记录。
           </div>
         </el-card>
       </el-col>
@@ -156,7 +158,7 @@ import * as echarts from 'echarts'
 import { ApiError } from '@/api/http'
 import { analyticsApi, integrationApi } from '@/api/modules'
 import { useAuthStore } from '@/stores/auth'
-import type { DashboardPayload, OutboxHealth } from '@/types/models'
+import type { DashboardActivity, DashboardPayload, OutboxHealth } from '@/types/models'
 import { formatAmount } from '@/utils/decimal'
 import { formatDateTime } from '@/utils/format'
 
@@ -183,12 +185,21 @@ function goto(path: string): void {
   void router.push(path)
 }
 
+/** 把一条操作记录拼成中文描述，例如「管理员 新建 用户「张三」」。 */
+function activityText(row: DashboardActivity): string {
+  const who = row.actor_name || '系统'
+  const what = row.object_repr
+    ? `${row.object_type_display}「${row.object_repr}」`
+    : row.object_type_display
+  return `${who} ${row.action_display} ${what}`
+}
+
 const OUTBOX_LABELS: Record<keyof OutboxHealth, string> = {
   pending: '待处理',
   processing: '处理中',
   done: '已完成',
   failed: '失败待重试',
-  dead: '超限待人工',
+  dead: '需人工处理',
 }
 
 function renderChart(): void {
@@ -227,7 +238,7 @@ async function load(): Promise<void> {
     dashboard.value = await analyticsApi.dashboard()
   } catch (error) {
     dashboard.value = null
-    errorMessage.value = error instanceof ApiError ? error.message : '加载工作台数据失败'
+    errorMessage.value = error instanceof ApiError ? error.message : '工作台数据加载失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -241,7 +252,7 @@ async function load(): Promise<void> {
     renderChart()
   } catch (error) {
     outbox.value = null
-    outboxError.value = error instanceof ApiError ? error.message : '加载发件箱状态失败'
+    outboxError.value = error instanceof ApiError ? error.message : '事件处理情况加载失败'
   }
 }
 

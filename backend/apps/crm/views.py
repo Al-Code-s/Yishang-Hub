@@ -9,7 +9,7 @@ from __future__ import annotations
 from apps.core.viewsets import ActiveFilterMixin, ScopedModelViewSet
 from apps.crm.models import Customer, CustomerContact
 from apps.crm.serializers import CustomerContactSerializer, CustomerSerializer
-from apps.crm.services import ensure_single_primary_contact
+from apps.crm.services import ensure_single_primary_contact, next_customer_code
 
 
 class CustomerViewSet(ActiveFilterMixin, ScopedModelViewSet):
@@ -31,6 +31,19 @@ class CustomerViewSet(ActiveFilterMixin, ScopedModelViewSet):
         "partial_update": "crm.customer.update",
         "set_active": "crm.customer.deactivate",
     }
+
+    def perform_create(self, serializer) -> None:
+        """客户编码留空时自动取号。
+
+        规则见 `apps/core/management/commands/bootstrap_system.py::CODE_RULES` 的
+        `CUS`（默认 `CUS{YYYY}{SEQ:4}`、按年重置），可在「系统管理 → 编码规则」调整。
+        显式传入的编码仍然保留，便于历史数据迁移与外部系统对齐。
+        取号发生在 `ScopedModelViewSet.create()` 的 `transaction.atomic()` 内，
+        与客户落库同事务：取号成功但客户写入失败时流水会一并回滚。
+        """
+        code = str(serializer.validated_data.get("code") or "").strip()
+        serializer.validated_data["code"] = code or next_customer_code()
+        super().perform_create(serializer)
 
 
 class CustomerContactViewSet(ActiveFilterMixin, ScopedModelViewSet):

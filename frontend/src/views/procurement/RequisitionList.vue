@@ -3,7 +3,7 @@
     <entity-list-page
       title="采购申请"
       entity-label="采购申请"
-      description="常规 / 计划 / 紧急申请统一在此登记。提交后进入审批（复用平台审批中心），只有「已批准」的申请可以转采购订单，且转单数量不得超过未转数量。"
+      description="常规、计划、紧急采购申请都在这里登记。提交后进入审批流程；只有「已批准」的申请可以转成采购订单，转单数量不能超过未转数量。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -93,7 +93,7 @@
         <el-descriptions-item label="需求日期">{{ detailRow.needed_date || '-' }}</el-descriptions-item>
         <el-descriptions-item label="用途说明" :span="2">{{ detailRow.purpose || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ detailRow.remark || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="审批实例">
+        <el-descriptions-item label="审批单号">
           {{ detailRow.approval_instance_id ?? '未提交审批' }}
         </el-descriptions-item>
         <el-descriptions-item label="批准时间">{{ detailRow.approved_at || '-' }}</el-descriptions-item>
@@ -106,7 +106,7 @@
             {{ line.material_code }} {{ line.material_name }}
           </template>
         </el-table-column>
-        <el-table-column prop="quantity" label="申请数量" width="110" />
+        <el-table-column prop="quantity" label="申请数量" width="110" :formatter="numberFormatter" />
         <el-table-column prop="ordered_quantity" label="已转数量" width="110" />
         <el-table-column prop="needed_date" label="需求日期" width="110" />
       </el-table>
@@ -211,7 +211,7 @@
           </el-table-column>
           <el-table-column label="数量" width="140">
             <template #default="{ row }">
-              <el-input v-model="row.quantity" placeholder="0.000000" />
+              <el-input v-model="row.quantity" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="计量单位" width="140">
@@ -278,7 +278,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="不选择明细行表示按申请全部未转数量转单；转单后申请行的「已转数量」会增加，重复转单会被后端拒绝。"
+        title="不选择明细行表示按申请的全部未转数量转单；转单后申请行的「已转数量」会增加，重复转单会被拒绝。"
       />
       <el-form label-width="110px" class="ys-convert-form">
         <el-form-item label="供应商" required>
@@ -352,7 +352,7 @@ import type {
   PurchaseRequisitionLine,
   RequisitionInput,
 } from '@/types/models'
-import { toApiString } from '@/utils/decimal'
+import { numberFormatter, toApiString } from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback

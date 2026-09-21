@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from apps.identity.models import Menu, Permission, Role
+from apps.identity.permissions_registry import module_label
 
 
 def build_menu_tree(menus: Iterable[Menu]) -> list[dict[str, Any]]:
@@ -88,7 +89,13 @@ def permission_groups() -> list[dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     for permission in Permission.objects.all().order_by("module", "resource", "action"):
         group = groups.setdefault(
-            permission.module, {"module": permission.module, "permissions": []}
+            permission.module,
+            {
+                "module": permission.module,
+                # 一级分组的中文名，界面显示为「模块编码（中文名）」
+                "module_name": module_label(permission.module),
+                "permissions": [],
+            },
         )
         group["permissions"].append(
             {

@@ -2,7 +2,7 @@
   <entity-list-page
     title="供应商档案"
     entity-label="供应商"
-    description="阶段 2 交付供应商、联系人与资质有效期。当前只承载档案与准入状态字段；寻源、报价、评分评价属阶段 2 的后续增量，本页不展示未实现的评分数字。"
+    description="供应商档案、联系人与资质有效期。寻源、报价与评分评价将在后续版本提供，本页不展示尚未实现的评分数字。"
     :api="api"
     :columns="columns"
     :filters="filters"
@@ -101,7 +101,7 @@ const formFields = computed<FormFieldDef[]>(() => [
     label: '准入状态',
     type: 'select',
     options: meta.options('admission_statuses'),
-    help: '准入审批流程属后续增量，此处为档案字段，不代替审批记录',
+    help: '此处只登记档案信息，不作为审批记录；准入审批流程将在后续版本提供',
   },
   { prop: 'payment_terms', label: '结算方式' },
   { prop: 'tax_no', label: '纳税人识别号' },

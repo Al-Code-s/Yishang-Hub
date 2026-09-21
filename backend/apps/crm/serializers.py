@@ -9,6 +9,12 @@ from apps.crm.models import Customer, CustomerContact
 class CustomerSerializer(ReferenceIdSerializer):
     company_name = serializers.SerializerMethodField()
     salesman_name = serializers.SerializerMethodField()
+    # 新增时允许留空：由视图层按编码规则（CUS）自动取号；编辑时仍必填，
+    # 避免把已有客户改成空编码而破坏「同公司内编码唯一」。
+    # `default=""` 而不是 `required=False`：`uq_customer_company_code` 会派生
+    # UniqueTogetherValidator，它强制要求 company_id 与 code 同时出现在输入里，
+    # 只有带默认值的字段才能合法缺省（默认值随后被视图层替换为真实编码）。
+    code = serializers.CharField(allow_blank=True, default="", max_length=32, label="客户编码")
 
     class Meta:
         model = Customer
@@ -29,7 +35,7 @@ class CustomerSerializer(ReferenceIdSerializer):
 
     def validate_code(self, value: str) -> str:
         code = (value or "").strip()
-        if not code:
+        if not code and self.instance is not None:
             raise serializers.ValidationError("客户编码不能为空。")
         return code
 

@@ -2,7 +2,7 @@
   <entity-list-page
     title="款式档案"
     entity-label="款式"
-    description="款式（SPU）是服饰模型的第一层，向下由颜色 + 尺码派生 SKU。SKU 与库存物料一一对应，避免两套库存编码。"
+    description="款式档案是产品资料的第一层，下按颜色 + 尺码派生 SKU。SKU 与库存物料一一对应，避免同一件商品出现两套编码。"
     :api="api"
     :columns="columns"
     :filters="filters"

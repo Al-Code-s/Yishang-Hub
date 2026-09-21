@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">内部协同中心</h2>
         <p class="ys-page__description">
-          跨模块事件采用发件箱（Outbox）模式：事件与业务数据在同一事务写入，后台任务以
-          「至少一次」语义投递，因此消费者必须自行幂等。失败事件可人工重放，重放同样不会重复产生业务结果。
+          这里记录系统内部各模块之间传递的业务事件：事件与业务数据同时保存，由后台任务自动投递。
+          投递失败会自动重试，超过重试次数后可以在此人工重放；重复重放不会重复产生业务结果。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -33,7 +33,7 @@
       type="warning"
       :closable="false"
       show-icon
-      :title="`发件箱健康统计加载失败：${healthError}`"
+      :title="`事件统计加载失败：${healthError}`"
     />
 
     <el-tabs v-model="activeTab" class="ys-panel ys-panel--flush">
@@ -41,7 +41,7 @@
         <div class="ys-filter-bar">
           <el-input
             v-model="filters.search"
-            placeholder="搜索事件类型、聚合 ID 或错误信息"
+            placeholder="搜索事件类型、对象 ID 或错误信息"
             clearable
             style="width: 260px"
             @keyup.enter="reload"
@@ -69,8 +69,8 @@
 
         <el-table v-loading="loading" :data="rows" border stripe size="small">
           <el-table-column prop="event_type" label="事件类型" min-width="200" />
-          <el-table-column prop="aggregate_type" label="聚合类型" width="140" />
-          <el-table-column prop="aggregate_id" label="聚合 ID" width="120" />
+          <el-table-column prop="aggregate_type_display" label="业务对象" width="140" />
+          <el-table-column prop="aggregate_id" label="对象编号" width="120" />
           <el-table-column label="状态" width="120">
             <template #default="{ row }">
               <el-tag :type="statusTagType(row.status)" size="small" effect="light">
@@ -103,7 +103,7 @@
             </template>
           </el-table-column>
           <template #empty>
-            <el-empty description="暂无发件箱事件" />
+            <el-empty description="暂无事件记录" />
           </template>
         </el-table>
 
@@ -123,7 +123,7 @@
         <div class="ys-filter-bar">
           <el-input
             v-model="linkFilters.source_type"
-            placeholder="来源单据类型，如 wms.document"
+            placeholder="来源单据类型"
             clearable
             style="width: 240px"
             @keyup.enter="reloadLinks"
@@ -161,13 +161,13 @@
           <el-table-column prop="target_type" label="目标类型" min-width="150" />
           <el-table-column prop="relation" label="关系" width="130" />
           <el-table-column label="数量" width="120" align="right">
-            <template #default="{ row }">{{ formatAmount(row.quantity, 6) }}</template>
+            <template #default="{ row }">{{ formatAmount(row.quantity) }}</template>
           </el-table-column>
           <el-table-column label="建立时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
           </el-table-column>
           <template #empty>
-            <el-empty description="暂无单据关系记录。阶段 1 尚未产生跨模块单据，列表为空属于预期结果。" />
+            <el-empty description="暂无单据关系记录。产生跨模块单据后，这里会显示上下游关联关系。" />
           </template>
         </el-table>
 
@@ -184,15 +184,15 @@
       </el-tab-pane>
     </el-tabs>
 
-    <el-drawer v-model="detailVisible" title="发件箱事件详情" size="560px">
+    <el-drawer v-model="detailVisible" title="事件详情" size="560px">
       <template v-if="detail">
         <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="事件 ID">
+          <el-descriptions-item label="事件编号">
             <span class="ys-mono">{{ detail.event_id }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="事件类型">{{ detail.event_type }}</el-descriptions-item>
-          <el-descriptions-item label="聚合对象">
-            {{ detail.aggregate_type }} / {{ detail.aggregate_id }}
+          <el-descriptions-item label="业务对象">
+            {{ detail.aggregate_type_display || detail.aggregate_type }} / {{ detail.aggregate_id }}
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             {{ detail.status_display || statusLabel(detail.status) }}
@@ -200,7 +200,7 @@
           <el-descriptions-item label="尝试次数">
             {{ detail.attempts }} / {{ detail.max_attempts }}
           </el-descriptions-item>
-          <el-descriptions-item label="去重键">{{ detail.dedup_key || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="去重标识">{{ detail.dedup_key || '-' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">
             {{ formatDateTime(detail.created_at) }}
           </el-descriptions-item>
@@ -212,7 +212,7 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <h4 class="ys-section-title">载荷（payload）</h4>
+        <h4 class="ys-section-title">事件内容</h4>
         <pre class="ys-code-block">{{ prettyPayload }}</pre>
       </template>
       <el-empty v-else description="未加载到事件详情" />
@@ -342,7 +342,7 @@ async function load(): Promise<void> {
   } catch (error) {
     rows.value = []
     total.value = 0
-    errorMessage.value = error instanceof ApiError ? error.message : '加载发件箱事件失败'
+    errorMessage.value = error instanceof ApiError ? error.message : '事件列表加载失败'
   } finally {
     loading.value = false
   }
@@ -438,7 +438,7 @@ watch(activeTab, (value) => {
 
 onMounted(async () => {
   if (!canView.value) {
-    errorMessage.value = '当前账号没有 integration.outbox.view 权限，无法查看发件箱。'
+    errorMessage.value = '当前账号没有查看内部协同事件的权限。'
     return
   }
   await refreshAll()

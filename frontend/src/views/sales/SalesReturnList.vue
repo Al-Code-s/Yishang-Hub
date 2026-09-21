@@ -4,7 +4,7 @@
       ref="pageRef"
       title="销售退货"
       entity-label="退货单"
-      description="销售退货：草稿 → 收货过账（退回货物先进入「待检」库存）→ 检验判定（合格回库可再销售 / 不合格留在仓内不可动用）。退货先验收再决定质量状态，收货过账不等于可以直接再销售。"
+      description="销售退货流程：草稿 → 收货过账（退回货物先进入「待检」库存）→ 检验判定（合格回库可再销售，不合格留在仓内不可动用）。退货必须先验收再决定质量状态，收货过账不等于可以直接再销售。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -125,7 +125,7 @@
             {{ line.material_code }} {{ line.material_name }}
           </template>
         </el-table-column>
-        <el-table-column prop="quantity" label="退货数量" width="120" />
+        <el-table-column prop="quantity" label="退货数量" width="120" :formatter="numberFormatter" />
         <el-table-column prop="batch_no" label="批次" width="110" />
         <el-table-column prop="roll_no" label="卷号" width="110" />
       </el-table>
@@ -200,7 +200,7 @@
         </el-row>
       </el-form>
 
-      <el-divider content-position="left">退货明细（数量由后端校验，不得超过可退货数量）</el-divider>
+      <el-divider content-position="left">退货明细（数量不得超过可退货数量）</el-divider>
       <el-table :data="form.lines as never[]" border size="small">
         <el-table-column prop="material_code" label="物料编码" width="130" />
         <el-table-column prop="material_name" label="物料名称" min-width="150" />
@@ -256,7 +256,7 @@
         :closable="false"
         show-icon
         style="margin-bottom: 12px"
-        title="未接入真实检测设备接口：此处为人工判定，结论与判定人一并留痕，不得作为自动检测结果。"
+        title="本判定为人工填写，系统未接入检测设备；结论与判定人会一并记录。"
       />
       <el-form label-width="90px">
         <el-form-item label="判定结论" required>
@@ -296,7 +296,7 @@ import { warehouseOptions } from '@/composables/optionLoaders'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption, ReturnInput, SalesOrder, SalesOrderLine, SalesReturn } from '@/types/models'
-import { toApiString } from '@/utils/decimal'
+import { numberFormatter, toApiString } from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback

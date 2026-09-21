@@ -334,7 +334,14 @@
 
 规则实现在 `apps/core/selectors.py::resolve_data_scope`，**后端启动与测试均校验该规则**：
 
-1. **超级管理员**不受限制（`scope_type=all`）。
+1. **超级管理员**不受限制：`is_superuser=True` 的账号在数据范围上直接得到 `all`；
+   在操作权限上 `User.permission_codes()` 返回的是**通配符 `{"*"}`**，而不是 173 条编码的展开。
+
+   > ⚠️ **通配符契约（真实缺陷的教训）**：任何客户端都必须把 `*` 解释为「全部权限」。
+   > 前端实现在 `frontend/src/stores/auth.ts::hasFullAccess`；
+   > 早期版本只做 `permissions.includes(code)`，导致超级管理员被误判为「没有任何权限」、
+   > 所有新增 / 编辑 / 删除按钮全部消失（已修复，回归用例 `frontend/tests/auth-store.spec.ts`）。
+   > 后端 `has_permission_codes()` 同步支持 `*`，两者语义必须一致。
 2. **无角色**用户 → 空范围（`none`），看不到任何业务数据。
 3. **操作权限取并集**：用户拥有多个角色时，只要任一角色授予某权限编码，即视为拥有。
 4. **数据范围取最宽的一档**：按 `DataScopeType.rank_map()` 排序，取 rank 最高的角色档次作为生效档次。

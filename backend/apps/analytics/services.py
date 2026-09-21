@@ -13,6 +13,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from apps.core.selectors import is_action_allowed, scoped_queryset
+from apps.core.services import object_type_label
 
 
 def _card(
@@ -259,7 +260,10 @@ def _recent_activity(user: Any, limit: int = 10) -> list[dict[str, Any]]:
         {
             "id": row.id,
             "action": row.action,
+            "action_display": row.get_action_display(),
+            # 对象类型在库里是 `app_label.ModelName`：给使用者显示中文名
             "object_type": row.object_type,
+            "object_type_display": object_type_label(row.object_type),
             "object_repr": row.object_repr,
             "actor_name": row.actor_name,
             "created_at": row.created_at.isoformat(),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.core.models import Attachment, AuditLog, CodeRule, Dictionary, DictionaryItem
+from apps.core.services import describe_changes, object_type_label
 
 
 class DisplayLabelsMixin:
@@ -151,15 +152,26 @@ class CodeRulePreviewSerializer(serializers.Serializer):
 
 class AuditLogSerializer(ReferenceIdSerializer):
     action_display = serializers.CharField(source="get_action_display", read_only=True)
+    # object_type 存的是 `app_label.ModelName`（内部标识），界面上要给使用者看中文名
+    object_type_display = serializers.SerializerMethodField()
+    # 变更摘要的键是英文字段名，这里额外给出中文条目供界面直接渲染
+    changes_display = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
         fields = (
             "id", "request_id", "action", "action_display", "actor_id", "actor_username",
-            "actor_name", "company_id", "object_type", "object_id", "object_repr",
-            "changes", "reason", "approval_basis", "ip_address", "user_agent", "created_at",
+            "actor_name", "company_id", "object_type", "object_type_display", "object_id",
+            "object_repr", "changes", "changes_display", "reason", "approval_basis",
+            "ip_address", "user_agent", "created_at",
         )
         read_only_fields = fields
+
+    def get_object_type_display(self, obj: AuditLog) -> str:
+        return object_type_label(obj.object_type)
+
+    def get_changes_display(self, obj: AuditLog) -> list[dict[str, str]]:
+        return describe_changes(obj.object_type, obj.changes)
 
 
 class AttachmentSerializer(ReferenceIdSerializer):

@@ -4,7 +4,7 @@
       ref="pageRef"
       title="SKU 档案"
       entity-label="SKU"
-      description="SKU = 款式 + 颜色 + 尺码。成品 SKU 与库存物料一对一绑定，库存、条码、发货都以 SKU 为准，不使用第二套库存编码。"
+      description="SKU（款式 + 颜色 + 尺码）是可销售、可库存的最小单位。成品 SKU 与库存物料一一对应，库存、条码与发货都以 SKU 为准，不会出现两套编码。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -173,7 +173,7 @@ const columns: ProTableColumn[] = [
     prop: 'reference_cost',
     label: '参考成本',
     width: 120,
-    formatter: (row) => formatAmount(row.reference_cost as string, 4),
+    formatter: (row) => formatAmount(row.reference_cost as string),
   },
   { prop: 'is_active', label: '状态', width: 90 },
 ]
@@ -190,7 +190,7 @@ const formFields = computed<FormFieldDef[]>(() => [
   { prop: 'color_id', label: '颜色', type: 'select', required: true, optionsLoader: colorOptions },
   { prop: 'size_id', label: '尺码', type: 'select', required: true, optionsLoader: sizeOptions },
   { prop: 'material_id', label: '对应物料', type: 'select', optionsLoader: materialOptions },
-  { prop: 'code', label: 'SKU 编码', required: true, help: '留空由后端按编码规则生成' },
+  { prop: 'code', label: 'SKU 编码', required: true, help: '留空时系统按编号规则自动生成' },
   { prop: 'name', label: 'SKU 名称' },
   { prop: 'barcode', label: '条码', help: '留空则与 SKU 编码相同' },
   { prop: 'safe_stock', label: '安全库存', type: 'decimal', defaultValue: '0' },

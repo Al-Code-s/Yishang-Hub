@@ -30,9 +30,22 @@ export const useAuthStore = defineStore('auth', () => {
   })
   const mustChangePassword = computed(() => user.value?.must_change_password === true)
 
-  /** 是否拥有某个操作权限。超级管理员由后端直接放行，前端按 is_staff + 全权限处理。 */
+  /**
+   * 是否拥有全部权限。
+   *
+   * 超级管理员在后端由 `User.permission_codes()` 直接返回通配符 `["*"]`
+   * （见 `backend/apps/identity/models.py`），`/auth/session/` 原样下发。
+   * 前端必须把 `*` 翻译成「全部权限」，否则超级管理员会被误判为「没有任何权限」，
+   * 页面上所有「新增 / 编辑 / 删除 / 提交」按钮都会被隐藏。
+   */
+  const hasFullAccess = computed(() => permissions.value.includes('*'))
+
+  /** 是否拥有某个操作权限。仅用于显示与引导，越权请求由后端拒绝。 */
   function hasPermission(code: string | undefined | null): boolean {
     if (!code) {
+      return true
+    }
+    if (hasFullAccess.value) {
       return true
     }
     return permissions.value.includes(code)
@@ -40,6 +53,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   function hasAnyPermission(codes: string[]): boolean {
     if (codes.length === 0) {
+      return true
+    }
+    if (hasFullAccess.value) {
       return true
     }
     return codes.some((code) => permissions.value.includes(code))
@@ -105,6 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
     displayName,
     roleNames,
     mustChangePassword,
+    hasFullAccess,
     hasPermission,
     hasAnyPermission,
     applySession,

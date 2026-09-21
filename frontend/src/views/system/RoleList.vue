@@ -4,8 +4,9 @@
       <div>
         <h2 class="ys-page__title">角色与权限</h2>
         <p class="ys-page__description">
-          权限分四层：菜单、操作、接口、数据范围。用户拥有多个角色时，操作权限取并集，
-          数据范围取最宽的一档，并且始终先受公司边界限制；单一维度范围配置不完整时按最小范围（fail-closed）处理。
+          角色决定「能用哪些功能」和「能看到哪些数据」：先勾选菜单与操作权限，再设置数据范围。
+          一个用户有多个角色时，功能取并集、数据范围取最宽的一档，并且始终不超出所属公司；
+          范围配置不完整时按最小范围处理，宁可少看不可多看。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -173,7 +174,7 @@
     <el-dialog v-model="menusVisible" title="分配菜单" width="640px" :close-on-click-modal="false">
       <el-alert v-if="menusError" type="error" :closable="false" show-icon :title="menusError" />
       <p class="ys-muted">
-        菜单只控制导航可见性；隐藏菜单不等于禁止访问，接口权限仍需在「权限」中单独授予。
+        菜单只决定左侧是否显示入口；不勾选菜单也不等于禁止访问，能否操作取决于授予的操作权限。
       </p>
       <div class="ys-role__tree">
         <el-tree
@@ -197,7 +198,7 @@
         type="warning"
         :closable="false"
         show-icon
-        title="后端对每个维度都会校验对象是否存在及其公司归属，不能通过传入任意 ID 越权。"
+        title="只能选择本公司范围内的对象；保存时系统会再校验一次，其他途径同样无法超出该范围。"
       />
       <el-form label-width="120px">
         <el-form-item label="范围类型">
@@ -279,7 +280,7 @@
         <h4 class="ys-section-title">数据范围明细</h4>
         <el-table :data="detail.scope_grants" border size="small">
           <el-table-column prop="dimension" label="维度" width="120" />
-          <el-table-column prop="object_id" label="对象 ID" />
+          <el-table-column prop="object_id" label="对象编号" />
           <template #empty>
             <el-empty description="未配置自定义范围明细" :image-size="60" />
           </template>
@@ -304,6 +305,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption, MenuNode, PermissionGroup, Role } from '@/types/models'
+import { permissionModuleNodeLabel } from '@/utils/permissionLabels'
 
 interface TreeNode {
   key: string
@@ -529,7 +531,9 @@ async function submit(): Promise<void> {
 function buildPermissionTree(groups: PermissionGroup[]): TreeNode[] {
   return groups.map((group) => ({
     key: `module:${group.module}`,
-    label: `${group.module}（${group.permissions.length}）`,
+    // 一级分组显示「英文模块（中文名）」，例如 core（公共基础），
+    // 只显示英文模块名时业务人员无法判断该勾哪一组。
+    label: permissionModuleNodeLabel(group),
     children: group.permissions.map((permission) => ({
       key: `${PERMISSION_NODE_PREFIX}${permission.code}`,
       label: `${permission.name}（${permission.code}）`,

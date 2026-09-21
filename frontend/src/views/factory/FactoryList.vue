@@ -2,7 +2,7 @@
   <entity-list-page
     title="工厂"
     entity-label="工厂"
-    description="工厂是数据范围授权的主要维度之一：工厂范围角色只能看到与操作授权工厂内的数据。"
+    description="工厂是数据权限的主要维度之一：被授权某个工厂的角色，只能看到并操作该工厂范围内的数据。"
     :api="api"
     :columns="columns"
     :filters="filters"

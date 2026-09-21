@@ -20,7 +20,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.core.models import CodeRule, Dictionary, DictionaryItem, ResetPeriod
-from apps.identity.models import DataScopeType, Menu, Permission, Role, User
+from apps.identity.models import DataScopeType, Menu, Permission, Role, User, UserRole
 from apps.identity.permissions_registry import MENUS, PERMISSIONS
 
 DEMO_ROLE_PREFIX = "demo_"
@@ -317,6 +317,8 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
 
 
 CODE_RULES: tuple[tuple[str, str, str, str], ...] = (
+    # 主数据编码按年重置（长期引用，不适合在编码里写死到日）
+    ("CUS", "客户编码", "CUS{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
     ("AP", "审批单号", "AP{YYYYMMDD}{SEQ:5}", ResetPeriod.DAILY),
     ("SO", "销售订单号", "SO{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("SH", "销售发货单号", "SH{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
@@ -673,6 +675,7 @@ class Command(BaseCommand):
                     changed = True
                 if changed:
                     existing.save(update_fields=["is_superuser", "is_staff", "is_active", "updated_at"])
+            self._ensure_admin_role(existing, dry_run=dry_run)
             return
 
         if not password:
@@ -725,3 +728,26 @@ class Command(BaseCommand):
                     f"管理员账号 {username} 已按提供的密码创建/重置，首次登录需修改密码。"
                 )
             )
+
+        self._ensure_admin_role(user, dry_run=False)
+
+    def _ensure_admin_role(self, user: User, *, dry_run: bool) -> None:
+        """让管理员账号挂上内置的「超级管理员」角色。
+
+        ``is_superuser=True`` 已经让后端放行全部权限与数据范围，这里再绑定角色是为了：
+        1) 个人中心 / 用户管理里显示真实角色，而不是「未分配」；
+        2) 让「角色 → 权限」矩阵与账号实际能力一致，便于审计；
+        3) 超级管理员角色的权限集合可见（内置角色本就含全部 173 个权限点）。
+        幂等：重复执行只补齐缺失的绑定。
+        """
+        role = Role.objects.filter(code="super_admin").first()
+        if role is None:
+            self.stdout.write(self.style.WARNING("未找到 super_admin 角色，跳过管理员角色绑定。"))
+            return
+        if UserRole.objects.filter(user=user, role=role).exists():
+            return
+        if dry_run:
+            self.stdout.write(f"[dry-run] 将为管理员账号 {user.username} 绑定角色 super_admin。")
+            return
+        UserRole.objects.create(user=user, role=role)
+        self.stdout.write(f"管理员账号 {user.username} 已绑定角色：{role.name}（{role.permissions.count()} 个权限点）")

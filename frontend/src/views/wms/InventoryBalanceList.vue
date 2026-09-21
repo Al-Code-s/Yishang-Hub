@@ -2,7 +2,7 @@
   <div class="ys-page">
     <entity-list-page
       title="库存余额"
-      description="余额只能由统一库存服务改写，界面只提供查询。可用量 = 实存量 - 冻结量 - 占用量，全部由后端计算；冻结量与占用量是互斥数量桶，同一数量不会被重复扣减。"
+      description="库存数量只能通过出入库过账改变，本页只提供查询。可用量 = 实存量 - 冻结量 - 占用量，均由系统计算；冻结与占用不会对同一批数量重复扣减。"
       entity-label="库存余额"
       readonly
       :api="balanceApiRef"
@@ -24,16 +24,16 @@
         </el-tag>
       </template>
       <template #column-on_hand="{ row }">
-        <span class="ys-mono">{{ formatAmount(String(row.on_hand ?? '0'), 6) }}</span>
+        <span class="ys-mono">{{ formatAmount(String(row.on_hand ?? '0')) }}</span>
       </template>
       <template #column-frozen="{ row }">
-        <span class="ys-mono">{{ formatAmount(String(row.frozen ?? '0'), 6) }}</span>
+        <span class="ys-mono">{{ formatAmount(String(row.frozen ?? '0')) }}</span>
       </template>
       <template #column-reserved="{ row }">
-        <span class="ys-mono">{{ formatAmount(String(row.reserved ?? '0'), 6) }}</span>
+        <span class="ys-mono">{{ formatAmount(String(row.reserved ?? '0')) }}</span>
       </template>
       <template #column-available="{ row }">
-        <span class="ys-mono">{{ formatAmount(String(row.available ?? '0'), 6) }}</span>
+        <span class="ys-mono">{{ formatAmount(String(row.available ?? '0')) }}</span>
       </template>
     </entity-list-page>
   </div>

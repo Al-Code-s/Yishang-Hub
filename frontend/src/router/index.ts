@@ -33,6 +33,33 @@ function collectPages(nodes: MenuNode[], result: MenuNode[] = []): MenuNode[] {
   return result
 }
 
+/**
+ * 登录后的落地页：用户菜单里第一个可访问的页面（通常是「工作台」）。
+ *
+ * 站点根路径 `/` 只是布局外壳，本身没有页面组件；如果不做这一步跳转，
+ * 登录后会停在 `/`，看到「侧边栏 + 顶部 + 空白内容区」，像是页面没加载出来。
+ * 这里按菜单顺序取第一个页面，因此没有工作台权限的账号也能落到自己的第一个可用页面。
+ */
+export function resolveHomePath(nodes: MenuNode[]): string {
+  return collectPages(nodes)[0]?.path ?? ''
+}
+
+/** 当前地址在菜单树里的层级链路（用于面包屑），找不到时返回空数组。 */
+export function menuTrail(nodes: MenuNode[], path: string): MenuNode[] {
+  for (const node of nodes) {
+    if (node.path === path) {
+      return [node]
+    }
+    if (node.children && node.children.length > 0) {
+      const inner = menuTrail(node.children, path)
+      if (inner.length > 0) {
+        return [node, ...inner]
+      }
+    }
+  }
+  return []
+}
+
 const staticRoutes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -163,6 +190,14 @@ router.beforeEach(async (to) => {
 
   if (to.name === 'login') {
     return { path: '/' }
+  }
+
+  // `/` 没有对应页面组件，直接跳到该账号菜单里的第一个页面，避免「登录后内容区空白」
+  if (to.path === '/') {
+    const home = resolveHomePath(auth.menus)
+    if (home && home !== '/') {
+      return { path: home, replace: true }
+    }
   }
   return true
 })

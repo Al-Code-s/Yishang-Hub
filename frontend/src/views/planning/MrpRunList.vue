@@ -3,7 +3,7 @@
     <entity-list-page
       title="MRP 运算"
       entity-label="MRP 运行"
-      description="MRP 按「销售需求 → 净算 → BOM 展开 → 缺料建议」同步计算：供给只认合格库存可用量（实存量 − 冻结 − 占用）与已批准采购未收量；子件毛需求按父件净需求展开。每次运行都留一份完整快照，重算不会覆盖或改写历史结果。"
+      description="物料需求运算按「销售需求 → 净需求计算 → 用料清单展开 → 缺料建议」一次算完：可用的供给只认合格库存的可用量（实存量 − 冻结 − 占用）与已批准未到货的采购量。每次运算都保留完整结果，重新运算不会覆盖或改写历史记录。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -167,9 +167,9 @@
           <el-descriptions-item label="参与物料">{{ summary.item_count ?? 0 }}</el-descriptions-item>
           <el-descriptions-item label="展开层级">{{ summary.level_count ?? 0 }}</el-descriptions-item>
           <el-descriptions-item label="需求行数">{{ summary.demand_line_count ?? 0 }}</el-descriptions-item>
-          <el-descriptions-item label="需求合计">{{ summary.demand_quantity ?? '0' }}</el-descriptions-item>
+          <el-descriptions-item label="需求合计">{{ formatNumber(summary.demand_quantity ?? '0') }}</el-descriptions-item>
           <el-descriptions-item label="供给行数">{{ summary.supply_line_count ?? 0 }}</el-descriptions-item>
-          <el-descriptions-item label="供给合计">{{ summary.supply_quantity ?? '0' }}</el-descriptions-item>
+          <el-descriptions-item label="供给合计">{{ formatNumber(summary.supply_quantity ?? '0') }}</el-descriptions-item>
           <el-descriptions-item label="建议行数">{{ summary.suggestion_count ?? 0 }}</el-descriptions-item>
           <el-descriptions-item label="采购建议">
             {{ summary.purchase_suggestion_count ?? 0 }}
@@ -203,7 +203,7 @@
               <el-table-column label="来源单号" min-width="150">
                 <template #default="{ row }">{{ row.source_no }}#{{ row.source_line_no ?? '-' }}</template>
               </el-table-column>
-              <el-table-column prop="quantity" label="数量" width="120" />
+              <el-table-column prop="quantity" label="数量" width="120" :formatter="numberFormatter" />
               <el-table-column prop="bucket_date" label="分段" width="110" />
               <el-table-column prop="path" label="来源路径" min-width="200" show-overflow-tooltip />
             </el-table>
@@ -219,7 +219,7 @@
                   {{ meta.label('mrp_supply_sources', String(row.source_type)) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="quantity" label="数量" width="120" />
+              <el-table-column prop="quantity" label="数量" width="120" :formatter="numberFormatter" />
               <el-table-column prop="available_date" label="可用日期" width="120" />
               <el-table-column prop="reference_no" label="来源单据" width="150" />
               <el-table-column prop="remark" label="说明" min-width="200" show-overflow-tooltip />
@@ -236,7 +236,7 @@
                   {{ meta.label('mrp_suggestion_types', String(row.suggestion_type)) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="quantity" label="建议数量" width="120" />
+              <el-table-column prop="quantity" label="建议数量" width="120" :formatter="numberFormatter" />
               <el-table-column prop="due_date" label="需求日期" width="120" />
               <el-table-column prop="reason" label="依据" min-width="260" show-overflow-tooltip />
             </el-table>
@@ -261,6 +261,7 @@ import { mrpActionApi } from '@/api/modules'
 import { companyOptions } from '@/composables/optionLoaders'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
+import { formatNumber, numberFormatter } from '@/utils/decimal'
 import type { EnumOption, MrpDemandLine, MrpRun, MrpSupplyLine, MrpSuggestion } from '@/types/models'
 
 function toMessage(error: unknown, fallback: string): string {

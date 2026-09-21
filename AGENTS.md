@@ -51,6 +51,9 @@ $env:PYTHONIOENCODING='utf-8'
 .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run   # 应无变更
 .\.venv\Scripts\python.exe -m ruff check apps config tests
 .\.venv\Scripts\python.exe -m pytest tests -q --reuse-db
+
+开发更新代码运行
+.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
 
 ### 前端
@@ -61,6 +64,9 @@ $env:npm_config_cache='E:\github\Yishang-Hub\.tmp\npm-cache'   # 或使用 scrip
 npm run typecheck
 npm run test
 npm run build
+
+开发更新代码运行
+npm run dev -- --port 5173
 ```
 
 ### 一键冒烟

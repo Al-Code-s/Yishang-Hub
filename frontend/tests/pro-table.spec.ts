@@ -33,6 +33,38 @@ async function mountTable(rows: Record<string, unknown>[]) {
   return wrapper
 }
 
+describe('ProTable 数值显示口径', () => {
+  const numericColumns: ProTableColumn[] = [
+    { prop: 'quantity', label: '数量' },
+    { prop: 'phone', label: '电话' },
+    { prop: 'tax_no', label: '纳税人识别号' },
+  ]
+
+  async function mountNumericTable(rows: Record<string, unknown>[]) {
+    const wrapper = mount(ProTable, {
+      props: { columns: numericColumns, rows, total: rows.length, page: 1, pageSize: 20 },
+      global: { plugins: [ElementPlus] },
+    })
+    await nextTick()
+    await nextTick()
+    return wrapper
+  }
+
+  it('十进制字符串按 2 位小数显示，纯整数文本保持原样', async () => {
+    const wrapper = await mountNumericTable([
+      { id: 1, quantity: '12.000000', phone: '13800138000', tax_no: '913301001234567890' },
+    ])
+
+    const text = wrapper.text()
+    expect(text).toContain('12.00')
+    expect(text).not.toContain('12.000000')
+    // 手机号、税号是文本，不能被当成数字加千分位
+    expect(text).toContain('13800138000')
+    expect(text).toContain('913301001234567890')
+    expect(text).not.toContain('13,800,138,000')
+  })
+})
+
 describe('ProTable', () => {
   it('渲染列标题与数据行', async () => {
     const wrapper = await mountTable([

@@ -4,8 +4,7 @@
       <div>
         <h2 class="ys-page__title">我的待办</h2>
         <p class="ys-page__description">
-          只显示「当前节点轮到我审批」的单据。审批通过与库存过账是两个动作，
-          审批不会直接改变库存或库存状态。
+          只显示当前轮到你审批的单据。审批与出入库是两个独立动作，通过审批不会直接改变库存。
         </p>
       </div>
       <el-button @click="load" :loading="loading">刷新</el-button>
@@ -19,7 +18,7 @@
       <el-table-column prop="applicant_name" label="申请人" width="110" />
       <el-table-column prop="current_step_name" label="当前节点" width="140" />
       <el-table-column label="金额" width="120">
-        <template #default="{ row }">{{ formatAmount(row.amount, 4) }}</template>
+        <template #default="{ row }">{{ formatAmount(row.amount) }}</template>
       </el-table-column>
       <el-table-column label="提交时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.submitted_at) }}</template>

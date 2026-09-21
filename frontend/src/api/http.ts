@@ -116,7 +116,7 @@ http.interceptors.response.use(
     return Promise.reject(
       new ApiError(0, {
         code: 'NETWORK_ERROR',
-        message: '无法连接服务器，请检查网络或后端服务状态。',
+        message: '无法连接服务器，请检查网络后重试。',
         details: {},
         request_id: '',
       }),

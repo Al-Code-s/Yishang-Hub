@@ -2,7 +2,7 @@
   <entity-list-page
     title="公司"
     entity-label="公司"
-    description="平台按单企业、多工厂、多部门设计，但数据模型保留公司归属；这不等于已实现 SaaS 多租户隔离。"
+    description="当前按单企业、多工厂、多部门使用；所有档案与单据都记录所属公司，便于日后扩展到多个法人主体。"
     :api="api"
     :columns="columns"
     :form-fields="formFields"

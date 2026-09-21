@@ -449,3 +449,34 @@ MENUS: list[MenuDef] = [
 
 PERMISSION_CODES: set[str] = {item.code for item in PERMISSIONS}
 MENU_CODES: set[str] = {item.code for item in MENUS}
+
+# 权限模块的中文名。
+#
+# 权限编码的第一段是模块（如 ``core.user.view`` 的 ``core``），角色配置界面的
+# 一级分组若只显示英文模块名，业务人员无法判断「core」到底管什么。
+# 界面上统一显示为 ``模块编码（中文名）``，例如 ``core（公共基础）``。
+#
+# 名称尽量与左侧一级菜单保持一致，便于对照；``core`` 这类不直接对应菜单的
+# 基础能力单独命名，不与「用户与权限」重复。
+# 新增权限模块时**必须**在此登记，否则 ``yishang.E002`` 启动检查会报错。
+MODULE_LABELS: dict[str, str] = {
+    "analytics": "工作台与看板",
+    "core": "公共基础",
+    "crm": "客户管理",
+    "factory": "工厂与排班",
+    "identity": "用户与权限",
+    "integration": "内部协同",
+    "masterdata": "基础资料",
+    "planning": "计划管理",
+    "procurement": "采购管理",
+    "sales": "销售管理",
+    "srm": "供应商管理",
+    "wms": "仓储管理",
+    "workflow": "审批中心",
+}
+
+
+def module_label(module: str) -> str:
+    """模块中文名；未登记时返回空串，界面只显示模块编码。"""
+    return MODULE_LABELS.get(module, "")
+

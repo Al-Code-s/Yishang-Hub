@@ -2,7 +2,7 @@
   <entity-list-page
     title="员工档案"
     entity-label="员工"
-    description="用户负责登录与权限，员工负责组织、岗位与排班，两者一对一关联；不是所有员工都必须拥有登录账号。"
+    description="员工档案记录所属公司、部门、岗位与排班。需要登录系统的员工，另在「系统管理 → 用户管理」中建立账号并关联本档案。"
     :api="api"
     :columns="columns"
     :filters="filters"

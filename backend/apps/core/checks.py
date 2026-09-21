@@ -11,7 +11,7 @@ from typing import Any
 from django.core.checks import Error, register
 from django.urls import URLPattern, URLResolver, get_resolver
 
-from apps.identity.permissions_registry import PERMISSION_CODES
+from apps.identity.permissions_registry import MODULE_LABELS, PERMISSION_CODES
 
 
 def _iter_callbacks(patterns: list[Any]) -> Iterator[Any]:
@@ -59,3 +59,22 @@ def check_permission_codes(app_configs: Any, **kwargs: Any) -> list[Error]:
                 )
             )
     return errors
+
+
+@register("yishang")
+def check_permission_module_labels(app_configs: Any, **kwargs: Any) -> list[Error]:
+    """每个权限模块都要有中文名，否则角色配置界面只显示英文模块名。"""
+    modules = sorted({code.split(".")[0] for code in PERMISSION_CODES})
+    missing = [module for module in modules if module not in MODULE_LABELS]
+    if not missing:
+        return []
+    return [
+        Error(
+            f"权限模块缺少中文名：{', '.join(missing)}",
+            hint=(
+                "请在 apps/identity/permissions_registry.py 的 MODULE_LABELS 中登记中文名，"
+                "界面一级分组会显示为「模块编码（中文名）」。"
+            ),
+            id="yishang.E002",
+        )
+    ]

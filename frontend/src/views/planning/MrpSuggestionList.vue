@@ -3,7 +3,7 @@
     <entity-list-page
       title="缺料与建议"
       entity-label="MRP 建议"
-      description="建议来自 MRP 净算结果：采购建议可转成草稿采购申请（仍走采购审批，不产生直接采购承诺）；生产建议需要 MES 工单，属于下一增量，当前明确拒绝转单而不是伪造单据。已转单、已取消的建议不能重复处理。"
+      description="建议来自物料需求运算的结果。采购建议可以转成草稿采购申请，仍需走采购审批，不会直接形成采购承诺；生产建议需要生产工单功能（后续版本提供），当前会明确提示无法转单，而不是生成空单据。已转单或已取消的建议不能重复处理。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -34,7 +34,7 @@
           {{ row.status_display || meta.label('mrp_suggestion_statuses', String(row.status)) }}
         </el-tag>
       </template>
-      <template #column-quantity="{ row }">{{ row.quantity }} {{ row.uom_name }}</template>
+      <template #column-quantity="{ row }">{{ formatNumber(row.quantity) }} {{ row.uom_name }}</template>
       <template #column-converted="{ row }">
         <span v-if="row.converted_document_no">{{ row.converted_document_no }}</span>
         <span v-else-if="row.cancel_reason">{{ row.cancel_reason }}</span>
@@ -75,7 +75,7 @@
             {{ detailRow.material_code }} {{ detailRow.material_name }}
           </el-descriptions-item>
           <el-descriptions-item label="数量">
-            {{ detailRow.quantity }} {{ detailRow.uom_name }}
+            {{ formatNumber(detailRow.quantity) }} {{ detailRow.uom_name }}
           </el-descriptions-item>
           <el-descriptions-item label="需求日期">{{ detailRow.due_date }}</el-descriptions-item>
           <el-descriptions-item label="分段">{{ detailRow.bucket_date }}</el-descriptions-item>
@@ -126,6 +126,7 @@ import { mrpSuggestionApi } from '@/api/endpoints'
 import { mrpSuggestionActionApi } from '@/api/modules'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
+import { formatNumber } from '@/utils/decimal'
 import type { MrpSuggestion } from '@/types/models'
 
 function toMessage(error: unknown, fallback: string): string {
@@ -192,7 +193,7 @@ async function convert(row: MrpSuggestion): Promise<void> {
   try {
     const { value } = await ElMessageBox.prompt(
       '将生成一张草稿采购申请（仍需采购审批），不会直接产生采购承诺。',
-      `转采购申请：${row.material_code} ${row.quantity}`,
+      `转采购申请：${row.material_code} ${formatNumber(row.quantity)}`,
       {
         inputValue: row.due_date,
         inputPlaceholder: '需求日期 YYYY-MM-DD',
@@ -216,7 +217,7 @@ async function cancel(row: MrpSuggestion): Promise<void> {
   try {
     const { value } = await ElMessageBox.prompt(
       '取消必须填写原因，原因会写入审计日志。',
-      `取消建议：${row.material_code} ${row.quantity}`,
+      `取消建议：${row.material_code} ${formatNumber(row.quantity)}`,
       {
         inputPlaceholder: '取消原因（必填）',
         inputValidator: (text: string) => (text && text.trim() ? true : '请填写取消原因'),

@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">编码规则</h2>
         <p class="ys-page__description">
-          编码格式必须包含流水占位符（{SEQ} 或 {SEQ:n}），否则无法保证编号唯一，保存时会被后端拒绝。
-          预演只计算下一个编号的外观，不消耗流水号，因此可以反复点击。
+          编号格式必须包含流水号占位符（{SEQ} 或 {SEQ:n}），否则编号会重复，保存时会被拒绝。
+          「预演」只展示下一个编号的样子，不会占用流水号，可以放心反复点击。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -321,7 +321,7 @@ async function previewPattern(): Promise<void> {
       previewResult.value = result.preview
       return
     }
-    ElMessage.info('请先保存规则，再由后端按真实流水号预演（前端不会自行生成编号）。')
+    ElMessage.info('请先保存规则，再用真实流水号预演编号。')
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '预演失败')
   } finally {

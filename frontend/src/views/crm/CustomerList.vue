@@ -2,7 +2,7 @@
   <entity-list-page
     title="客户档案"
     entity-label="客户"
-    description="阶段 2 交付客户档案与联系人主数据。客户归属公司并按数据范围过滤；信用额度仅作管理参考，不等同应收账款台账。"
+    description="客户档案与联系人。新增客户不必手工输入编码，留空即按编号规则自动生成（可在「系统管理 → 编码规则」调整格式）。客户按所属公司归集；信用额度仅作管理参考，不等同应收账款台账。"
     :api="api"
     :columns="columns"
     :filters="filters"
@@ -21,7 +21,7 @@
       {{ meta.label('customer_levels', String(row.level)) }}
     </template>
     <template #toolbar>
-      <el-tag type="info" effect="plain">客户等级与分类取值来自后端枚举，前端不硬编码</el-tag>
+      <el-tag type="info" effect="plain">客户等级与分类的可选值由平台统一提供</el-tag>
     </template>
   </entity-list-page>
 </template>
@@ -56,7 +56,7 @@ const columns: ProTableColumn[] = [
     prop: 'credit_limit',
     label: '信用额度',
     width: 130,
-    formatter: (row) => formatAmount(row.credit_limit as string, 2),
+    formatter: (row) => formatAmount(row.credit_limit as string),
   },
   { prop: 'salesman_name', label: '业务员', width: 120 },
   { prop: 'is_active', label: '状态', width: 90 },
@@ -91,7 +91,13 @@ const detailFields = [
 
 const formFields = computed<FormFieldDef[]>(() => [
   { prop: 'company_id', label: '所属公司', type: 'select', required: true, optionsLoader: companyOptions },
-  { prop: 'code', label: '客户编码', required: true, help: '同一公司内唯一，被订单引用后不建议修改' },
+  {
+    prop: 'code',
+    label: '客户编码',
+    // 新增时由后端按编码规则（CUS）自动取号，不要求人工输入；编辑时展示以便核对
+    onlyOnUpdate: true,
+    help: '同一公司内唯一，被订单引用后不建议修改',
+  },
   { prop: 'name', label: '客户名称', required: true },
   { prop: 'short_name', label: '客户简称' },
   {

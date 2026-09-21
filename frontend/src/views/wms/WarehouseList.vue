@@ -4,8 +4,7 @@
       <div>
         <h2 class="ys-page__title">仓库与储位</h2>
         <p class="ys-page__description">
-          阶段 1 只交付仓库、库区、储位主数据。库存余额、流水、单据过账属阶段 2，
-          此处不展示任何虚构的库存数字。
+          维护仓库、库区与储位结构。库存数量与出入库记录请在「库存余额」「库存流水」页面查看。
         </p>
       </div>
       <el-button @click="loadTree" :loading="treeLoading">刷新结构</el-button>
@@ -131,7 +130,7 @@ const locationColumns: ProTableColumn[] = [
     prop: 'capacity',
     label: '容量',
     width: 110,
-    formatter: (row) => formatAmount(row.capacity as string, 3),
+    formatter: (row) => formatAmount(row.capacity as string),
   },
   { prop: 'is_locked', label: '锁定', width: 80 },
   { prop: 'is_active', label: '状态', width: 90 },

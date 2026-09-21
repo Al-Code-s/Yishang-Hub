@@ -3,7 +3,7 @@
     <entity-list-page
       title="物料清单（BOM）"
       entity-label="BOM"
-      description="BOM 是版本化工程数据：草稿可修改，提交后明细冻结，审核通过后生效。同一「款式 + SKU 范围」同时只有一个生效版本，需要变更只能派生新版本——因此已审核版本的内容与已下达工单引用的快照不会被改写。"
+      description="BOM（用料清单）是版本化资料：草稿可修改，提交后明细冻结，审核通过后生效。同一「款式 + 颜色尺码范围」同时只有一个生效版本，需要变更时派生新版本——已审核版本的内容不会被改写，已下达的生产工单仍按当时的用料清单执行。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -102,9 +102,9 @@
         <el-table-column label="用料" min-width="170">
           <template #default="{ row: line }">{{ line.material_code }} {{ line.material_name }}</template>
         </el-table-column>
-        <el-table-column prop="quantity" label="标准用量" width="110" />
-        <el-table-column prop="loss_rate" label="损耗率" width="110" />
-        <el-table-column prop="gross_quantity" label="含损耗" width="110" />
+        <el-table-column prop="quantity" label="标准用量" width="110" :formatter="numberFormatter" />
+        <el-table-column prop="loss_rate" label="损耗率" width="110" :formatter="numberFormatter" />
+        <el-table-column prop="gross_quantity" label="含损耗" width="110" :formatter="numberFormatter" />
         <el-table-column label="类型" width="90">
           <template #default="{ row: line }">
             {{ meta.label('bom_line_types', String(line.line_type)) }}
@@ -123,7 +123,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="含损耗用量由后端按「标准用量 × (1 + 损耗率)」计算并保留 6 位小数，界面不接受手工填写。"
+        title="含损耗用量由系统按「标准用量 × (1 + 损耗率)」自动计算，不需要手工填写。"
       />
     </el-drawer>
 
@@ -217,7 +217,7 @@
           </el-table-column>
           <el-table-column label="标准用量" width="130">
             <template #default="{ row }">
-              <el-input v-model="row.quantity" placeholder="0.000000" />
+              <el-input v-model="row.quantity" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="损耗率" width="120">
@@ -284,25 +284,25 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="snapshotVisible" title="BOM 快照（不可变）" size="640px">
+    <el-drawer v-model="snapshotVisible" title="用料清单存档（不可修改）" size="640px">
       <el-alert
         type="info"
         :closable="false"
         show-icon
         class="ys-detail-hint"
-        title="快照是 MES 工单下达时保存的内容。已审核版本不可修改，因此派生新版本不会改变既有快照。"
+        title="存档是生产工单下达时保存的内容。已审核版本不可修改，因此派生新版本不会改变已有存档。"
       />
       <el-table :data="(snapshot?.lines ?? []) as never[]" border size="small">
         <el-table-column prop="line_no" label="行号" width="60" />
         <el-table-column prop="material_code" label="物料编码" width="140" />
-        <el-table-column prop="quantity" label="净用量" width="110" />
-        <el-table-column prop="loss_rate" label="损耗率" width="110" />
-        <el-table-column prop="gross_quantity" label="含损耗" width="110" />
+        <el-table-column prop="quantity" label="净用量" width="110" :formatter="numberFormatter" />
+        <el-table-column prop="loss_rate" label="损耗率" width="110" :formatter="numberFormatter" />
+        <el-table-column prop="gross_quantity" label="含损耗" width="110" :formatter="numberFormatter" />
         <el-table-column label="关键" width="70">
           <template #default="{ row: line }">{{ line.is_key_material ? '是' : '否' }}</template>
         </el-table-column>
       </el-table>
-      <el-divider content-position="left">原始 JSON</el-divider>
+      <el-divider content-position="left">原始内容</el-divider>
       <pre class="ys-code-block">{{ snapshotText }}</pre>
     </el-drawer>
   </div>
@@ -322,7 +322,7 @@ import { materialOptions, styleOptions, uomOptions } from '@/composables/optionL
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { Bom, BomInput, BomLineInput, BomSnapshot, EnumOption } from '@/types/models'
-import { toApiString } from '@/utils/decimal'
+import { numberFormatter, toApiString, toEditableText } from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
@@ -475,8 +475,8 @@ function openEdit(row: Record<string, unknown>): void {
   form.remark = bom.remark ?? ''
   form.lines = (bom.lines ?? []).map((line) => ({
     material_id: line.material_id,
-    quantity: line.quantity,
-    loss_rate: line.loss_rate,
+    quantity: toEditableText(line.quantity),
+    loss_rate: toEditableText(line.loss_rate),
     uom_id: line.uom_id,
     line_type: line.line_type,
     substitute_for_line_no: line.substitute_for_line_no,
@@ -665,7 +665,7 @@ async function openSnapshot(row: Record<string, unknown>): Promise<void> {
     snapshot.value = data
     snapshotText.value = JSON.stringify(data, null, 2)
   } catch (error) {
-    ElMessage.error(toMessage(error, '加载快照失败'))
+    ElMessage.error(toMessage(error, '加载存档失败'))
     snapshotVisible.value = false
   }
 }

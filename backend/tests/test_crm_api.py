@@ -6,17 +6,22 @@
 * 客户编码在同一公司内唯一，跨公司允许同码；
 * 同一客户下只能有一个主联系人，切换主联系人会取消原标记；
 * 无操作权限的账号不能调用写接口；
-* 新增客户写入审计日志。
+* 新增客户写入审计日志；
+* 新增客户不必手工输入编码：留空时按编码规则（`CUS`）在事务内自动取号，
+  规则可配置（改规则即改编号），显式传入的编码仍然保留，编辑时不允许清空。
 
 全部走 HTTP 接口与真实 MySQL 约束，不使用 mock。
 """
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from django.db import IntegrityError, transaction
 
-from apps.core.models import AuditLog
+from apps.core.models import AuditLog, CodeRule, ResetPeriod
+from apps.core.services import business_today
 from apps.crm.models import Customer, CustomerContact
 from apps.crm.services import ensure_single_primary_contact
 from apps.identity.models import DataScopeType
@@ -257,3 +262,98 @@ def test_meta_exposes_crm_and_srm_enums(super_client):
         assert body.get(key), f"meta 缺少枚举 {key}"
     assert {item["value"] for item in body["customer_levels"]} == {"A", "B", "C", "D"}
     assert {item["value"] for item in body["customer_statuses"]} >= {"potential", "active"}
+
+
+# --------------------------------------------------------------------------
+# 客户编码自动生成（新增客户不必手工输入编码）
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def customer_code_rules(db):
+    """取号依赖编码规则；测试库不跑 bootstrap_system，这里显式登记 CUS 规则。"""
+    CodeRule.objects.update_or_create(
+        code="CUS",
+        defaults={
+            "name": "客户编码",
+            "pattern": "CUS{YYYY}{SEQ:4}",
+            "reset_period": ResetPeriod.YEARLY,
+            "is_active": True,
+        },
+    )
+
+
+def test_customer_code_is_generated_when_omitted(crm_admin, customer_code_rules, company):
+    """请求里完全不带 code 也能建档，编码按规则生成并在同一周期内逐号递增。"""
+    first = crm_admin.post(
+        CUSTOMERS_URL, {"company_id": company.pk, "name": "自动编码客户一"}, format="json"
+    )
+    assert first.status_code == 201, first.content
+    first_code = first.json()["code"]
+    assert re.fullmatch(rf"CUS{business_today():%Y}\d{{4}}", first_code), first_code
+    assert Customer.objects.get(pk=first.json()["id"]).code == first_code
+
+    second = crm_admin.post(
+        CUSTOMERS_URL, {"company_id": company.pk, "name": "自动编码客户二"}, format="json"
+    )
+    assert second.status_code == 201, second.content
+    second_code = second.json()["code"]
+    assert int(second_code[7:]) == int(first_code[7:]) + 1, (first_code, second_code)
+
+
+def test_blank_customer_code_on_create_is_generated(crm_admin, customer_code_rules, company):
+    """前端可能提交空串而不是省略字段，空串同样应触发自动取号。"""
+    created = crm_admin.post(
+        CUSTOMERS_URL,
+        {"company_id": company.pk, "code": "   ", "name": "空白编码客户"},
+        format="json",
+    )
+    assert created.status_code == 201, created.content
+    assert re.fullmatch(rf"CUS{business_today():%Y}\d{{4}}", created.json()["code"])
+
+
+def test_customer_code_follows_configured_rule_pattern(crm_admin, customer_code_rules, company):
+    """格式来自编码规则表：改规则即改编号，说明代码里没有写死格式。"""
+    CodeRule.objects.filter(code="CUS").update(pattern="KH{YY}{SEQ:3}")
+    created = crm_admin.post(
+        CUSTOMERS_URL, {"company_id": company.pk, "name": "改规则客户"}, format="json"
+    )
+    assert created.status_code == 201, created.content
+    assert re.fullmatch(rf"KH{business_today():%y}\d{{3}}", created.json()["code"]), created.json()
+
+
+def test_explicit_customer_code_is_still_respected(crm_admin, customer_code_rules, company):
+    """显式传入的编码仍然生效，便于历史数据迁移与外部系统对齐。"""
+    created = crm_admin.post(
+        CUSTOMERS_URL,
+        {"company_id": company.pk, "code": "C-LEGACY-01", "name": "手工编码客户"},
+        format="json",
+    )
+    assert created.status_code == 201, created.content
+    assert created.json()["code"] == "C-LEGACY-01"
+
+
+def test_customer_code_cannot_be_cleared_on_update(crm_admin, customer_code_rules, company):
+    """编辑时清空编码被拒绝：编码是客户身份，不能变成空值后与别的客户撞唯一键。"""
+    created = crm_admin.post(
+        CUSTOMERS_URL, {"company_id": company.pk, "name": "待改编码客户"}, format="json"
+    )
+    assert created.status_code == 201, created.content
+    customer_id = created.json()["id"]
+    original_code = created.json()["code"]
+
+    cleared = crm_admin.patch(f"{CUSTOMERS_URL}{customer_id}/", {"code": ""}, format="json")
+    assert cleared.status_code == 400, cleared.content
+    assert Customer.objects.get(pk=customer_id).code == original_code
+
+
+def test_missing_code_rule_fails_clearly_without_creating_customer(crm_admin, db, company):
+    """规则被删除/停用时必须显式报错，而不是落一条空编码客户。"""
+    CodeRule.objects.filter(code="CUS").delete()
+    before = Customer.objects.count()
+    response = crm_admin.post(
+        CUSTOMERS_URL, {"company_id": company.pk, "name": "无规则客户"}, format="json"
+    )
+    assert response.status_code == 404, response.content
+    assert response.json()["code"] == "CODE_RULE_NOT_FOUND"
+    assert Customer.objects.count() == before

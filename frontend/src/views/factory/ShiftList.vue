@@ -2,7 +2,7 @@
   <entity-list-page
     title="班次"
     entity-label="班次"
-    description="支持跨夜班：结束时间早于或等于开始时间时由后端推导为跨夜班。跨夜班总时长 = 24 小时 − 开始时间 + 结束时间 − 休息时长。"
+    description="班次支持跨夜班：结束时间早于或等于开始时间时，系统按跨夜处理。跨夜班总时长 = 24 小时 − 开始时间 + 结束时间 − 休息时长。"
     :api="api"
     :columns="columns"
     :filters="filters"

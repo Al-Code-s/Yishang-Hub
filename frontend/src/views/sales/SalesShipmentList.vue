@@ -4,7 +4,7 @@
       ref="pageRef"
       title="销售发货"
       entity-label="发货单"
-      description="销售发货：草稿 → 发货过账（出库）。过账调用统一库存服务扣减实存量，且必须由「本订单的库存占用」覆盖，未占用不允许出库；重复点击按幂等键只扣一次。"
+      description="销售发货流程：草稿 → 发货过账（出库）。过账会扣减实存量，且必须由本订单的库存占用覆盖，没有占用不允许出库；重复提交只会扣减一次。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -96,7 +96,7 @@
             {{ line.material_code }} {{ line.material_name }}
           </template>
         </el-table-column>
-        <el-table-column prop="quantity" label="发货数量" width="120" />
+        <el-table-column prop="quantity" label="发货数量" width="120" :formatter="numberFormatter" />
         <el-table-column prop="location_name" label="储位" min-width="120" />
         <el-table-column prop="batch_no" label="批次" width="110" />
         <el-table-column prop="roll_no" label="卷号" width="110" />
@@ -180,11 +180,11 @@
         </el-row>
       </el-form>
 
-      <el-divider content-position="left">发货明细（数量由后端校验，不得超过未发货数量）</el-divider>
+      <el-divider content-position="left">发货明细（数量不得超过未发货数量）</el-divider>
       <el-table :data="form.lines as never[]" border size="small">
         <el-table-column prop="material_code" label="物料编码" width="130" />
         <el-table-column prop="material_name" label="物料名称" min-width="150" />
-        <el-table-column prop="remaining_quantity" label="未发货" width="100" />
+        <el-table-column prop="remaining_quantity" label="未发货" width="100" :formatter="numberFormatter" />
         <el-table-column label="本次发货" width="140">
           <template #default="{ row: line }">
             <el-input v-model="line.quantity" size="small" />
@@ -244,7 +244,7 @@ import { warehouseOptions } from '@/composables/optionLoaders'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption, SalesOrder, SalesOrderLine, SalesShipment, ShipmentInput } from '@/types/models'
-import { toApiString } from '@/utils/decimal'
+import { numberFormatter, toApiString } from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
@@ -495,7 +495,7 @@ function reloadList(): void {
 async function postShipment(row: SalesShipment): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      '过账会扣减实存量，且必须由本订单的库存占用覆盖；未占用会被后端拒绝。确认过账？',
+      '过账会扣减实存量，且必须由本订单的库存占用覆盖；没有占用会被拒绝。确认过账吗？',
       `发货过账 ${row.shipment_no}`,
       { type: 'warning' },
     )

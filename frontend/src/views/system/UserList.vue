@@ -4,9 +4,9 @@
       <div>
         <h2 class="ys-page__title">用户管理</h2>
         <p class="ys-page__description">
-          用户负责登录与权限，员工档案负责组织、岗位与排班，两者一对一可选关联。
-          平台不提供用户物理删除：账号停用即可，历史操作记录与审计必须保留。
-          初始密码由管理员设置，系统不生成也不会在页面上回显明文密码。
+          用户用于登录与权限分配；员工档案记录所属部门、岗位与排班，两者可以关联，
+          但不是每位员工都需要登录账号。账号不再使用后请停用而不是删除，历史操作记录需要保留。
+          初始密码由管理员设置，系统不会在页面上显示明文密码。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -229,7 +229,7 @@
       <el-alert v-if="rolesError" type="error" :closable="false" show-icon :title="rolesError" />
       <p class="ys-muted">
         用户最终权限 = 所有启用角色的权限并集；数据范围取最宽的一档，且始终受公司边界限制。
-        收回角色后，前端菜单会在下次刷新会话时同步收敛。
+        收回角色后，该用户需要重新登录才会同步更新菜单与权限。
       </p>
       <el-checkbox-group v-model="selectedRoleIds">
         <el-checkbox v-for="item in roleSelectOptions" :key="String(item.value)" :value="item.value">

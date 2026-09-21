@@ -3,7 +3,7 @@
     <entity-list-page
       title="工艺路线"
       entity-label="工艺路线"
-      description="工艺路线与 BOM 使用同一套版本规则：草稿可改、提交冻结、审核通过后生效；同一「款式 + SKU 范围」同时只有一个生效版本。工序质检点（如「检验」）由 MES 在生产现场生成检验记录。"
+      description="工艺路线（工序顺序）与用料清单使用同一套版本规则：草稿可改、提交冻结、审核通过后生效；同一「款式 + 颜色尺码范围」同时只有一个生效版本。工序上的质检点（例如「检验」）用于在生产现场生成检验记录。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -109,7 +109,12 @@
         <el-table-column prop="name" label="工序" width="110" />
         <el-table-column prop="workshop_name" label="车间" width="120" />
         <el-table-column prop="workcenter" label="工作中心" width="120" />
-        <el-table-column prop="standard_hours" label="标准工时" width="110" />
+        <el-table-column
+          prop="standard_hours"
+          label="标准工时"
+          width="110"
+          :formatter="numberFormatter"
+        />
         <el-table-column label="质检点" width="80">
           <template #default="{ row: step }">{{ step.is_quality_gate ? '是' : '否' }}</template>
         </el-table-column>
@@ -122,7 +127,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="标准工时是单件工时（小时），用于 OEE 理论产能与工序效率；缺失数据时后端显示「无法计算」，不伪造数值。"
+        title="标准工时为单件工时（小时），用于计算设备综合效率与工序效率；数据缺失时显示「无法计算」，不会给出无依据的数字。"
       />
     </el-drawer>
 
@@ -231,7 +236,7 @@
           </el-table-column>
           <el-table-column label="标准工时" width="120">
             <template #default="{ row }">
-              <el-input v-model="row.standard_hours" placeholder="小时" />
+              <el-input v-model="row.standard_hours" placeholder="小时，如 0.50" />
             </template>
           </el-table-column>
           <el-table-column label="质检点" width="80">
@@ -260,18 +265,23 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="snapshotVisible" title="工艺路线快照（不可变）" size="640px">
+    <el-drawer v-model="snapshotVisible" title="工艺路线存档（不可修改）" size="640px">
       <el-alert
         type="info"
         :closable="false"
         show-icon
         class="ys-detail-hint"
-        title="快照是 MES 工单下达时保存的内容。已审核版本不可修改，因此派生新版本不会改变既有快照。"
+        title="存档是生产工单下达时保存的内容。已审核版本不可修改，因此派生新版本不会改变已有存档。"
       />
       <el-table :data="(snapshot?.steps ?? []) as never[]" border size="small">
         <el-table-column prop="sequence" label="顺序" width="70" />
         <el-table-column prop="name" label="工序" width="110" />
-        <el-table-column prop="standard_hours" label="标准工时" width="110" />
+        <el-table-column
+          prop="standard_hours"
+          label="标准工时"
+          width="110"
+          :formatter="numberFormatter"
+        />
         <el-table-column label="质检点" width="80">
           <template #default="{ row: step }">{{ step.is_quality_gate ? '是' : '否' }}</template>
         </el-table-column>
@@ -279,7 +289,7 @@
           <template #default="{ row: step }">{{ step.is_outsourced ? '是' : '否' }}</template>
         </el-table-column>
       </el-table>
-      <el-divider content-position="left">原始 JSON</el-divider>
+      <el-divider content-position="left">原始内容</el-divider>
       <pre class="ys-code-block">{{ snapshotText }}</pre>
     </el-drawer>
   </div>
@@ -299,7 +309,7 @@ import { styleOptions, workshopOptions } from '@/composables/optionLoaders'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption, Routing, RoutingInput, RoutingSnapshot, RoutingStepInput } from '@/types/models'
-import { toApiString } from '@/utils/decimal'
+import { numberFormatter, toApiString, toEditableText } from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
@@ -458,7 +468,7 @@ function openEdit(row: Record<string, unknown>): void {
     workshop_id: step.workshop_id,
     workcenter: step.workcenter,
     equipment_requirement: step.equipment_requirement,
-    standard_hours: step.standard_hours,
+    standard_hours: toEditableText(step.standard_hours),
     is_quality_gate: step.is_quality_gate,
     is_outsourced: step.is_outsourced,
     remark: step.remark,
@@ -572,7 +582,7 @@ async function submitRouting(row: Record<string, unknown>): Promise<void> {
 async function deriveVersion(row: Record<string, unknown>): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      '派生会复制当前工序生成新的草稿版本；新版本审核通过后旧版本自动转为「已作废」，内容与既有快照不会被改写。',
+      '派生会复制当前工序生成新的草稿版本；新版本审核通过后旧版本自动转为「已作废」，内容与已有存档不会被改写。',
       `派生新版本：${String(row.code)}`,
       { type: 'warning', confirmButtonText: '派生', cancelButtonText: '取消' },
     )
@@ -639,7 +649,7 @@ async function openSnapshot(row: Record<string, unknown>): Promise<void> {
     snapshot.value = data
     snapshotText.value = JSON.stringify(data, null, 2)
   } catch (error) {
-    ElMessage.error(toMessage(error, '加载快照失败'))
+    ElMessage.error(toMessage(error, '加载存档失败'))
     snapshotVisible.value = false
   }
 }

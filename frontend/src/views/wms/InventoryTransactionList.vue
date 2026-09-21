@@ -2,7 +2,7 @@
   <div class="ys-page">
     <entity-list-page
       title="库存流水"
-      description="流水为只追加记录：不提供新增、修改与删除接口，模型的 save()/delete() 也会拒绝改动。数量为有符号值，入库为正、出库为负。"
+      description="库存流水记录每一笔库存变化，只增不改，平台不提供新增、修改或删除的功能。数量为有符号数：入库为正、出库为负。"
       entity-label="库存流水"
       readonly
       :api="transactionApiRef"
@@ -23,7 +23,7 @@
         </span>
       </template>
       <template #column-on_hand_after="{ row }">
-        <span class="ys-mono">{{ formatAmount(String(row.on_hand_after ?? '0'), 6) }}</span>
+        <span class="ys-mono">{{ formatAmount(String(row.on_hand_after ?? '0')) }}</span>
       </template>
       <template #column-document_no="{ row }">
         <span class="ys-mono">{{ row.document_no || '-' }}</span>
@@ -84,7 +84,7 @@ function typeTagType(type: string): 'success' | 'warning' | 'danger' | 'info' {
 
 function signedAmount(value: string): string {
   const amount = Number(value)
-  const text = formatAmount(value, 6)
+  const text = formatAmount(value)
   return amount > 0 ? `+${text}` : text
 }
 

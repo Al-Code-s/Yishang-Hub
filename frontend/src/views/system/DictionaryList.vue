@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">数据字典</h2>
         <p class="ys-page__description">
-          字典用于维护可配置的下拉取值。业务枚举（部门类型、仓库类型等）由后端
-          `/api/v1/meta/` 统一返回，新增取值后前端无需改动即可出现，不在这里硬编码中文标签。
+          维护下拉选项等可配置的取值。部门类型、仓库类型等固定选项由平台统一提供，
+          不在这里重复维护中文名称。
         </p>
       </div>
       <div class="ys-page__header-actions">

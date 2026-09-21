@@ -4,7 +4,7 @@
       ref="pageRef"
       title="到货收货"
       entity-label="收货单"
-      description="实物到货、库存记账与质量放行是三个不同动作：收货过账把实物计入「待检」库存，来料检验判定后待检库存才会转为合格或不合格。待检与不合格库存不能领用或销售。"
+      description="到货、记账与质量放行是三件事：收货过账先把实物记入「待检」库存，来料检验判定后，待检库存才会转为合格或不合格。待检与不合格的库存不能领用或销售。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -115,7 +115,7 @@
         <el-table-column label="物料" min-width="170">
           <template #default="{ row: line }">{{ line.material_code }} {{ line.material_name }}</template>
         </el-table-column>
-        <el-table-column prop="quantity" label="收货数量" width="110" />
+        <el-table-column prop="quantity" label="收货数量" width="110" :formatter="numberFormatter" />
         <el-table-column prop="batch_no" label="批次" width="110" />
         <el-table-column prop="roll_no" label="卷号" width="100" />
         <el-table-column prop="location_name" label="储位" width="110" />
@@ -189,12 +189,12 @@
           <el-table-column label="订单行" min-width="200">
             <template #default="{ row }">
               {{ row.material_code }} {{ row.material_name }}
-              <span class="ys-line-hint">（未收 {{ row.remaining_quantity }}）</span>
+              <span class="ys-line-hint">（未收 {{ formatNumber(row.remaining_quantity) }}）</span>
             </template>
           </el-table-column>
           <el-table-column label="收货数量" width="140">
             <template #default="{ row }">
-              <el-input v-model="row.quantity" placeholder="0.000000" />
+              <el-input v-model="row.quantity" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="储位" width="170">
@@ -255,7 +255,7 @@
         type="warning"
         :closable="false"
         show-icon
-        title="当前未接入真实检测设备接口，本判定为人工录入结论，系统会记录判定人与说明。"
+        title="本判定为人工填写，系统未接入检测设备；判定结论与填写人会一并记录。"
       />
       <el-form label-width="90px" class="ys-convert-form">
         <el-form-item label="检验结论" required>
@@ -295,7 +295,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderLine,
 } from '@/types/models'
-import { toApiString } from '@/utils/decimal'
+import { formatNumber, numberFormatter, toApiString } from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback

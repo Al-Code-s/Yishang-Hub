@@ -4,7 +4,7 @@
       ref="pageRef"
       title="班组"
       entity-label="班组"
-      description="班组绑定车间与默认班次。成员变更整体替换；班组排班展开为人员执行记录时会保留成员快照。"
+      description="班组绑定车间与默认班次。保存时以当前列表整体替换原有成员，被移除的成员不影响历史报工记录；班组排班展开为个人排班时会保留当时的成员名单。"
       :api="api"
       :columns="columns"
       :filters="filters"

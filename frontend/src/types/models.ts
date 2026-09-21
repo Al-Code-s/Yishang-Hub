@@ -469,6 +469,8 @@ export interface PermissionRow {
 
 export interface PermissionGroup {
   module: string
+  /** 模块中文名（后端 MODULE_LABELS）；未登记时为空串 */
+  module_name: string
   permissions: {
     code: string
     name: string
@@ -576,9 +578,13 @@ export interface AuditLog {
   actor_username: string
   company_id: number | null
   object_type: string
+  /** object_type 的中文名（后端按模型 verbose_name 生成，供界面直接展示） */
+  object_type_display: string
   object_id: string
   object_repr: string
   changes: Record<string, unknown> | null
+  /** 变更摘要的中文条目：{ 字段, 中文名, 变更前, 变更后 } */
+  changes_display: { field: string; label: string; before: string; after: string }[]
   reason: string
   approval_basis: string
   ip_address: string | null
@@ -704,6 +710,7 @@ export interface OutboxEvent {
   event_id: string
   event_type: string
   aggregate_type: string
+  aggregate_type_display: string
   aggregate_id: string
   payload: Record<string, unknown> | null
   status: string
@@ -759,19 +766,24 @@ export interface DashboardCard {
   }
 }
 
+/** 工作台「最近操作记录」的一条：都带中文展示名，界面不做翻译。 */
+export interface DashboardActivity {
+  id: number
+  action: string
+  action_display: string
+  object_type: string
+  object_type_display: string
+  object_repr: string
+  actor_name: string
+  created_at: string
+}
+
 export interface DashboardPayload {
   generated_at: string
   business_timezone: string
   cards: DashboardCard[]
   approval: { todo: number | null; my_submitted_pending: number | null }
-  recent_activity: {
-    id: number
-    action: string
-    object_type: string
-    object_repr: string
-    actor_name: string
-    created_at: string
-  }[]
+  recent_activity: DashboardActivity[]
 }
 // ---------------------------------------------------------------------------
 // 客户管理（CRM）—— 阶段 2 第一步：仅客户档案与联系人主数据

@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">库存单据</h2>
         <p class="ys-page__description">
-          收货 / 出库 / 移库 / 调整 / 质量转换统一走同一套库存服务：过账时才写入余额与流水，
-          冲销需填写原因，且原单据增加的库存已被下游消耗时会被拒绝。
+          收货、出库、移库、调整、质量转换都在这里办理：只有过账后才会真正改变库存，
+          冲销必须填写原因；如果原单据增加的库存已经被后续业务用掉，系统会拒绝冲销，需要改走退货或更正流程。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -270,7 +270,7 @@
         </el-table-column>
         <el-table-column label="数量" width="140">
           <template #default="{ row }">
-            <el-input v-model="row.quantity" size="small" placeholder="如 12.500000" />
+            <el-input v-model="row.quantity" size="small" placeholder="如 12.50" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right">
@@ -344,7 +344,7 @@
           <el-input v-model="releaseForm.roll_no" />
         </el-form-item>
         <el-form-item label="数量" required>
-          <el-input v-model="releaseForm.quantity" placeholder="如 12.500000" />
+          <el-input v-model="releaseForm.quantity" placeholder="如 12.50" />
         </el-form-item>
         <el-form-item label="转出状态" required>
           <el-select v-model="releaseForm.from_status" style="width: 100%">
@@ -413,7 +413,7 @@
           </el-table-column>
           <el-table-column label="数量" width="130">
             <template #default="{ row }">
-              <span class="ys-mono">{{ formatAmount(row.quantity, 6) }}</span>
+              <span class="ys-mono">{{ formatAmount(row.quantity) }}</span>
             </template>
           </el-table-column>
         </el-table>

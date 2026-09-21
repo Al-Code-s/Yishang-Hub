@@ -4,7 +4,7 @@
       ref="pageRef"
       title="采购订单"
       entity-label="采购订单"
-      description="采购订单金额由后端按行重算（税率按百分比 0~100），界面不提交金额。未准入或已停用的供应商必须填写例外原因并具备 override 权限，例外会写入审计。"
+      description="采购订单金额由系统按明细自动计算，不需要手工填写（税率按百分比填写，0~100）。向未准入或已停用的供应商下单，必须填写例外原因并拥有相应权限，例外会记入操作日志。"
       :api="api"
       :columns="columns"
       :filters="filters"
@@ -92,7 +92,7 @@
         <el-descriptions-item label="期望到货">{{ detailRow.expected_date || '-' }}</el-descriptions-item>
         <el-descriptions-item label="收货仓库">{{ detailRow.warehouse_name || '-' }}</el-descriptions-item>
         <el-descriptions-item label="采购员">{{ detailRow.buyer_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="税率(%)">{{ detailRow.tax_rate }}</el-descriptions-item>
+        <el-descriptions-item label="税率(%)">{{ formatAmount(detailRow.tax_rate) }}</el-descriptions-item>
         <el-descriptions-item label="结算方式">{{ detailRow.payment_terms || '-' }}</el-descriptions-item>
         <el-descriptions-item label="未税金额">
           {{ formatAmount(String(detailRow.total_amount)) }}
@@ -117,11 +117,11 @@
         <el-table-column label="物料" min-width="170">
           <template #default="{ row: line }">{{ line.material_code }} {{ line.material_name }}</template>
         </el-table-column>
-        <el-table-column prop="quantity" label="订单量" width="100" />
+        <el-table-column prop="quantity" label="订单量" width="100" :formatter="numberFormatter" />
         <el-table-column prop="received_quantity" label="已收" width="100" />
-        <el-table-column prop="remaining_quantity" label="未收" width="100" />
-        <el-table-column prop="price" label="未税单价" width="100" />
-        <el-table-column prop="amount" label="金额" width="110" />
+        <el-table-column prop="remaining_quantity" label="未收" width="100" :formatter="numberFormatter" />
+        <el-table-column prop="price" label="未税单价" width="100" :formatter="numberFormatter" />
+        <el-table-column prop="amount" label="金额" width="110" :formatter="numberFormatter" />
       </el-table>
       <el-alert
         class="ys-detail-hint"
@@ -235,7 +235,7 @@
           </el-col>
         </el-row>
 
-        <el-divider content-position="left">订单明细（金额由后端按 数量 × 未税单价 重算）</el-divider>
+        <el-divider content-position="left">订单明细（金额由系统按 数量 × 未税单价 自动计算）</el-divider>
         <el-table :data="form.lines" border size="small">
           <el-table-column label="物料" min-width="200">
             <template #default="{ row }">
@@ -251,12 +251,12 @@
           </el-table-column>
           <el-table-column label="数量" width="130">
             <template #default="{ row }">
-              <el-input v-model="row.quantity" placeholder="0.000000" />
+              <el-input v-model="row.quantity" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="未税单价" width="130">
             <template #default="{ row }">
-              <el-input v-model="row.price" placeholder="0.000000" />
+              <el-input v-model="row.price" placeholder="0.00" />
             </template>
           </el-table-column>
           <el-table-column label="计量单位" width="130">
@@ -323,7 +323,12 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption, PurchaseOrder, PurchaseOrderInput } from '@/types/models'
-import { formatAmount, toApiString } from '@/utils/decimal'
+import {
+  formatAmount,
+  numberFormatter,
+  toApiString,
+  toEditableText,
+} from '@/utils/decimal'
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
@@ -471,15 +476,15 @@ function openEdit(row: PurchaseOrder): void {
   form.buyer_id = row.buyer_id
   form.order_date = row.order_date ?? ''
   form.expected_date = row.expected_date ?? ''
-  form.tax_rate = row.tax_rate
+  form.tax_rate = toEditableText(row.tax_rate)
   form.currency = row.currency
   form.payment_terms = row.payment_terms
   form.supplier_exception_reason = row.supplier_exception_reason
   form.remark = row.remark
   form.lines = (row.lines ?? []).map((line) => ({
     material_id: line.material_id,
-    quantity: String(line.quantity),
-    price: String(line.price),
+    quantity: toEditableText(line.quantity),
+    price: toEditableText(line.price),
     uom_id: line.uom_id,
     expected_date: line.expected_date ?? '',
     remark: line.remark,

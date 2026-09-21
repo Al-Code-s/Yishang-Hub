@@ -7,7 +7,9 @@
 > 阶段 2 第四步：**销售模块（销售订单 / 库存占用 / 发货出库 / 销售退货与检验判定）**；
 > 阶段 3 第一步：**BOM 与工艺路线版本快照**；阶段 3 第二步：**MRP（时间分段净算 / 多层 BOM 展开 / 缺料建议 / 建议转单）**；
 > 界面：**侧边导航层级区分**、**视图样式统一（共享样式类）**与**窄屏响应式（侧边栏自动折叠）**；
-> 本轮增量：**枚举值中文化**（所有 choices 字段随接口返回中文标签）与**历史非法枚举数据修复**（见 §十七））
+> 本轮增量：**枚举值中文化**（所有 choices 字段随接口返回中文标签）与**历史非法枚举数据修复**（见 §十七）；
+> **超级管理员权限通配符修复**（前端把 `*` 当普通编码比较，导致新增 / 编辑按钮全部消失）与**管理员账号绑定「超级管理员」角色**（见 §十八）；
+> **客户编码自动生成**（新增客户不再手工输入编码，复用平台既有编码规则引擎，规则可配置，见 §十九））
 
 ## 一、当前状态总览
 
@@ -15,7 +17,7 @@
 | --- | --- | --- |
 | 0 | 仓库检查、需求矩阵、架构与数据模型、环境与部署编排 | 已完成（Docker 编排未在本机启动验证） |
 | 1 | 登录、权限、组织、主数据、仓库储位、基础审批、审计、后台界面 | 已完成（阶段验收待人工确认） |
-| 2 | 客户、供应商、采购、销售、WMS 单据 | **进行中**：客户/供应商主数据、**统一库存服务（收发存/移库/质量放行/冲销/幂等）已完成**、**采购模块（申请 → 订单 → 收货 → 来料检验放行）已完成**、**销售模块（订单 → 库存占用 → 发货出库 → 退货 → 检验判定）已完成**；询价/报价/供应商评价、销售计划与预测、应收/收款登记、调拨在途与盘点未开始 |
+| 2 | 客户、供应商、采购、销售、WMS 单据 | **进行中**：客户/供应商主数据、**统一库存服务（收发存/移库/质量放行/冲销/幂等）已完成**、**采购模块（申请 → 订单 → 收货 → 来料检验放行）已完成**、**销售模块（订单 → 库存占用 → 发货出库 → 退货 → 检验判定）已完成**；**客户编码改为按编码规则自动生成**（见 §十九）；询价/报价/供应商评价、销售计划与预测、应收/收款登记、调拨在途与盘点未开始 |
 | 3 | BOM、工艺、MRP、MES、QMS | **进行中**：BOM 与工艺路线版本快照已完成（见 §十四）；**MRP（任务书 10.6）已完成**——时间分段净需求、多层 BOM 展开与损耗、循环 BOM 检查、缺料清单、采购 / 生产建议、供需追溯、计算快照、采购建议转单（见 §十五）；**MES、QMS 未开始** |
 | 4 | 设备、备件、保养、点检、维修 | 未开始 |
 | 5 | 采集、EMS、能源报表与告警 | 未开始 |
@@ -1781,6 +1783,86 @@ npm run dev
 `docs/user-guide.md` 的 §二（能力边界）、§五（菜单清单）、§六（操作指南）、
 §九（`PRODUCTION_ORDER_NOT_IMPLEMENTED` 分支将被打开）与 §11.5（事实行）。
 
+## 十八、超级管理员权限修复（本轮增量）
+
+### 18.1 用户反馈与定位
+
+用户反馈：「超级管理员好像什么也新增不了。」排查后确认是**一个真实缺陷**，
+而且**与「超级管理员」这个角色本身无关**：
+
+| 现象 | 真实原因 |
+| --- | --- |
+| 登录 `admin` 后，各列表页的「新增 / 编辑 / 删除 / 提交 / 审批」按钮全部不可见 | 后端对 `is_superuser=True` 的账号下发的是**通配符** `permissions: ["*"]`（`User.permission_codes()`），而前端 `hasPermission()` 只做 `permissions.includes(code)` → 永远为 `false` |
+| 个人中心显示「角色：未分配」 | `bootstrap_system` 创建管理员时只设置 `is_superuser/is_staff`，**从未绑定**内置的 `super_admin` 角色，该角色当时 0 个用户 |
+
+关键点：**超级管理员的能力来自 `is_superuser`，不是来自角色**。
+后端 `resolve_data_scope()` 对超管直接返回 `all`、`permission_codes()` 返回 `{"*"}`，
+所以后端一直允许全部操作；只有前端的「按钮显示」判断错了，
+于是「后端能过、界面没入口」——表现就是「什么也新增不了」。
+
+### 18.2 修复内容
+
+1. **前端通配符支持**（`frontend/src/stores/auth.ts`）：
+   - 新增 `hasFullAccess`（`permissions.includes('*')`）；
+   - `hasPermission()` / `hasAnyPermission()` 在 `hasFullAccess` 为真时直接放行；
+   - 保持既有语义：空编码 = 不做限制，前端仍只负责「显示与引导」，越权请求由后端拒绝。
+2. **管理员账号绑定角色**（`backend/apps/core/management/commands/bootstrap_system.py`）：
+   - 新增 `_ensure_admin_role()`，在管理员**创建后**与**已存在**两条路径上都确保绑定 `super_admin` 角色；
+   - 幂等（重复执行不重复绑定）、`--dry-run` 只打印；
+   - 目的：个人中心 / 用户管理显示真实角色，让「角色 → 权限」矩阵与账号能力一致，便于审计。
+3. **打通既有开发库**：直接重跑 `manage.py bootstrap_system`（幂等），真实输出：
+   `管理员账号 admin 已绑定角色：超级管理员（173 个权限点）`。
+
+### 18.3 内置角色清单（实测，数据库当前状态）
+
+| 角色编码 | 名称 | 数据范围 | 权限点 | 菜单 | 当前账号数 |
+| --- | --- | --- | --- | --- | --- |
+| `super_admin` | 超级管理员 | `all` | 173 | 56 | 1（admin） |
+| `platform_admin` | 平台管理员 | `company` | 65 | 24 | 0 |
+| `masterdata_admin` | 主数据管理员 | `company` | 38 | 17 | 1 |
+| `factory_admin` | 工厂与组织管理员 | `company` | 34 | 13 | 1 |
+| `warehouse_admin` | 仓储管理员 | `warehouse` | 24 | 9 | 1 |
+| `sales_admin` | 销售管理员 | `company` | 27 | 15 | 0 |
+| `planning_admin` | 计划管理员 | `company` | 27 | 17 | 0 |
+| `procurement_admin` | 采购管理员 | `company` | 25 | 18 | 1 |
+| `srm_admin` | 供应商管理员 | `company` | 16 | 10 | 0 |
+| `crm_admin` | 客户管理员 | `company` | 13 | 9 | 0 |
+| `quality_inspector` | 质检员 | `company` | 11 | 8 | 1 |
+| `approver` | 审批人 | `department` | 5 | 4 | 3 |
+| `viewer` | 只读用户 | `company` | 51 | 56 | 2 |
+
+> 说明：`viewer` 的 51 个权限点全部是 `*.view` 类，菜单却能挂 56 项（含目录），
+> 因此「看得到菜单」不等于「有写权限」，这正是只读账号的预期表现。
+> `crm_admin` / `srm_admin` / `sales_admin` / `planning_admin` / `platform_admin`
+> 目前**没有绑定任何账号**，属于「建好了但还没人用」，不是失效角色。
+
+### 18.4 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py bootstrap_system`（幂等重跑 + 绑定角色） | 权限点更新 173、菜单更新 56、角色更新 13、`admin 已绑定角色：超级管理员（173 个权限点）` |
+| `/api/v1/identity/auth/session/`（admin） | `permissions=["*"]`、`roles=[超级管理员]`、menus 12 个根节点 |
+| `/api/v1/identity/auth/session/`（wh_admin） | `permissions=24` 条、`roles=[仓储管理员]`、含 `wms.warehouse.create` |
+| 后端全量测试 | `313 passed`（新增 1 条角色绑定用例） |
+| 前端测试 | `Test Files 10 passed (10)` / `Tests 135 passed (135)`（新增 `tests/auth-store.spec.ts` 4 条） |
+| 前端类型检查 / 构建 | `vue-tsc` 退出码 0；`vite build` `built in 11.14s` |
+| `ruff check` | `All checks passed!` |
+
+### 18.5 新增测试
+
+- `backend/tests/test_management_commands.py::test_bootstrap_system_binds_super_admin_role_to_admin_account`：
+  管理员账号必须有 `super_admin` 角色、该角色 173 个权限点、数据范围为 `all`、重复执行不重复绑定。
+- `frontend/tests/auth-store.spec.ts`（4 条）：
+  ① 超级管理员（`["*"]`）对任意权限点返回 true；② 普通角色只放行自己的权限点；
+  ③ 空权限不放行、空编码不做限制；④ 退出登录后权限清空。
+
+### 18.6 未完成事项
+
+- **浏览器截图级验证未执行**（本机浏览器自动化被安全策略拒绝）。请用 `admin` 登录后
+  打开「系统管理 → 用户管理 / 角色管理」，确认「新增」「编辑」按钮已出现；个人中心应显示「角色：超级管理员」。
+- 其他内置角色（`sales_admin` / `crm_admin` / `srm_admin` / `planning_admin` / `platform_admin`）
+  尚无账号绑定，未做过端到端角色演练；如需演示，可在「用户管理」里新建账号并分配角色。
+
 ## 十七、枚举值中文化（本轮增量）
 
 ### 17.1 问题与范围
@@ -1882,3 +1964,761 @@ npm run dev
 ① 在模型 `choices` 里给中文标签；② 跑 `pytest tests/test_enum_labels.py` 确认
 序列化器自动带 `_display`；③ 若改动了 `docs/user-guide.md`，重新生成网页版
 （`python scripts/build_user_guide.py`）。
+
+## 十九、客户编码自动生成（本轮增量）
+
+> 用户诉求：「新增客户的时候不需要手动输入客户编码，自动按照规律生成。」
+> 结论：**不新造取号逻辑**，复用平台既有的编码规则引擎（`core.CodeRule` / `core.CodeSequence` /
+> `core.services.generate_code`），把「新增时由谁给编码」这件事收敛到一处。
+
+### 19.1 编码规律与可配置性
+
+| 项 | 取值 | 说明 |
+| --- | --- | --- |
+| 规则编码 | `CUS` | 登记在 `bootstrap_system.CODE_RULES`，由 `manage.py bootstrap_system` 幂等同步 |
+| 编号格式 | `CUS{YYYY}{SEQ:4}` | 生成形如 **`CUS20260001`** |
+| 重置周期 | `yearly`（每年） | 主数据编码会被订单长期引用，不适合把「日」写进编码；按年重置既短又可读 |
+
+**格式不写死在代码里**：`apps/crm/services.py` 只引用规则编码 `CUS`，格式与重置周期全部来自
+`CodeRule`。管理员可在「系统管理 → 编码规则」改格式（含**编号预演**，预演不消耗流水号），
+已有用例把「改规则即改编号」锁死，避免出现两套口径。
+
+### 19.2 后端改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `apps/crm/services.py` | 新增 `CUSTOMER_CODE_RULE = "CUS"` 与 `next_customer_code()`：在事务内引用规则取号（先锁规则行再锁流水行） |
+| `apps/crm/serializers.py` | `code` 显式声明为 `CharField(allow_blank=True, default="", max_length=32)`；`validate_code` 只在**编辑**（`self.instance` 非空）时拒绝空值 |
+| `apps/crm/views.py` | `CustomerViewSet.perform_create()`：编码缺失 / 空白 / 空串时调用 `next_customer_code()` 补号；显式传入的编码**原样保留** |
+| `apps/core/management/commands/bootstrap_system.py` | `CODE_RULES` 登记 `("CUS", "客户编码", "CUS{YYYY}{SEQ:4}", ResetPeriod.YEARLY)` |
+
+**为什么是 `default=""` 而不是 `required=False`**（踩坑记录）：模型上的
+`uq_customer_company_code` 会派生 DRF 的 `UniqueTogetherValidator('company_id', 'code')`，
+它**强制要求**这两个字段同时出现在输入里，只有带默认值的字段才能合法缺省。
+实测：写成 `required=False` 时，不带 `code` 的新增请求返回
+`400 {"code": ["该字段是必填项。"]}`；改成 `default=""` 后通过。
+
+**事务与并发**：补号发生在 `ScopedModelViewSet.create()` 的 `transaction.atomic()` 内，
+与客户落库**同事务**——取号成功但写入失败时流水一并回滚（已实测：事务回滚后
+`CodeSequence` 无残留）。并发取号由 `generate_code` 的行锁 + `(rule, period_key)` 唯一约束保证不重号。
+
+### 19.3 前端改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `frontend/src/components/EntityListPage.vue` | `FormFieldDef` 新增 `onlyOnUpdate`（与既有 `onlyOnCreate` 对称）；`visibleFormFields` 在**新增**模式过滤该类字段 |
+| `frontend/src/views/crm/CustomerList.vue` | 客户编码字段改为 `onlyOnUpdate: true`——新增表单里不再出现编码输入框，编辑时展示以便核对；页面说明补充「编码自动生成」 |
+
+未展示的字段不会进入提交载荷（前端用例锁定），后端因此走自动取号分支。
+
+### 19.4 本轮执行的检查（真实输出）
+
+| 检查 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 系统自检 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移漂移 | `manage.py makemigrations --check --dry-run` | `No changes detected`（**本轮不产生迁移**，仍为 19 个） |
+| 规则同步（开发库） | `manage.py bootstrap_system` | `编码规则：新增 1，共计 15 条。`；`管理员账号 admin 已存在（版本 0），保留原密码，仅同步权限属性。` |
+| 开发库取号（事务回滚） | 直连 `config.settings.dev` | 规则 `CUS 客户编码 CUS{YYYY}{SEQ:4} yearly`；预演 `CUS20260001`；回滚后客户数与流水均无残留 |
+| 开发库 HTTP 冒烟 | `django.test.Client` + 真实登录（事务回滚） | 见 19.5 |
+| 静态检查 | `ruff check --no-cache apps config tests ../scripts/build_user_guide.py` | `All checks passed!` |
+| 后端全量测试 | `pytest tests -q --reuse-db -p no:logging` | `319 passed in 117.64s (0:01:57)` |
+| 前端测试 | `vitest run` | `Test Files 11 passed (11)` / `Tests 138 passed (138)` |
+| 前端类型检查 | `vue-tsc --build --force` | 退出码 0 |
+| 生产构建 | `vite build` | `✓ built in 12.66s` |
+
+### 19.5 开发库 HTTP 冒烟（真实执行，整个事务已回滚，库中无残留）
+
+```text
+POST /api/v1/identity/auth/login/  (admin)            -> 200
+POST /api/v1/crm/customers/  {"company_id":2,"name":"冒烟-自动编码客户"}
+                                                      -> 201  code=CUS20260001
+POST /api/v1/crm/customers/  （第二户）                -> 201  code=CUS20260002
+PATCH /api/v1/crm/customers/{id}/  {"code": ""}        -> 400  VALIDATION_FAILED
+                                                              （"客户编码不能为空。"）
+GET  /api/v1/audit-logs/?object_type=crm.Customer&object_id={id}
+                                                      -> 200  create / changes.code=CUS20260001
+客户数 before/after: 3 3
+```
+
+即：**不传编码能建档、编码逐号递增、编辑不允许清空、自动编码写入审计**，且验证过程未污染开发库。
+
+### 19.6 新增测试
+
+- `backend/tests/test_crm_api.py`（11 → **17** 条）：不传 `code` 自动取号并按年+4 位流水匹配；
+  提交空白串同样取号；**改规则即改编号**（把 `CUS` 改成 `KH{YY}{SEQ:3}` 后新编号随之变化）；
+  显式编码仍然保留；编辑时清空编码被拒绝且原值不变；规则被删除时返回
+  `404 CODE_RULE_NOT_FOUND` 且不落数据。
+- `frontend/tests/entity-list-form.spec.ts`（新增 **3** 条）：新增模式不展示 `onlyOnUpdate` 字段、
+  展示 `onlyOnCreate` 字段；编辑模式相反；新增提交的载荷里**不含**被隐藏的编码字段。
+
+### 19.7 未完成事项
+
+- **浏览器截图级 UI 校验未执行**（本机浏览器自动化被安全策略拒绝）。请人工打开
+  「客户管理 → 客户档案 → 新增客户」，确认表单里**没有**「客户编码」输入框；
+  保存后列表出现 `CUS...` 编码；点「编辑」时该字段出现。
+- 供应商编码（`srm.Supplier.code`）、物料 / 款式等主数据编码**仍是手工录入**，
+  本轮只按用户要求改了客户。若要统一，按 19.8 的方式逐条登记规则即可。
+- 已有的手工编码客户（如演示数据 `CUS-001`）不受影响，不会自动改写。
+
+### 19.8 下一阶段依赖
+
+- 若要继续统一主数据编码：在 `CODE_RULES` 追加规则（例如 `("SUP", "供应商编码", "SUP{YYYY}{SEQ:4}", ResetPeriod.YEARLY)`），
+  在对应 `services.py` 里加取号函数，在 `ViewSet.perform_create()` 里补号，
+  前端字段加 `onlyOnUpdate: true`——四处改动，模式与本轮一致。
+- 阶段 3 的 MRP 建议转单、MES 工单 / QMS 检验单依赖本轮的取号模式（单据号沿用 `bootstrap_system.CODE_RULES`）。
+
+## 二十、开发库数据清理：备注中的「演示数据」标记（本轮，仅数据）
+
+> 用户要求：把「备注」字段里是「演示数据」的内容**清空**。
+> 这是**开发库的数据清理**，不涉及代码、不涉及表结构（**无迁移**）。
+
+### 20.1 影响面（清理前实测）
+
+`seed_demo` 用常量 `DEMO_REMARK = "演示数据"`（`apps/core/management/commands/seed_demo.py:60`）
+给演示数据打标。直连开发库扫描全部含 `remark` 字段的模型：
+
+- **37 个模型 / 624 条记录**含该字样；其中 **597 条正好是「演示数据」**，
+  **27 条是「演示数据：说明」**（例如 `演示数据：整单发货`、`演示数据：生产计划主管`）。
+
+### 20.2 执行方式与可恢复性
+
+1. **先备份**：受影响记录（模型 + 主键 + 原备注）写入
+   `.tmp/backup/demo_remark_<时间戳>.json`（本次为 `demo_remark_20260920-094644.json`，
+   624 条 / 37 个模型）。该目录被 `.gitignore` 忽略，**不进版本库**。
+2. **再清空**：逐模型 `QuerySet.update(remark="")`，**整个操作包在一个事务里**，
+   任一模型条数与预期不符即 `assert` 失败并整体回滚。
+3. 用 `update()` 而不是逐条 `save()`：不改 `updated_at`（避免所有历史数据看起来
+   「刚刚被改过」），也不触发任何 `save()` 覆盖逻辑——这是数据清理，不是业务操作。
+4. **复核**：清理后重扫，仍含该字样的 `remark` = **0 条**。
+
+### 20.3 清理结果（实测）
+
+| 模型 | 条数 | 模型 | 条数 |
+| --- | --- | --- | --- |
+| `wms.Location` | 228 | `factory.Department` | 13 |
+| `masterdata.Material` | 65 | `identity.User` | 10 |
+| `masterdata.Sku` / `masterdata.Identifier` | 50 / 50 | `masterdata.Color` / `masterdata.Size` | 8 / 8 |
+| `factory.Station` | 48 | `factory.Team` / `factory.Shift` | 7 / 3 |
+| `wms.Zone` | 24 | `wms.Warehouse` / `wms.InventoryDocument` | 6 / 6 |
+| `masterdata.MaterialCategory` | 16 | `crm.Customer` / `crm.CustomerContact` | 3 / 4 |
+| `factory.Employee` | 15 | `sales.SalesOrder` | 3 |
+| `masterdata.UoM` | 14 | 其余（供应商、采购、计划、公司/工厂等） | 见备份文件 |
+
+**合计清空 624 条**；抽样复核（客户、仓库、储位、物料、部门、员工、销售订单、库存单据）
+`remark` 均为 `''`；不含该字样的备注（如盘点单「来料检验合格，允许投产」）**未被改动**。
+
+### 20.4 已知影响与恢复方式
+
+- **27 条带说明的备注**（`演示数据：xxx`）被整体清空，其中的说明文字一并消失。
+  原文完整保存在上述备份 JSON 中，需要时可逐条恢复；典型如
+  `sales.SalesOrder pk=2 → 演示数据：订单到交付链路（订单 → 占用 → 发货 → 退货 → 检验）`。
+- **重新执行 `seed_demo` 会把标记写回来**：`_upsert` 以业务编码为键、会把 `remark`
+  更新回 `DEMO_REMARK`（这是幂等更新，不会产生重复记录）。
+  若以后不希望演示数据再带这个标记，需要显式修改 `seed_demo.DEMO_REMARK`
+  ——注意任务书 §15 要求「演示数据与真实采集来源明显区分」，改动前需先确定替代的区分方式。
+- **未清理的两处非「备注」字段**（用户只要求清备注，且其中一处是审计证据）：
+  - `core.AuditLog.reason`（11 条）：**审计留痕，按任务书 §5.5 不通过普通接口修改**，未动。
+  - `workflow.ApprovalInstance.summary`（3 条）：审批实例摘要，未动。
+
+### 20.5 本轮执行的检查
+
+| 检查 | 结果 |
+| --- | --- |
+| 清理前扫描（直连开发库） | 37 个模型 / 624 条含「演示数据」 |
+| 备份写出 | `.tmp/backup/demo_remark_20260920-094644.json`（624 条） |
+| 清理（单事务） | 合计 624 条，逐模型条数与扫描值一致 |
+| 清理后重扫 | 仍含该字样的 `remark` = **0 条** |
+| 抽样复核 | 8 个模型各 3 条，`remark` 均为 `''` |
+| 代码 / 迁移 | 无代码改动、**无迁移** |
+
+## 二十一、数值显示口径统一为 2 位小数（本轮增量）
+
+> 用户要求：「涉及到数字的内容，都是小数点后 2 位即可」。
+> 结论：**只统一「显示」口径，不改存储与接口精度**——任务书 5.3 要求数量 6 位小数、
+> 金额按币种精度、API 的 Decimal 以字符串输出；把存储改成 2 位会**真实截断已有业务数据**。
+> 本轮**无迁移、无后端改动**（纯前端显示层 + 测试 + 文档）。
+
+### 21.1 显示口径（`frontend/src/utils/decimal.ts`）
+
+统一入口 `formatNumber(value, places = DISPLAY_PLACES)`，`DISPLAY_PLACES = 2`：
+
+| 输入 | 输出 | 说明 |
+| --- | --- | --- |
+| `"12.000000"` | `12.00` | 接口的 6 位 Decimal 字符串 |
+| `"1234.567800"` | `1,234.57` | HALF_UP 四舍五入 + 千分位 |
+| `"-1234.500000"` | `-1,234.50` | 负数保留符号 |
+| `"0.000000"` | `0.00` | 真值就是 0 |
+| `null` / `undefined` / `""` | `-` | 空值不当作 0 |
+| `"13800138000"` | `13800138000` | **纯整数文本不参与格式化**（手机号、税号、数字型编码） |
+| `"M-001"` / `"2026-09-20"` | 原样 | 非小数文本不参与格式化 |
+
+`formatAmount` / `formatDecimal` 保留为 `formatNumber` 的别名（默认 2 位），
+调用处不再传 6 / 4 / 3 这类精度参数，避免同一个界面出现多种小数位。
+
+### 21.2 边界一：非零值不允许被显示成 0
+
+若某个**非零**值四舍五入到 2 位后恰好是 `0.00`，则保留其真实精度显示，
+否则会把「有」说成「没有」。直连开发库扫描全部 **58 个 `DecimalField` 列**，
+真实会触发该保护的数据只有 **2 处**：
+
+| 列 | 条数 | 实际值 | 是否在页面展示 |
+| --- | --- | --- | --- |
+| `masterdata.UoMConversion.factor` | 1 | `0.9144000000`（码 → 米） | 否（该字段未出现在任何页面） |
+| `planning.BomLine.quantity` | 1 | `0.004000`（涤纶缝纫线 BOM 用量） | 是 → 显示为 `0.004` |
+
+区分要点：**会进位的值仍按 2 位显示**（`0.055` → `0.06`、`0.995` → `1.00`），
+保护只在「四舍五入结果恰好为 0」时生效。极小值（如 `-0.0000001`）在 6 位数量精度内
+仍为 0、无法保留有效信息，回退显示 `0.00`。
+
+### 21.3 边界二：编辑表单回填只去尾 0，不四舍五入
+
+新增 `toEditableText(value)`（`decimal.ts`）：把接口值 `"12.000000"` 回填成 `"12"`，
+`"0.055"` 保持 `"0.055"`，且**不加千分位**（千分位会让回填值无法被再解析）。
+
+**为什么回填不能复用 `formatNumber`**：编辑表单的值会被再次提交。
+若回填时按 2 位四舍五入，用户「打开编辑 → 直接保存」就会把 `0.055` 悄悄改成 `0.06`，
+属于任务书 §5.5 禁止的「未经明确机制改写已过账数据」。回填去掉无意义的末尾 0 即可，
+提交精度仍由后端 `DecimalField` 与 `toApiString` 决定。
+
+### 21.4 改动清单
+
+| 文件 | 改动 |
+| --- | --- |
+| `frontend/src/utils/decimal.ts` | 新增 `DISPLAY_PLACES`、`formatNumber`、`formatNumericText`、`numberFormatter`、`toEditableText`；`formatAmount` / `formatDecimal` 改为统一入口的别名；`toApiString` / `round` / `DECIMAL_PLACES` **未改**（提交精度不变） |
+| `frontend/src/components/ProTable.vue` | `displayValue()` 追加数值文本分支（通用表格自动生效） |
+| `frontend/src/components/EntityListPage.vue` | `renderCell()` 同上；`decimal` 字段编辑回填走 `toEditableText`；输入框 placeholder 改为 `十进制数值，例如 12.50` |
+| `frontend/src/views/planning/BomList.vue` | 数量 / 损耗率列加 `:formatter="numberFormatter"`；编辑回填去尾 0 |
+| `frontend/src/views/planning/RoutingList.vue` | 标准工时列（详情抽屉 + 快照抽屉）加 `:formatter="numberFormatter"`；编辑回填去尾 0；placeholder 改为「小时，如 0.50」 |
+| `frontend/src/views/planning/MrpRunList.vue`、`MrpSuggestionList.vue` | 需求 / 供给 / 建议数量列与明细统一 2 位 |
+| `frontend/src/views/procurement/{PurchaseOrderList,GoodsReceiptList,RequisitionList}.vue` | 订单量 / 未收 / 单价 / 金额 / 收货量 / 申请量统一 2 位；编辑回填去尾 0 |
+| `frontend/src/views/sales/{SalesOrderList,SalesShipmentList,SalesReturnList}.vue` | 订单量 / 未发货 / 发货量 / 退货量 / 价税合计统一 2 位；备注与税率回填去尾 0 |
+| `frontend/src/views/wms/InventoryDocumentList.vue` | 输入 placeholder 改为 2 位示例 |
+| `frontend/src/views/workflow/TemplateList.vue` | 金额区间改用 `formatNumber` |
+| 各视图 | 删除 16 处多余精度参数（`formatAmount(x, 6/4/3)` → `formatAmount(x)`）；保留 `WorkshopList` 产能与工作台计数的 `, 0`（整数计数不显示小数） |
+
+### 21.5 展示层为什么统一改在公共组件里
+
+`ProTable`（列表）与 `EntityListPage`（通用增删改查页）是两个渲染入口，
+把口径放在这两处 + `numberFormatter`（原生 `el-table` 列），
+新增页面**默认**就是 2 位小数，不需要每个视图各写一次格式化函数。
+
+### 21.6 本轮执行的检查（真实输出）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Django 检查 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移漂移 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| Ruff | `ruff check --no-cache apps config tests ..\scripts\build_user_guide.py` | `All checks passed!` |
+| 后端测试 | `pytest tests -q --reuse-db -p no:logging` | `319 passed, 1 warning in 116.99s`（本轮无后端改动，基线不变） |
+| 前端测试 | `vitest run` | `Test Files 11 passed (11)` / `Tests 154 passed (154)`（本轮前 138） |
+| 前端类型检查 | `vue-tsc --build --force` | 退出码 `0` |
+| 前端构建 | `vite build` | `✓ built in 12.13s` |
+| 开发库扫描 | 直连 MySQL 遍历 58 个 `DecimalField` 列 | 仅 **2 处**存在 >2 位有效小数（见 21.2） |
+
+### 21.7 未完成事项
+
+1. **浏览器截图级 UI 核对未执行**——本机浏览器自动化被安全策略拒绝。请人工打开
+   「采购管理 → 采购订单」「生产管理 → BOM」「销售管理 → 销售订单」确认列表显示为 2 位小数。
+2. **后端 Excel 导出未同步**：`openpyxl` 导出的单元格格式仍是后端原始精度（6 位），
+   原因是导出属于「数据交付」而非「界面显示」，改成 2 位会造成导出值与页面值不一致且丢失精度。
+   若业务上要求导出也按 2 位呈现，应作为**独立需求**评审（需要明确是否允许丢精度）。
+3. **打印 / 标签模板未接入**：标签与单据打印尚未实现，届时需复用同一口径。
+4. **费率类字段（税率、损耗率）显示为小数而非百分数**：当前按 2 位小数显示
+   （`0.1300000000` → `0.13`），未做 `13%` 形式的百分比换算；换算属于业务口径变更，需单独确认。
+
+### 21.8 下一阶段依赖
+
+- 阶段 3 剩余部分（MES 工单报工、QMS 检验单）新增页面的数值列会自动走本轮的公共口径；
+- 若后续新增时序或聚合类看板（EMS 能源、OEE），需要先确定「显示 2 位」与
+  「统计口径小数位」是否一致，避免把估算值显示得比实际更精确。
+
+## 二十二、权限一级分组显示中文名（本轮增量）
+
+> 用户要求：权限 / 菜单与角色权限界面的**一级分组**不能只有英文模块名，
+> 要显示成 `core（中文名称）`。
+> 本轮**无迁移**；后端只增加「模块中文名」这一份注册表数据 + 一个启动检查，
+> 权限编码、授权逻辑、数据范围判定**均未改动**。
+
+### 22.1 问题
+
+权限编码的第一段是模块（`core.user.view` → `core`），它是英文的。
+界面上两个地方把模块名当作一级分组标题直接显示：
+
+| 位置 | 改动前 | 改动后 |
+| --- | --- | --- |
+| 「系统管理 → 权限与菜单」→ 权限点选项卡（折叠面板标题） | `core（12）` | `core（公共基础）· 12 项` |
+| 「系统管理 → 角色权限」→ 分配操作权限（复选框树一级节点） | `core（12）` | `core（公共基础）· 12 项` |
+
+业务人员配置角色时看到 `core`、`identity`、`srm` 这类英文分组，无法判断该勾哪一组。
+
+### 22.2 中文名放在后端，而不是前端硬编码
+
+中文名定义在权限注册表（`backend/apps/identity/permissions_registry.py`）：
+
+```python
+MODULE_LABELS: dict[str, str] = {
+    "analytics": "工作台与看板", "core": "公共基础", "crm": "客户管理",
+    "factory": "工厂与排班", "identity": "用户与权限", "integration": "内部协同",
+    "masterdata": "基础资料", "planning": "计划管理", "procurement": "采购管理",
+    "sales": "销售管理", "srm": "供应商管理", "wms": "仓储管理", "workflow": "审批中心",
+}
+```
+
+理由：权限注册表已经是「后端与前端共同依赖的契约」的唯一来源，
+`bootstrap_system` 按它写入 `identity.Permission`，`yishang.E001` 按它校验视图声明。
+中文名放在同一处，新增模块时**一处登记、两处界面同时生效**，
+不会出现前端映射表漏更新导致中文名缺失。
+
+命名尽量与左侧**一级菜单**一致（基础资料 / 工厂与排班 / 客户管理 …），便于对照；
+`core` 是不直接对应菜单的基础能力（字典、编码规则、附件、审计、通知），
+单独命名为「公共基础」，避免与 `identity` 的「用户与权限」重复。
+
+### 22.3 改动清单
+
+| 文件 | 改动 |
+| --- | --- |
+| `backend/apps/identity/permissions_registry.py` | 新增 `MODULE_LABELS`（13 个模块）与 `module_label()` |
+| `backend/apps/identity/selectors.py` | `permission_groups()` 每个分组增加 `module_name` 字段 |
+| `backend/apps/core/checks.py` | 新增启动检查 `yishang.E002`：模块缺中文名时报错 |
+| `frontend/src/utils/permissionLabels.ts` | **新增**：`moduleDisplayName()`、`permissionModuleNodeLabel()` 统一文案 |
+| `frontend/src/types/models.ts` | `PermissionGroup` 增加 `module_name` |
+| `frontend/src/views/system/PermissionList.vue` | 折叠标题显示中文名；**并修掉一个真实缺陷**（见 22.4） |
+| `frontend/src/views/system/RoleList.vue` | 权限树一级节点改用统一的 `permissionModuleNodeLabel()` |
+
+### 22.4 顺带修掉的一个真实缺陷
+
+`PermissionList.vue` 的 `filteredGroups` 在按关键字过滤时**重建了分组对象**，
+只保留了 `module` 与 `permissions` 两个字段：
+
+```ts
+.map((group) => ({ module: group.module, permissions: [...] }))
+```
+
+如果只加中文名而不改这里，用户**一输入关键字**中文名就会消失，退回纯英文分组。
+本轮已补上 `module_name: group.module_name`，并有对应用例锁定
+（`按关键字过滤后中文名仍然保留`）。
+
+### 22.5 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).`（新检查 E002 通过） |
+| `makemigrations --check --dry-run` | `No changes detected`（**无迁移**） |
+| `ruff check` | `All checks passed!` |
+| 后端测试 | `322 passed, 1 warning in 120.49s`（本轮前 319，新增 3 条） |
+| 前端测试 | `Test Files 12 passed (12)` / `Tests 159 passed (159)`（本轮前 154，新增 5 条） |
+| `vue-tsc --build --force` | 退出码 `0` |
+| `vite build` | `✓ built in 13.23s` |
+| 开发库实际数据 | `permission_groups()` 返回 13 个分组，全部带中文名，权限点合计 **173** 项，与注册表一致 |
+
+开发库实测（直连 `config.settings.dev`，非测试夹具）：
+
+```text
+开发库分组数: 13
+  analytics      -> 工作台与看板 : 1 项
+  core           -> 公共基础 : 12 项
+  crm            -> 客户管理 : 7 项
+  factory        -> 工厂与排班 : 27 项
+  identity       -> 用户与权限 : 15 项
+  integration    -> 内部协同 : 3 项
+  masterdata     -> 基础资料 : 27 项
+  planning       -> 计划管理 : 15 项
+  procurement    -> 采购管理 : 15 项
+  sales          -> 销售管理 : 16 项
+  srm            -> 供应商管理 : 10 项
+  wms            -> 仓储管理 : 18 项
+  workflow       -> 审批中心 : 7 项
+缺少中文名的模块: 无
+```
+
+### 22.6 新增测试
+
+| 文件 | 用例 |
+| --- | --- |
+| `backend/tests/test_permissions.py` | `test_every_permission_module_has_chinese_label`（注册表覆盖全部模块） |
+| 同上 | `test_module_label_check_reports_missing_module`（E002 真的会报错，可 monkeypatch 验证） |
+| 同上 | `test_permission_groups_api_returns_module_chinese_name`（接口返回 `module_name`，且权限点总数与注册表一致） |
+| `frontend/tests/permission-module-label.spec.ts` | 文案函数 3 条 + 页面渲染 2 条（含过滤后中文名保留） |
+
+### 22.7 未完成事项
+
+1. **浏览器截图级 UI 核对未执行**——本机浏览器自动化被安全策略拒绝。
+   请人工打开「系统管理 → 权限与菜单」与「系统管理 → 角色权限 → 分配操作权限」确认显示为 `core（公共基础）`。
+2. **模块中文名未进入 `docs/permission-matrix.md`**：该文档由注册表生成，
+   目前只列权限编码，不含模块中文名；如需一并展示属于文档增强，不影响功能。
+3. **二级权限点名称未中文化治理**：权限点的中文名来自注册表 `PermissionDef` 的第二个参数，
+   已全部是中文，无需处理；但 `resource` / `action` 两列仍是英文，属技术标识，未改。
+
+### 22.8 下一阶段依赖
+
+- 后续新增权限模块（如 `mes`、`qms`、`eam`、`ems`、`ehs`、`logistics`、`endpoint_security`）
+  时，**必须**在 `MODULE_LABELS` 登记中文名，否则 `manage.py check` 会以 `yishang.E002` 报错——
+  这是刻意的，避免界面又出现纯英文分组。
+
+## 二十三、登录页改版为商用双栏布局（本轮增量）
+
+> 用户要求：登录页「看起来太一般了」，希望更符合商用应用观感。
+> 本轮**只改前端视觉与结构**：后端、接口、会话 / CSRF / 登录逻辑、权限判定**均未改动**，
+> **无迁移**。
+
+### 23.1 改了什么
+
+| 维度 | 改前 | 改后 |
+| --- | --- | --- |
+| 布局 | 单张 400px 卡片居中 | **左侧品牌区 + 右侧登录卡**的双栏（`grid`，`min(1080px, 100%)`） |
+| 品牌 | 卡片内居中的两行文字 | 渐变色「意」字标识 + 中英文品牌名；左侧另有主标题与平台定位文案 |
+| 信息量 | 只有标题、表单、一行提示 | 左侧补 4 条**已实现能力**要点（统一账号与四层权限 / 统一主数据 / 单据与审批留痕 / 关键操作后端校验） |
+| 背景 | 单层径向渐变 | 深蓝渐变 + 细网格 + 两处光斑（**纯 CSS，无外链资源**） |
+| 输入框 | Element Plus 默认 | 圆角 10px、hover / focus 双态描边 + 4px 主色光晕 |
+| 登录按钮 | 默认主色 | 品牌渐变、44px 高、字距 0.22em、悬浮加深 + 阴影 |
+| 收尾 | 一行提示 | 安全提示 + 分隔线 + 版权行（年份动态） |
+| 交互 | 无 | 打开即聚焦账号输入框；卡片入场动效受 `prefers-reduced-motion` 保护 |
+| 响应式 | 无 | ≤960px 隐藏左栏并在卡片内显示紧凑品牌；≤480px 收紧内边距与圆角 |
+
+文案刻意只列**已实现**能力，未实施模块（MES / WMS / QMS 等）不出现，避免登录页变成虚假宣传；
+测试里有对应用例（`展示平台能力要点时只陈述已具备的能力`）。
+
+### 23.2 样式搬了家（顺带修掉「两处定义」隐患）
+
+改前登录页样式定义在**全局样式表** `frontend/src/styles/index.css` 的「7. 登录页」小节里，
+而页面结构在 `frontend/src/views/LoginView.vue`——改登录页要来回跳两个文件，
+且很容易出现「组件里改了、全局那条还在生效」。
+
+本轮把登录页样式**全部移入组件**（`<style scoped>`），并删除全局里的小节，
+全局样式表只保留设计令牌与跨页面共享的业务类（小节重新编号为 1–8）。
+`frontend/tests/login-view.spec.ts` 用 postcss 断言
+`globalCss` 中**不再包含** `.ys-login`，防止以后又长出第二处定义。
+
+### 23.3 保留的行为（未改动）
+
+- 提交顺序仍是 **先 `GET /auth/csrf/` 再 `POST /auth/login/`**（登录接口自身也做 CSRF 校验）；
+- 会话登录 + 退出使服务端会话失效，未引入任何新认证方式；
+- 账号两侧空格仍会 `trim` 后提交；
+- 登录成功仍 `tabs.reset()` 后跳 `redirect` 参数指定地址，默认 `/`；
+- 失败仍是把 `ApiError.message` 显示在表单上方的 `el-alert`；
+- 账号 / 密码输入框保留 `autocomplete="username"` / `"current-password"`。
+
+### 23.4 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| 前端测试 | `Test Files 13 passed (13)` / `Tests 170 passed (170)`（本轮前 159，新增 11 条） |
+| `vue-tsc --build --force` | 退出码 `0` |
+| `vite build` | `✓ built in 12.83s` |
+| `ruff check` | `All checks passed!` |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移 | **无迁移**（只改前端 + 全局样式表） |
+| 后端测试 | 本轮无后端改动，基线 `322 passed` 不变 |
+
+### 23.5 一条重要的测试边界（必须知道）
+
+**表单必填校验在自动化测试里无法验证**。排查发现：Element Plus 的 `el-form-item`
+在 jsdom 下不会注册进 `el-form` 的 `fields`，`validate()` 会走
+`fields.length === 0 → return true` 的分支直接放行。
+用一个**最小复现**（一个 `el-form` + 一个带 `required` 规则的 `el-form-item` + 按钮调用
+`formRef.validate()`）确认：空值下 `validate()` 返回 `true`、错误文案也不渲染。
+
+结论：**这是 jsdom 环境限制，不是本页缺陷**——真实浏览器不受影响，
+而且本项目所有页面（含 `EntityListPage`）都用同一套 Element Plus 表单写法。
+
+因此 `frontend/tests/login-view.spec.ts` **不断言校验行为**，只在文件头写明该限制；
+「必填校验 / 错误文案」列入「未执行」清单，需人工在浏览器确认。
+这里刻意不写成「校验通过」，避免用一条恒真的断言冒充测试覆盖。
+
+### 23.6 未完成事项
+
+1. **浏览器截图级 UI 核对未执行**——本机浏览器自动化被安全策略拒绝。
+   请人工打开 `http://127.0.0.1:5173/login` 确认双栏布局、渐变按钮与窄屏折叠（把窗口拖到 960px 以下）。
+2. **表单必填校验未由自动化覆盖**（原因见 23.5），需人工点一次「登录」确认出现「请输入账号 / 请输入密码」。
+3. **未加登录页专属的 favicon / 品牌图**：当前标识是 CSS 渐变方块 + 文字，没有引入任何图片资源；
+   若要换成企业 logo 需要提供素材（并注意不要把版权不明的图片放进仓库）。
+4. **未加「记住我 / 忘记密码」入口**：任务书未要求，且平台没有自助改密流程（由管理员重置），
+   加了会造成「点了没用」的假入口。
+
+### 23.7 与既有文档的关系
+
+本节**取代** `docs/progress.md` §11.4 中「`styles/index.css` 重写为 8 个小节：… / 登录页 / 辅助类」
+对**当前**文件结构的描述：登录页小节已移入组件，全局样式表现有 8 个小节但不含登录页。
+§11 与 §9 的历史记录本身不改写（它们记录的是当时的事实）。
+
+
+## 二十四、登录页左栏文案改为面向使用者的业务描述（本轮增量）
+
+> 用户反馈：「左侧的描述有的不太合适，应该采用面向用户的描述，而不是面向开发者的描述，
+> 描述的应该是这个系统的功能、优势」。
+> 本轮**只改文案与 `features` 图标**：布局、样式、登录 / 会话 / CSRF 逻辑、后端**均未改动**，
+> **无迁移**。
+
+### 24.1 问题：左栏写成了技术说明
+
+`§23` 改版时左栏 4 条要点是按**开发视角**写的，用的是「四层权限 / 菜单·操作·接口·数据范围 /
+SKU / BOM / 后端校验 / 服务端判定」这类实现词汇。业务用户（车间、仓库、业务员）看不懂，
+也没说明平台对他们有什么用。
+
+### 24.2 改了什么
+
+| 位置 | 改前（开发视角） | 改后（使用者视角） |
+| --- | --- | --- |
+| 主标题 | 服饰企业统一业务平台 | 服饰企业一体化经营管理平台 |
+| 定位文案 | 一个统一平台、一套账号权限、统一主数据、多个内置业务模块、跨模块业务流程闭环 | 从面料采购、款式建码到库存出入库与销售发货，日常业务都在同一个平台上流转，不用在多个系统之间来回切换 |
+| 要点 1 | 统一账号与四层权限 / 菜单·操作·接口·数据范围 | **一套账号，权限分明** / 按岗位分配可用功能与数据范围 |
+| 要点 2 | 统一主数据 / 物料·款式·颜色尺码·SKU·BOM | **主数据统一维护** / 面料、辅料、款式、颜色尺码一处建档 |
+| 要点 3 | 业务单据与审批留痕 / 提交、审批、撤回全程可追溯 | **采购到销售全程贯通** / 到货、入库、出库、发货连续流转 |
+| 要点 4 | 关键操作后端校验 / 前端只是入口，权限与状态由服务端判定 | **单据与审批全程留痕** / 谁在何时提交、审批、修改随时可查 |
+
+图标相应从 `Document` 换成 `ShoppingCart`（第 3 条从「单据」改为「业务贯通」），
+其余图标（`Key` / `Files` / `CircleCheck`）不变。
+
+**两条约束仍然成立**：
+
+1. 只陈述平台**已具备**的能力——采购、销售、仓储、审批、主数据在本仓库均已实现
+   （见 `backend/apps/` 下的 `masterdata` / `procurement` / `sales` / `wms` / `workflow`）；
+   未实施的 MES / WMS 术语 / QMS 等模块字样**不得出现**。
+2. 不出现开发视角术语（权限分层、数据表字段名、前端/后端职责等）。
+
+### 24.3 测试同步（本轮唯一被改的测试文件）
+
+`frontend/tests/login-view.spec.ts`：
+
+- 用例 `展示平台能力要点时只陈述已具备的能力` → 重命名为
+  **`左侧要点用面向使用者的业务描述，不出现开发术语`**；
+- 断言新文案 4 条要点全部存在；
+- 新增「开发术语黑名单」断言：页面文本不得包含
+  `四层权限` / `后端` / `前端` / `接口` / `SKU` / `BOM`；
+- 渲染用例补一条主标题断言 `服饰企业一体化经营管理平台`；
+- 文件头补写「左栏是给业务用户看的，这类回归肉眼容易漏，所以写进测试」。
+
+用例总数不变（仍 11 条），仅内容调整。
+
+### 24.4 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| 前端测试 | `Test Files 13 passed (13)` / `Tests 170 passed (170)` |
+| `vue-tsc --build --force` | 退出码 `0` |
+| `vite build` | `✓ built in 11.07s` |
+| 迁移 | **无迁移**（只改前端文案） |
+| 后端测试 / `ruff` / `manage.py check` | 本轮无后端改动，基线不变（`322 passed`） |
+
+### 24.5 与既有文档的关系
+
+本节**取代** `§23.1` 中「左侧补 4 条已实现能力要点（统一账号与四层权限 / 统一主数据 /
+单据与审批留痕 / 关键操作后端校验）」这一行的描述，以及 `§23.1` 末尾提到的旧用例名
+`展示平台能力要点时只陈述已具备的能力`（已重命名，见 24.3）。
+`§23` 其余内容（双栏布局、样式搬入组件、960px 断点、jsdom 限制）依然有效。
+
+### 24.6 未完成事项
+
+1. **浏览器截图级 UI 核对仍未执行**（浏览器自动化被安全策略拒绝）——
+   新文案比原文案长（定位文案由 1 行变 2 行），请人工打开 `http://127.0.0.1:5173/login`
+   确认左栏在 1080px 宽度下不溢出、不与右侧登录卡挤压。
+2. 若客户希望左栏出现**具体模块名**（如「销售管理 / 仓储管理 / 质量管理」）或
+   **客户化宣传语**，需要客户提供措辞——注意 QMS / MES / EAM / EMS / EHS 等模块
+   目前**尚未实现**，不能写进登录页。
+
+
+## 二十五、修复「登录后工作台是空的」+ 全站文案改为面向使用者（本轮增量）
+
+> 用户反馈两件事：
+> ①「登录成功进入系统会加载一个工作台，但工作台内容是空的」；
+> ②「系统里面的其他文字描述不要采用面向开发者的描述，应该采用面向用户的描述」。
+> 本轮**含后端改动（新增只读展示字段）**，**无迁移**。
+
+### 25.1 空白工作台的根因（不是接口没数据）
+
+先排除「接口返回空」：直接以 `admin` 调用 `apps.analytics.services.dashboard()`，11 张卡片
+（物料 65、SKU 50、款式 6、仓库 6、储位 228、在职员工 15、启用账号 11、部门 13、工厂 2、
+车间 6、线体 6）与 10 条最近操作都有数据。**接口是好的，问题在前端落点。**
+
+真实原因：登录成功后 `LoginView` 执行 `router.replace('/')`，而**站点根路径 `/` 只是布局外壳**
+（`BasicLayout` + 动态子路由），它**没有自己的页面组件**。于是：
+
+- 侧边栏、顶部、标签页都渲染了（面包屑当时还**写死**「工作台」，标签页标题默认值也是「工作台」）；
+- `<router-view>` 里没有任何页面 → 内容区空白。
+
+用户看到的就是「加载了个工作台，但里面是空的」。
+
+### 25.2 修法
+
+| 位置 | 改动 |
+| --- | --- |
+| `frontend/src/router/index.ts` | 新增 `resolveHomePath(menus)`：取**该账号菜单里的第一个页面**；路由守卫里 `to.path === '/'` 时重定向过去（`replace: true`） |
+| 同上 | 新增 `menuTrail(menus, path)`：返回地址在菜单树里的层级链路，供面包屑使用 |
+| `frontend/src/layouts/BasicLayout.vue` | 面包屑由写死的「工作台」改为按 `menuTrail` 渲染真实层级（如「基础资料 / 物料档案」） |
+
+要点：落地页**不是硬编码 `/workspace`**，而是「该账号第一个可访问页面」。这样没有
+`analytics.dashboard.view` 权限的账号也不会被扔到一个 403/404 页面上。
+
+### 25.3 审计与工作台不再显示内部英文标识
+
+排查文案时发现一个真实问题：审计日志的「对象类型」、工作台「最近操作记录」直接渲染
+`object_type`，值是 `app_label.ModelName`（`masterdata.Material`、`identity.Role`…），
+变更摘要是整块 `{字段: {before, after}}` 原始 JSON，键是英文字段名。业务用户看不懂。
+
+修法（**展示名由后端算好，前端只渲染**，避免前端再维护一份翻译表）：
+
+| 后端新增 | 位置 | 说明 |
+| --- | --- | --- |
+| `object_type_label(value)` | `backend/apps/core/services.py` | `app_label.ModelName` → 模型 `verbose_name`（中文）；解析不到**原样返回**，不猜名字 |
+| `display_value(value)` | 同上 | `None`/空串 → 「空」；布尔 → 是/否；列表 → 「、」拼接 |
+| `describe_changes(object_type, changes)` | 同上 | 字段名 → 中文名；非模型字段的键由 `AUDIT_CHANGE_LABELS` 显式登记（`grants` → 数据范围、`line_count` → 明细行数…），两边都查不到则保留原键名 |
+| `object_type_display` / `changes_display` | `backend/apps/core/serializers.py` | 只读序列化字段，**不改表结构、无需迁移** |
+| `action_display` / `object_type_display` | `backend/apps/analytics/services.py` | 工作台 `recent_activity` 一并返回中文名 |
+
+前端对应渲染：
+
+- 工作台时间线由「操作人 + 英文模型名 + 对象」改为 `activityText()` 生成的一句话，
+  例如「系统管理员 新增 角色「审计测试角色」」；
+- 审计日志列表「对象类型」列改用 `object_type_display`，「请求编号」列标题中文化；
+- 审计详情抽屉的变更摘要由 `<pre>` 原始 JSON 改为三列表格（字段 / 变更前 / 变更后）。
+
+### 25.4 全站文案：从开发视角改为使用者视角
+
+`frontend/src/views/**` 里 40 余处页面说明、空状态、表单提示、弹窗文案统一改写，原则是
+「讲使用者能做什么」，而不是「系统内部怎么实现」。代表性改写：
+
+| 位置 | 改前（开发视角） | 改后（使用者视角） |
+| --- | --- | --- |
+| 工作台说明 | 卡片数值全部实时计算…无权限的卡片后端不会返回 | 这里汇总与您当前工作直接相关的信息…数字全部由业务数据实时统计 |
+| 工作台横幅 | 当前阶段说明 / 本平台当前处于阶段 1（登录、权限、组织…） | 当前可用的业务范围 / 现在可以办理：基础资料、工厂与排班、客户与供应商、采购、销售、仓储、生产计划、审批与内部协同 |
+| 工作台区块 | 主数据规模（按数据范围统计） | 基础资料与组织概览 |
+| 卡片悬浮提示 | 来源：masterdata.Material ｜ 时间字段：created_at ｜ 口径…｜ 权限… | 统计口径：… ｜ 统计时间：… |
+| 仓储 | 阶段 1 只交付仓库、库区、储位主数据…属阶段 2 | 维护仓库、库区与储位结构。库存数量与出入库记录请在「库存余额」「库存流水」页面查看 |
+| 计量单位 | 数量按 20 位整数、6 位小数存储；不改变后端计算精度 | 计量单位用于统一数量口径…小数位只影响页面显示的小数位数，不改变系统内部的计算精度 |
+| 角色 | 权限分四层：菜单、操作、接口、数据范围…（fail-closed）处理 | 角色决定「能用哪些功能」和「能看到哪些数据」：先勾选菜单与操作权限，再设置数据范围…宁可少看不可多看 |
+| 用户 | 用户负责登录与权限…平台不提供用户物理删除 | 用户用于登录与权限分配；账号不再使用后请停用而不是删除，历史操作记录需要保留 |
+| 计划 | BOM 是版本化工程数据…已下达工单引用的快照不会被改写 | BOM（用料清单）是版本化资料…已下达的生产工单仍按当时的用料清单执行 |
+| MRP | MRP 按「销售需求 → 净算 → BOM 展开 → 缺料建议」同步计算 | 物料需求运算按「销售需求 → 净需求计算 → 用料清单展开 → 缺料建议」一次算完 |
+| 审批待办 | 审批通过与库存过账是两个动作 | 审批与出入库是两个独立动作，通过审批不会直接改变库存 |
+| 采购订单 | 金额由后端按行重算…具备 override 权限，例外会写入审计 | 金额由系统按明细自动计算…必须填写例外原因并拥有相应权限，例外会记入操作日志 |
+| 销售发货 | 重复点击按幂等键只扣一次 | 重复提交只会扣减一次 |
+| 质量判定提示 | 未接入真实检测设备接口：此处为人工判定… | 本判定为人工填写，系统未接入检测设备；结论与判定人会一并记录 |
+| 通用错误提示 | 无法连接服务器，请检查网络或后端服务状态 | 无法连接服务器，请检查网络后重试 |
+| 列表错误提示 | 请把页面提示与后端日志中的 request_id 一起反馈给系统管理员 | 请把这条提示和发生时间一并反馈给系统管理员 |
+| 实施进度页 | 实时计数（来自当前环境的后端接口）/ 阶段实施状态（文档镜像）/ **尚未实施** 的模块… | 当前环境的实时计数 / 各阶段实施状态 / 尚未实现的模块不会出现在菜单里 |
+
+另外修掉一个**显示缺陷**：实施进度页横幅原本写的是 `**尚未实施**`（Markdown 语法），
+会原样显示两个星号，已改为普通文字。
+
+**保留**：代码注释、日志、管理命令输出等面向维护者的文本不变；实施进度页仍保留「阶段 / 验收
+状态 / 未完成事项」这类管理员需要的信息（该页的用途就是回答「现在能用哪些模块」）。
+
+### 25.5 本轮新增/调整的测试
+
+| 文件 | 用例 | 锁住什么 |
+| --- | --- | --- |
+| `frontend/tests/menu-home.spec.ts`（新增 7 条） | 落地页解析 3 条 + 面包屑 3 条 + 守卫 1 条 | `/` 必须跳到菜单第一个页面；面包屑取真实层级；守卫用真实 router 验证「不再停在空白布局」 |
+| `backend/tests/test_audit_display.py`（新增 9 条） | 翻译 / 兜底 / 接口字段 / 工作台字段 | 模型能翻成中文；查不到原样返回；**全库模型不得出现非中文展示名**（白名单仅 `SKU`）；接口确实返回 `object_type_display` 与 `changes_display` |
+| `frontend/tests/login-view.spec.ts` | 1 条断言更新 | 登录页要点标题改为「基础资料统一维护」 |
+| `frontend/tests/styles.spec.ts` | 1 条夹具更新 | `ys-code-block` 共享类的代表页面由审计日志改为 `BomList`（审计详情已改用表格） |
+
+### 25.6 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| 后端测试 | `331 passed in 130.91s`（本轮前 322，新增 9，无回归） |
+| `ruff check` | `All checks passed!` |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected`（**无迁移**：新增字段都是只读 SerializerMethodField） |
+| 前端测试 | `Test Files 14 passed (14)` / `Tests 177 passed (177)`（本轮前 13/170，新增 7） |
+| `vue-tsc --build --force` | 退出码 `0` |
+| `vite build` | `✓ built in 14.84s` |
+| `pytest tests/test_docs_sync.py` | `7 passed`（使用说明已重建） |
+
+> 说明：本节记录的是当时的结果，其中 `scripts/smoke_check.ps1` **当时会偶发失败**（vitest 报 1 条 unhandled error，断言全通过）。原因与修法见 §26，最终结果以 §26.5 为准。
+
+### 25.7 未完成事项
+
+1. **浏览器观感未人工确认**（本机未安装 Playwright，浏览器自动化被安全策略拒绝）：
+   请登录后确认①不再出现空白内容区、②面包屑显示「基础资料 / 物料档案」这类层级、
+   ③工作台时间线是中文句子、④审计日志「对象类型」是中文。
+2. `identity.Role` 的 `company_id` 中文名是模型自带的「归属公司」，审计界面沿用，
+   未做人工润色（保持与模型 `verbose_name` 一致，避免两处叫法不同）。
+3. 权限类型枚举里的「接口权限」是平台四层权限的既有术语（`models.py`、`docs/permission-matrix.md`、
+   用户手册都在用），本轮未改名；若要改成更面向业务的叫法，需要同时改枚举、文档与测试。
+4. 审计详情里的「客户端」仍显示原始 User-Agent 字符串（这是原始数据，不做美化）。
+
+### 25.8 与既有文档的关系
+
+本节**不影响** §24（登录页文案）与 §23（登录页改版）；§24.6 提到的「浏览器观感未确认」
+在本轮同样适用。实施进度页的文案已在上一轮（`§24` 之外的本轮改动）一并调整，页面内容
+（阶段清单）不改写。
+## 二十六、冒烟脚本偶发失败的真实原因（测试环境拆除竞态）与剩余开发视角文案（本轮增量）
+
+> 起因：上一轮（§二十五）收尾时 `scripts/smoke_check.ps1` 会**偶发**失败，报 1 条 vitest
+> unhandled error；同时全站文案仍有少数开发视角写法没清掉。本轮把这两件事做完。
+> **无迁移**；接口只多了一个只读展示字段（内部协同事件的中文业务对象名）。
+
+### 26.1 失败原因：不是用例失败，是「迟到回调」
+
+先复现、再下结论，避免把「跑不过」当成「代码坏了」：
+
+- `npm run test` 与 `node node_modules/vitest/vitest.mjs run` 都输出
+  `Test Files 14 passed (14)` / `Tests 177 passed (177)`，**断言全部通过**；
+- 失败的那几次额外打印 1 条 `Unhandled Errors`：
+  `ReferenceError: requestAnimationFrame is not defined`，
+  栈是 `Object.doLayout (table/src/table/style-helper.ts:83) ← trailingEdge (lodash-es/debounce.js:144)`，
+  并注明 `This error was caught after test environment was torn down.`；
+- 探针脚本抓到确切机制：Element Plus 表格把重排包成 `debounce(doLayout, 50)`
+  （`table.mjs:104`），而 `doLayout()` 结尾必然调用全局 `requestAnimationFrame`
+  （`style-helper.mjs:83`）。用例结束后组件仍留在内存里，这个 50ms 定时器就在 jsdom
+  环境拆除**之后**才触发，此时 `requestAnimationFrame` 已随环境消失 → 报错。
+- 实测衰减窗口：卸载组件后，迟到重排**只在 50ms 内出现 1 次，之后归零**。
+
+结论：这是「定时器生命周期」问题，**不是业务用例失败**，也不该靠重跑掩盖。
+
+### 26.2 修法：统一卸载 + 文件结束前静默期（`frontend/tests/setup.ts`）
+
+| 措施 | 作用 |
+| --- | --- |
+| `enableAutoUnmount(afterEach)` | 每个用例结束后卸载组件；表格的 `onBeforeUnmount` 会 `cancel()` 待触发的重排 |
+| `afterAll` 等待 120ms | 文件结束前留静默期，让「卸载本身重新排出的那一次重排」在环境还活着时跑完 |
+| 补 `requestAnimationFrame` / `cancelAnimationFrame` 兜底桩 | 环境不提供时也不会静默失败 |
+
+两个要点：**只卸载不够**（卸载动作本身会再排一次重排，探针实测迟到 1 次），必须配合静默期；
+改动只在测试基建里，不动业务代码，也不改变任何断言。
+
+### 26.3 剩余开发视角文案（本轮清零）
+
+| 位置 | 改前 | 改后 |
+| --- | --- | --- |
+| 采购申请 / 销售订单详情 | 审批实例 | 审批单号（未提交时显示「未提交审批」） |
+| 角色 → 数据范围明细 | 对象 ID | 对象编号 |
+| 我的通知 | 业务 ID | 关联业务编号 |
+| 内部协同（列表与详情） | 对象 ID、事件 ID、原始 `sales.SalesOrder` | 对象编号、事件编号、中文业务对象名 |
+| 角色 → 数据范围弹窗提示 | 「不能通过其他方式越权」 | 「其他途径同样无法超出该范围」 |
+| 实施进度（阶段 0 说明、未完成清单） | 后端与前端、容器化部署脚本、C 编译工具链 | 服务与界面、容器化部署配置、本机缺少编译工具链 |
+
+配套后端改动（本轮唯一一处）：`apps/integration/serializers.py` 增加只读字段
+`aggregate_type_display`，复用 §二十五 的 `object_type_label()` 把 `sales.SalesOrder`
+翻成「销售订单」；**原始值照旧返回**，排查问题不受影响。
+
+### 26.4 本轮新增测试
+
+| 文件 | 用例 | 锁住什么 |
+| --- | --- | --- |
+| `frontend/tests/copy-tone.spec.ts`（新增 4 条） | 列标题 / 内部协同 / 审计 / 工作台 | 可见文案不出现「对象 ID / 业务 ID / 事件 ID / 审批实例」；内部协同、审计、工作台必须渲染后端算好的中文展示字段 |
+| `backend/tests/test_audit_display.py`（新增 1 条） | 内部协同事件带中文业务对象名 | `aggregate_type` 原值保留、`aggregate_type_display` 为「销售订单」 |
+
+### 26.5 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `powershell -File scripts/smoke_check.ps1` | **`全部检查通过。`（退出码 0）** |
+| 后端测试 | `332 passed in 126.38s (0:02:06)` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| 前端测试 | `Test Files 15 passed (15) / Tests 181 passed (181)`，连跑 3 次均无 unhandled error |
+| `vue-tsc --build --force` | 退出码 `0` |
+| `vite build` | `✓ built in 12.62s` |
+| 真实 HTTP 抽查（只读） | `GET /api/v1/analytics/dashboard/` = 200，11 张卡片 + 10 条中文动态；`GET /api/v1/audit-logs/` = 200，`object_type_display="用户"`、`action_display="登录"` |
+
+### 26.6 未完成事项
+
+1. **浏览器观感仍需人工确认**（本机未安装 Playwright，浏览器自动化被安全策略拒绝）：
+   请登录后确认①不再出现空白内容区、②面包屑显示层级、③工作台时间线是中文句子、
+   ④审计「对象类型」是中文、⑤内部协同「业务对象」显示「销售订单」这类中文名。
+2. 权限四层术语里的「接口权限」按任务书保留（`docs/permission-matrix.md` 同名），未改名。
+3. 内部协同页的 `event_type`（如 `sales.order.approved`）仍显示原始标识：
+   它是管理员定位失败原因用的事件编码，**不做翻译**。

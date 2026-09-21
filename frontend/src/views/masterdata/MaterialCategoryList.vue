@@ -2,7 +2,7 @@
   <entity-list-page
     title="物料分类"
     entity-label="分类"
-    description="面料、辅料、半成品、成品、包装物、备品备件、消耗品的统一分类基础，被物料与 SKU 引用后只能停用不能删除。"
+    description="物料分类：面料、辅料、半成品、成品、包装物、备品备件、消耗品。已被物料或款式使用的分类只能停用，不能删除。"
     :api="api"
     :columns="columns"
     :filters="filters"

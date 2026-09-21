@@ -174,7 +174,7 @@
               <el-input
                 v-else-if="field.type === 'decimal'"
                 v-model="formModel[field.prop] as string"
-                placeholder="十进制数值，例如 12.500000"
+                placeholder="十进制数值，例如 12.50"
               />
               <el-input
                 v-else
@@ -209,7 +209,7 @@
         <el-descriptions-item label="更新时间">
           {{ formatDateTime(String(detailRow.updated_at ?? '')) }}
         </el-descriptions-item>
-        <el-descriptions-item label="数据版本">
+        <el-descriptions-item label="版本号">
           {{ detailRow.version ?? '-' }}
         </el-descriptions-item>
       </el-descriptions>
@@ -226,6 +226,7 @@ import ProTable, { type ProTableColumn } from '@/components/ProTable.vue'
 import { ApiError } from '@/api/http'
 import type { CrudApi, QueryParams } from '@/api/crud'
 import type { EnumOption } from '@/types/models'
+import { formatNumericText, toEditableText } from '@/utils/decimal'
 import { formatDateTime, omitEmpty } from '@/utils/format'
 import { useCrudList } from '@/composables/useCrudList'
 import { useAuthStore } from '@/stores/auth'
@@ -259,6 +260,8 @@ export interface FormFieldDef {
   disabled?: boolean
   /** 仅新增时显示（例如初始密码） */
   onlyOnCreate?: boolean
+  /** 仅编辑时显示（例如由系统按编码规则自动生成、新增时不需要人工输入的编码） */
+  onlyOnUpdate?: boolean
   defaultValue?: unknown
   /** 数值字段允许清空时提交 null 而不是 0 */
   nullable?: boolean
@@ -355,7 +358,16 @@ const formTitle = computed(() =>
 )
 
 const visibleFormFields = computed(() =>
-  (props.formFields ?? []).filter((field) => !(field.onlyOnCreate && formMode.value === 'update')),
+  (props.formFields ?? []).filter((field) => {
+    if (field.onlyOnCreate && formMode.value === 'update') {
+      return false
+    }
+    // 新增时不展示系统托管字段（值由后端生成），编辑时展示以便核对
+    if (field.onlyOnUpdate && formMode.value === 'create') {
+      return false
+    }
+    return true
+  }),
 )
 
 const formRules = computed<FormRules>(() => {
@@ -393,6 +405,11 @@ function renderCell(row: Record<string, unknown> | null, prop: string): string {
   if (Array.isArray(value)) {
     return value.length === 0 ? '-' : value.map((item) => String(item)).join('、')
   }
+  // 与 ProTable 一致：数值列统一 2 位小数 + 千分位（后端 Decimal 以字符串返回）
+  const numeric = formatNumericText(value)
+  if (numeric !== null) {
+    return numeric
+  }
   return String(value)
 }
 
@@ -417,7 +434,10 @@ function resetForm(mode: 'create' | 'update', source?: Record<string, unknown>):
   }
   for (const field of props.formFields ?? []) {
     if (source && source[field.prop] !== undefined) {
-      formModel[field.prop] = source[field.prop]
+      const raw = source[field.prop]
+      // 数值字段回填时去掉无意义的末尾 0（**不做四舍五入**），避免输入框里出现 12.000000；
+      // 提交精度仍由后端 DecimalField 决定，回填文本可被原样解析。
+      formModel[field.prop] = field.type === 'decimal' ? toEditableText(raw as string | null) : raw
     } else if (field.defaultValue !== undefined) {
       formModel[field.prop] = field.defaultValue
     } else if (field.type === 'switch') {

@@ -4,9 +4,9 @@
       <div>
         <h2 class="ys-page__title">审计日志</h2>
         <p class="ys-page__description">
-          审计记录只写不改：平台不提供任何修改或删除审计的接口。
-          关键业务操作的审计与业务数据在同一事务内保存，业务回滚则审计一并回滚。
-          密码、令牌等敏感原文不会写入审计内容。
+          这里记录谁在什么时间做了哪项操作，只增不改：平台不提供修改或删除操作日志的功能。
+          关键业务的日志与业务数据一并保存，业务操作失败时不会留下误导性的成功记录。
+          密码等敏感内容不会记录在日志里。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -20,7 +20,7 @@
     <div class="ys-filter-bar">
       <el-input
         v-model="filters.search"
-        placeholder="搜索对象、操作人或 request_id"
+        placeholder="搜索对象、操作人或请求编号"
         clearable
         style="width: 260px"
         @keyup.enter="reload"
@@ -41,7 +41,7 @@
       />
       <el-input
         v-model="filters.request_id"
-        placeholder="request_id"
+        placeholder="请求编号"
         clearable
         style="width: 220px"
         @keyup.enter="reload"
@@ -58,10 +58,10 @@
       </el-table-column>
       <el-table-column prop="actor_name" label="操作人" width="120" />
       <el-table-column prop="action_display" label="操作" width="110" />
-      <el-table-column prop="object_type" label="对象类型" width="140" />
+      <el-table-column prop="object_type_display" label="对象类型" width="140" />
       <el-table-column prop="object_repr" label="对象" min-width="180" />
       <el-table-column prop="reason" label="原因 / 依据" min-width="160" />
-      <el-table-column label="request_id" width="200">
+      <el-table-column label="请求编号" width="200">
         <template #default="{ row }">
           <span class="ys-mono">{{ row.request_id.slice(0, 12) }}</span>
         </template>
@@ -99,20 +99,29 @@
             {{ detail.action_display || detail.action }}
           </el-descriptions-item>
           <el-descriptions-item label="对象">
-            {{ detail.object_type }} / {{ detail.object_id || '-' }}
+            {{ detail.object_type_display }} / {{ detail.object_id || '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="对象描述">{{ detail.object_repr || '-' }}</el-descriptions-item>
           <el-descriptions-item label="原因">{{ detail.reason || '-' }}</el-descriptions-item>
           <el-descriptions-item label="审批依据">{{ detail.approval_basis || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="request_id">
+          <el-descriptions-item label="请求编号">
             <span class="ys-mono">{{ detail.request_id }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="来源 IP">{{ detail.ip_address || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="User-Agent">{{ detail.user_agent || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="客户端">{{ detail.user_agent || '-' }}</el-descriptions-item>
         </el-descriptions>
 
-        <h4 class="ys-section-title">字段变更摘要</h4>
-        <pre class="ys-code-block">{{ prettyChanges }}</pre>
+        <h4 class="ys-section-title">变更内容</h4>
+        <el-empty
+          v-if="detail.changes_display.length === 0"
+          description="本次操作没有记录内容变化"
+          :image-size="60"
+        />
+        <el-table v-else :data="detail.changes_display" border size="small">
+          <el-table-column prop="label" label="字段" width="140" />
+          <el-table-column prop="before" label="变更前" min-width="140" />
+          <el-table-column prop="after" label="变更后" min-width="140" />
+        </el-table>
       </template>
       <el-empty v-else description="未加载到审计详情" />
     </el-drawer>
@@ -120,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 
 import { ApiError } from '@/api/http'
 import { coreApi } from '@/api/modules'
@@ -143,13 +152,6 @@ const filters = reactive({
 
 const detailVisible = ref(false)
 const detail = ref<AuditLog | null>(null)
-
-const prettyChanges = computed(() => {
-  if (!detail.value?.changes) {
-    return '（本次操作没有字段级变更摘要）'
-  }
-  return JSON.stringify(detail.value.changes, null, 2)
-})
 
 async function load(): Promise<void> {
   loading.value = true
@@ -196,12 +198,12 @@ function openDetail(row: AuditLog): void {
 function exportCsv(): void {
   exportCsvFile(
     `audit-logs-page-${page.value}.csv`,
-    ['时间', '操作人', '操作', '对象类型', '对象', '原因', 'request_id', '来源 IP'],
+    ['时间', '操作人', '操作', '对象类型', '对象', '原因', '请求编号', '来源 IP'],
     rows.value.map((row) => [
       formatDateTime(row.created_at),
       row.actor_name,
       row.action_display,
-      row.object_type,
+      row.object_type_display,
       row.object_repr,
       row.reason,
       row.request_id,

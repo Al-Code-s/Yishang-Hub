@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">我的申请</h2>
         <p class="ys-page__description">
-          这里只显示本人提交的审批单据。审批通过与后续业务动作（例如库存过账）是两个独立动作，
-          审批结果不会自动改动库存或单据状态。
+          这里只显示本人提交的审批单据，可以查看审批进度与审批意见。
+          审批通过不等于业务已办完：库存出入库等后续动作仍需要由业务人员继续办理。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -44,7 +44,7 @@
       <el-table-column prop="template_name" label="审批模板" width="150" />
       <el-table-column prop="current_step_name" label="当前节点" width="130" />
       <el-table-column label="金额" width="120" align="right">
-        <template #default="{ row }">{{ formatAmount(row.amount, 4) }}</template>
+        <template #default="{ row }">{{ formatAmount(row.amount) }}</template>
       </el-table-column>
       <el-table-column prop="status_display" label="状态" width="100" />
       <el-table-column label="提交时间" width="170">
@@ -116,7 +116,7 @@
           <el-input v-model="createForm.biz_type" placeholder="generic.request" />
         </el-form-item>
         <el-form-item label="关联单号">
-          <el-input v-model="createForm.biz_no" placeholder="可留空；后续阶段由业务单据带入" />
+          <el-input v-model="createForm.biz_no" placeholder="可留空，系统会自动编号" />
         </el-form-item>
         <el-form-item label="涉及金额">
           <el-input v-model="createForm.amount" placeholder="可留空；留空且模板限定金额区间时不会命中节点" />

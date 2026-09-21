@@ -4,8 +4,8 @@
       <div>
         <h2 class="ys-page__title">我的通知</h2>
         <p class="ys-page__description">
-          通知由业务事件异步产生，只显示当前账号自己的记录；带业务类型与业务 ID 的通知可以直接跳到对应单据。
-          通知是提醒手段，不是业务凭证，最终以业务单据状态为准。
+          通知由业务流程自动产生，只显示发给当前账号的记录；带单据信息的通知可以直接打开对应单据。
+          通知只是提醒，不作为业务凭据，最终以单据本身的状态为准。
         </p>
       </div>
       <div class="ys-page__header-actions">
@@ -43,7 +43,7 @@
       <el-table-column prop="title" label="标题" min-width="200" />
       <el-table-column prop="body" label="内容" min-width="280" />
       <el-table-column prop="biz_type" label="业务类型" width="160" />
-      <el-table-column prop="biz_id" label="业务 ID" width="120" />
+      <el-table-column prop="biz_id" label="关联业务编号" width="140" />
       <el-table-column label="时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>

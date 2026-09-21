@@ -1203,9 +1203,9 @@ E       AssertionError: docs/user-guide.md 的事实行已过期：menus=99，�
 **阶段 3 第一步：BOM 与工艺路线版本快照**（第十五节）、
 **阶段 3 第二步：MRP**（时间分段净算 / 多层 BOM 展开 / 缺料建议 / 采购建议转单，第十六节），
 以及**界面样式增量**（第十二节）、**视图样式统一增量**（第十三节）、**窄屏响应式增量**（第十四节）、
-**文档同步与使用说明增量**（第十七节）与**枚举值中文化增量**（第十八节）
+**文档同步与使用说明增量**（第十七节）、**枚举值中文化增量**（第十八节）与**超级管理员权限修复增量**（第十九节）
 通过了本报告列出的全部检查：
-后端 312 项、前端 131 项自动化测试通过，前后端构建通过，静态检查通过，迁移无漂移，
+后端 313 项、前端 135 项自动化测试通过，前后端构建通过，静态检查通过，迁移无漂移，
 一键冒烟 7 步全过，并在运行中的开发服务器上完成 **29 项真实 HTTP 链路检查**。
 
 「通过」仅指上述已执行项。未执行项见第五节、§7.5、§8.3、§9.3、§10.6、§12.3、§13.5、§14.4、§15.7 与 §16.7，
@@ -1286,3 +1286,658 @@ E       AssertionError: docs/user-guide.md 的事实行已过期：menus=99，�
 | 浏览器截图级 UI 校验（中文标签是否真的显示在页面上） | **未执行**——本机浏览器自动化被安全策略拒绝。需人工打开「仓储管理 → 仓库与储位」「工厂与排班 → 部门/车间/线体/员工」「基础资料 → 计量单位」核对 |
 | Playwright 端到端测试 | **未执行**（项目仍未编写 E2E 用例） |
 | Docker Compose / Celery / 真实硬件 | **未执行**（同前几节结论） |
+
+## 十九、超级管理员权限修复复验记录（本轮）
+
+> 用户反馈：「超级管理员好像什么也新增不了。」本节是**实际执行**的复验记录。
+> 结论：后端一直是对的，**缺陷在前端的权限判断**——它把后端下发的通配符 `["*"]`
+> 当成普通权限编码去比较，于是超级管理员被判成「没有任何操作权限」，
+> 所有「新增 / 编辑 / 删除 / 提交」按钮都被隐藏。
+
+### 19.1 缺陷定位（真实数据）
+
+```text
+/auth/session/  →  admin    : permissions = ["*"]        ← 只有通配符
+                    wh_admin : permissions = [24 条编码]  含 wms.warehouse.create
+前端判断        →  permissions.includes('wms.warehouse.create')  →  false
+结果            →  按钮用 v-if="canCreate" 渲染，全部不显示
+```
+
+附带缺口：`bootstrap_system` 创建管理员时只设置 `is_superuser/is_staff`，
+**从未绑定**内置的 `super_admin` 角色 → 该角色 0 个用户、个人中心显示「角色：未分配」。
+
+### 19.2 变更范围
+
+| 文件 | 改动 |
+| --- | --- |
+| `frontend/src/stores/auth.ts` | 新增 `hasFullAccess`（`permissions.includes('*')`）；`hasPermission` / `hasAnyPermission` 在通配符存在时直接放行 |
+| `backend/apps/core/management/commands/bootstrap_system.py` | 新增 `_ensure_admin_role()`；管理员**创建后**与**已存在**两条路径都确保绑定 `super_admin`（幂等，`--dry-run` 只打印） |
+| `backend/tests/test_management_commands.py` | +1 条：管理员必须绑定 `super_admin`、该角色 173 权限、范围 `all`、重复执行不重复绑定 |
+| `frontend/tests/auth-store.spec.ts` | 新增 4 条：通配符放行、普通角色按权限点、空权限/空编码、退出清空 |
+| `docs/permission-matrix.md` | §五规则 1 明确「`*` 必须被客户端解释为全部权限」 |
+| `docs/user-guide.md` | §4.1 增加「角色」行、§4.3 补充说明、§9.1 增加「看不到新增按钮」排错项（并重新生成网页版） |
+
+### 19.3 真实 HTTP 验证（对运行中的开发服务器，非测试框架）
+
+以 `admin` 通过 `POST /api/v1/identity/auth/login/` 登录后（真实会话 + CSRF）：
+
+| 请求 | 结果 | 判定 |
+| --- | --- | --- |
+| `POST /api/v1/identity/auth/login/` | `200`，`roles=[超级管理员]`，`permissions=["*"]` | 角色绑定已生效 |
+| `POST /api/v1/wms/warehouses/`（空表单） | `400 VALIDATION_FAILED` | **权限门通过**，仅字段校验失败 |
+| `POST /api/v1/identity/roles/`（空表单） | `400 ROLE_CODE_REQUIRED` | 同上 |
+| `POST /api/v1/factory/departments/`（空表单） | `400 VALIDATION_FAILED` | 同上 |
+
+说明：故意发空表单是为了**不写入任何数据**又能区分「403 权限不足」与「400 表单校验」。
+若权限判断仍有问题，这三条会返回 `403 PERMISSION_DENIED`。
+
+### 19.4 后端与前端检查（真实输出）
+
+| 检查 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 系统自检 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 全量测试 | `pytest tests -q --reuse-db -p no:logging` | `313 passed in 104.03s (0:01:44)` |
+| 幂等重跑 | `manage.py bootstrap_system` | `管理员账号 admin 已绑定角色：超级管理员（173 个权限点）` |
+| 静态检查 | `ruff check --no-cache apps config tests ../scripts/build_user_guide.py` | `All checks passed!` |
+| 前端组件测试 | `vitest run`（等价配置） | `Test Files 10 passed (10)` / `Tests 135 passed (135)` |
+| 前端类型检查 | `vue-tsc --noEmit`（等价配置） | 退出码 0 |
+| 生产构建 | `vite build` | `✓ built in 11.14s` |
+
+用例总数：后端 312 → **313**；前端 131 → **135**。
+
+### 19.5 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 核对（按钮是否真的出现） | **未执行**——本机浏览器自动化被安全策略拒绝。请人工用 `admin` 登录，确认「系统管理 → 用户管理 / 角色管理」出现「新增」按钮，个人中心显示「角色：超级管理员」 |
+| 其他内置角色（`sales_admin` / `crm_admin` / `srm_admin` / `planning_admin` / `platform_admin`）的端到端演练 | **未执行**——这些角色当前没有绑定任何账号 |
+| Playwright 端到端 / Docker / Celery / 真实硬件 | **未执行**（同前几节结论） |
+
+## 二十、客户编码自动生成复验记录（本轮）
+
+> 本轮需求：「新增客户的时候不需要手动输入客户编码，自动按规律生成。」
+> 本节是**实际执行**的复验记录；未执行的项目见 20.5，不写成通过。
+
+### 20.1 变更范围
+
+| 文件 | 改动 |
+| --- | --- |
+| `backend/apps/crm/services.py` | 新增 `CUSTOMER_CODE_RULE = "CUS"` 与 `next_customer_code()`（引用编码规则取号，不硬编码格式） |
+| `backend/apps/crm/serializers.py` | `code` 改为 `CharField(allow_blank=True, default="", max_length=32)`；`validate_code` 只在编辑时拒绝空值 |
+| `backend/apps/crm/views.py` | `CustomerViewSet.perform_create()`：编码留空时补号；显式编码原样保留 |
+| `backend/apps/core/management/commands/bootstrap_system.py` | `CODE_RULES` 登记 `("CUS", "客户编码", "CUS{YYYY}{SEQ:4}", ResetPeriod.YEARLY)` |
+| `frontend/src/components/EntityListPage.vue` | `FormFieldDef` 新增 `onlyOnUpdate`；`visibleFormFields` 在新增模式过滤 |
+| `frontend/src/views/crm/CustomerList.vue` | 编码字段设 `onlyOnUpdate: true`；页面说明补充自动生成口径 |
+| `backend/tests/test_crm_api.py` | +6 条用例 |
+| `frontend/tests/entity-list-form.spec.ts` | 新增文件，3 条用例 |
+| `docs/user-guide.md`（+ 网页版）、`docs/progress.md`、`docs/requirements-matrix.md` | 同步更新 |
+
+**没有新增数据库迁移**（规则是数据，不是结构）。
+
+### 20.2 后端检查（真实输出）
+
+| 检查 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 系统自检 | `manage.py check` | `System check identified no issues (0 silenced).` |
+| 迁移漂移 | `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| 静态检查 | `ruff check --no-cache apps config tests ../scripts/build_user_guide.py` | `All checks passed!` |
+| 全量测试 | `pytest tests -q --reuse-db -p no:logging` | `319 passed in 117.64s (0:01:57)`（本轮前为 313） |
+
+### 20.3 开发库（非测试框架）验证
+
+先同步规则（幂等命令，未改动管理员口令）：
+
+```text
+$ python manage.py bootstrap_system
+编码规则：新增 1，共计 15 条。
+管理员账号 admin 已存在（版本 0），保留原密码，仅同步权限属性。
+```
+
+再直连开发库取号（外层事务回滚，不落库）：
+
+```text
+规则: CUS 客户编码 CUS{YYYY}{SEQ:4} yearly 启用= True
+预演(不消耗流水): CUS20260001
+事务内实际取号: CUS20260001
+客户数 before/after: 3 3
+流水是否随回滚退回: None      ← 取号流水随事务回滚，没有残留
+```
+
+最后用 `django.test.Client` 打**真实 HTTP**（真实登录 + 真实 POST，整个事务回滚）：
+
+```text
+登录: 200
+POST /api/v1/crm/customers/ 不带 code        -> 201  CUS20260001  冒烟-自动编码客户
+第二次 POST                                  -> 201  CUS20260002
+PATCH {"code": ""}                           -> 400  VALIDATION_FAILED（"客户编码不能为空。"）
+GET  /api/v1/audit-logs/?object_type=crm.Customer&object_id={id}
+                                             -> 200  create / changes.code = CUS20260001
+客户数 before/after: 3 3
+```
+
+结论：**不传编码可建档、编码逐号递增、编辑不可清空、自动编码进入审计**，且验证过程未污染开发库。
+
+### 20.4 前端检查（真实输出）
+
+| 检查 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 组件测试 | `vitest run` | `Test Files 11 passed (11)` / `Tests 138 passed (138)`（本轮前 10 / 135） |
+| 类型检查 | `vue-tsc --build --force` | 退出码 0 |
+| 生产构建 | `vite build` | `✓ built in 12.66s` |
+
+新用例 `tests/entity-list-form.spec.ts` 直接挂载 `EntityListPage`：
+① 新增模式不出现 `onlyOnUpdate` 字段（客户编码）、出现 `onlyOnCreate` 字段；
+② 编辑模式相反；③ 新增提交的载荷里**不含**被隐藏的编码字段（后端因此走自动取号分支）。
+
+> 说明：断言只取**弹窗内表单**的文本。整页文本里本来就有表头列名（「客户编码」），
+> 用整页判断会永远命中——第一版用例就是这样误报的，已修正。
+
+### 20.5 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 核对（新增表单里是否真的没有编码输入框） | **未执行**——本机浏览器自动化被安全策略拒绝。请人工打开「客户管理 → 客户档案 → 新增客户」确认 |
+| Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（同前几节结论） |
+| 供应商 / 物料 / 款式等其它主数据编码自动生成 | **未实施**——本轮只按用户要求改了客户编码；模式可复用（见 `docs/progress.md` §19.8） |
+
+## 二十一、数值显示 2 位小数复验记录（本轮）
+
+### 21.1 变更范围
+
+- **纯前端显示层**：`frontend/src/utils/decimal.ts`、`components/ProTable.vue`、
+  `components/EntityListPage.vue`、13 个业务视图列定义。
+- **后端未改动**，因此**无迁移**、`makemigrations --check` 无漂移、后端用例数保持基线。
+- 存储与接口精度不变：数量 6 位、金额 4 位、费率 10 位（`toApiString` 未改）。
+
+### 21.2 前端检查（真实输出）
+
+```text
+$ node node_modules/vitest/vitest.mjs run
+ ✓ tests/styles.spec.ts (31 tests) 11ms
+ ✓ tests/decimal.spec.ts (23 tests) 10ms
+ ✓ tests/responsive.spec.ts (15 tests) 50ms
+ ✓ tests/http-error.spec.ts (2 tests) 4ms
+ ✓ tests/auth-store.spec.ts (4 tests) 9ms
+ ✓ tests/format.spec.ts (5 tests) 25ms
+ ✓ tests/router.spec.ts (49 tests) 9ms
+ ✓ tests/side-menu.spec.ts (10 tests) 107ms
+ ✓ tests/pro-table.spec.ts (7 tests) 730ms
+ ✓ tests/entity-list-form.spec.ts (5 tests) 911ms
+ ✓ tests/views-compile.spec.ts (3 tests) 5211ms
+ Test Files  11 passed (11)
+      Tests  154 passed (154)
+```
+
+```text
+$ vue-tsc --build --force
+vue-tsc-exit=0
+
+$ vite build
+✓ built in 12.13s
+```
+
+### 21.3 数据侧扫描（直连开发库，非测试框架）
+
+遍历全部 **58 个 `DecimalField` 列**，按**有效小数位**（`Decimal.normalize()` 后）统计：
+
+```text
+小数（DecimalField）列总数: 58
+非空值里存在 >2 位有效小数的列: 2 处
+  masterdata.UoMConversion.factor: 1 条 | 例: 0.9144000000
+  planning.BomLine.quantity: 1 条 | 例: 0.004000
+```
+
+结论：统一显示 2 位**不会**把批量真实数据抹成 0；
+唯一会被截断展示的 `0.004` 由「非零值不显示成 0」保护分支处理（显示为 `0.004`）。
+`masterdata.UoMConversion.factor`（码 → 米 `0.9144`）当前**未在任何页面展示**，不构成显示问题。
+
+> 注意：首轮扫描用 `Decimal.as_tuple().exponent` 直接判断，会把 `12.000000`
+> 这类**带末尾 0** 的存储形式误判为「6 位小数」（得到 17 处假阳性）。
+> 改用 `normalize()` 后的有效小数位才是正确口径，上表是修正后的结果。
+
+### 21.4 本轮新增 / 修改用例清单
+
+| 文件 | 用例 | 锁定行为 |
+| --- | --- | --- |
+| `frontend/tests/decimal.spec.ts` | 把 6 位小数的接口值显示成 2 位 | `12.000000` → `12.00`、`1234.567800` → `1,234.57` |
+| 同上 | 四舍五入遵循 HALF_UP | `1.005` → `1.01`、`1.004` → `1.00` |
+| 同上 | 非零值不会被显示成 0 | `0.004` 保留、`-0.0000001` → `0.00` |
+| 同上 | 会进位的值仍按 2 位显示 | `0.055` → `0.06`、`0.995` → `1.00` |
+| 同上 | 整数计数列（places = 0）不出现小数点 | `12` → `12`、`1234` → `1,234` |
+| 同上 | 空值显示 `-` | `null` / `undefined` / `''` |
+| 同上 | 显示口径不影响提交精度 | `toApiString(formatNumber('12.5'))` → `12.500000` |
+| 同上 | 编辑表单回填（`toEditableText`） | `12.000000` → `12`；`0.055` **保持** `0.055`（不回写四舍五入） |
+| 同上 | `formatNumericText` 只处理数值文本 | 手机号 / 税号 / `M-001` / `2026-09-20` 返回 `null` |
+| 同上 | `numberFormatter` 非数值原样返回 | `E1001` 原样、`null` → `-` |
+| `frontend/tests/pro-table.spec.ts` | ProTable 数值显示口径 | 表格里 `12.000000` 渲染为 `12.00`，`13800138000` 不被加上千分位 |
+| `frontend/tests/entity-list-form.spec.ts` | 列表数值列按 2 位展示 | `12.000000` → `12.00` |
+| 同上 | 编辑回填去尾 0 | 输入框值为 `12` 而不是 `12.000000` |
+
+**测试写法提醒**（本轮踩到的坑，已写入用例注释）：操作列使用 `fixed="right"` 时
+Element Plus 会把固定列 DOM 渲染**两份**，`findAll('button')` 取到的第一份属于虚拟表，
+点击它拿到的是空行数据。取**最后一个**匹配按钮才是页面上的真实按钮。
+
+### 21.5 后端检查（真实输出）
+
+```text
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+$ python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ ruff check --no-cache apps config tests ..\scripts\build_user_guide.py
+All checks passed!
+
+$ pytest tests -q --reuse-db -p no:logging
+319 passed, 1 warning in 116.99s
+```
+
+### 21.6 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 核对（列表 / 详情是否真的显示 2 位） | **未执行**——本机浏览器自动化被安全策略拒绝。请人工打开采购订单、BOM、销售订单列表确认 |
+| Excel 导出文件里的数值格式 | **未验证**——导出格式本轮未改（仍为后端原始精度），见 `docs/progress.md` §21.7 |
+| Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（同前几节结论） |
+
+## 二十二、权限一级分组中文名复验记录（本轮）
+
+### 22.1 变更范围
+
+- **后端**：`permissions_registry.py` 新增 `MODULE_LABELS` / `module_label()`；
+  `selectors.py` 的 `permission_groups()` 增加 `module_name`；`core/checks.py` 新增 `yishang.E002`。
+- **前端**：新增 `utils/permissionLabels.ts`；`PermissionList.vue`、`RoleList.vue`、
+  `types/models.ts` 相应调整。
+- **无迁移**（未改任何模型字段）。
+
+### 22.2 后端检查（真实输出）
+
+```text
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+$ python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ ruff check --no-cache apps config tests ..\scripts\build_user_guide.py
+All checks passed!
+
+$ pytest tests -q --reuse-db -p no:logging
+322 passed, 1 warning in 120.49s
+```
+
+第 22.2 节的 `check` 输出同时验证了新检查项：若某个权限模块没有中文名，
+`check` 会以 `yishang.E002` 报错（由 `test_module_label_check_reports_missing_module`
+用 monkeypatch 证明该分支真的会触发，而不是只在注册表完整时才通过）。
+
+### 22.3 前端检查（真实输出）
+
+```text
+$ node node_modules/vitest/vitest.mjs run
+ ✓ tests/decimal.spec.ts (23 tests) 16ms
+ ✓ tests/styles.spec.ts (31 tests) 14ms
+ ✓ tests/responsive.spec.ts (15 tests) 51ms
+ ✓ tests/http-error.spec.ts (2 tests) 3ms
+ ✓ tests/format.spec.ts (5 tests) 24ms
+ ✓ tests/auth-store.spec.ts (4 tests) 9ms
+ ✓ tests/router.spec.ts (49 tests) 11ms
+ ✓ tests/side-menu.spec.ts (10 tests) 123ms
+ ✓ tests/permission-module-label.spec.ts (5 tests) 395ms
+ ✓ tests/pro-table.spec.ts (7 tests) 744ms
+ ✓ tests/entity-list-form.spec.ts (5 tests) 951ms
+ ✓ tests/views-compile.spec.ts (3 tests) 5980ms
+ Test Files  12 passed (12)
+      Tests  159 passed (159)
+
+$ vue-tsc --build --force
+vue-tsc-exit=0
+
+$ vite build
+✓ built in 13.23s
+```
+
+### 22.4 开发库实际数据（直连 `config.settings.dev`，非测试夹具）
+
+调用真实的 `permission_groups()`：
+
+```text
+开发库分组数: 13
+  analytics      -> 工作台与看板 : 1 项
+  core           -> 公共基础 : 12 项
+  crm            -> 客户管理 : 7 项
+  factory        -> 工厂与排班 : 27 项
+  identity       -> 用户与权限 : 15 项
+  integration    -> 内部协同 : 3 项
+  masterdata     -> 基础资料 : 27 项
+  planning       -> 计划管理 : 15 项
+  procurement    -> 采购管理 : 15 项
+  sales          -> 销售管理 : 16 项
+  srm            -> 供应商管理 : 10 项
+  wms            -> 仓储管理 : 18 项
+  workflow       -> 审批中心 : 7 项
+缺少中文名的模块: 无
+```
+
+合计 `1+12+7+27+15+3+27+15+15+16+10+18+7 = 173`，与权限注册表条目数一致。
+
+### 22.5 新增 / 修改用例清单
+
+| 文件 | 用例 | 锁定行为 |
+| --- | --- | --- |
+| `backend/tests/test_permissions.py` | `test_every_permission_module_has_chinese_label` | 注册表里每个模块都有中文名（漏登记直接失败） |
+| 同上 | `test_module_label_check_reports_missing_module` | `yishang.E002` 在缺中文名时真的报错，并指出缺失模块名 |
+| 同上 | `test_permission_groups_api_returns_module_chinese_name` | 接口返回 `module_name`；权限点总数 == 注册表条目数（防漏项） |
+| `frontend/tests/permission-module-label.spec.ts` | 文案函数 3 条 | `core（公共基础）`；无中文名时不出现空括号；树节点带「· N 项」 |
+| 同上 | 页面渲染 2 条 | 一级分组同时显示英文 + 中文；**按关键字过滤后中文名仍然保留**（回归用例） |
+
+### 22.6 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 核对（`core（公共基础）` 在真实页面上的排版与换行） | **未执行**——本机浏览器自动化被安全策略拒绝。请人工打开「系统管理 → 权限与菜单」与「系统管理 → 角色权限 → 分配操作权限」确认 |
+| Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（同前几节结论） |
+
+## 二十三、登录页改版复验记录（本轮）
+
+### 23.1 变更范围
+
+- **纯前端**：`frontend/src/views/LoginView.vue`（结构 + 样式重写）、
+  `frontend/src/styles/index.css`（删除重复的登录页小节并重新编号）、
+  新增 `frontend/tests/login-view.spec.ts`。
+- 登录 / 会话 / CSRF 逻辑、后端接口、权限判定**均未改动**；**无迁移**。
+
+### 23.2 前端检查（真实输出）
+
+```text
+$ node node_modules/vitest/vitest.mjs run
+ ✓ tests/styles.spec.ts (31 tests) 13ms
+ ✓ tests/decimal.spec.ts (23 tests) 14ms
+ ✓ tests/responsive.spec.ts (15 tests) 44ms
+ ✓ tests/http-error.spec.ts (2 tests) 5ms
+ ✓ tests/auth-store.spec.ts (4 tests) 9ms
+ ✓ tests/router.spec.ts (49 tests) 8ms
+ ✓ tests/format.spec.ts (5 tests) 28ms
+ ✓ tests/side-menu.spec.ts (10 tests) 114ms
+ ✓ tests/login-view.spec.ts (11 tests) 326ms
+ ✓ tests/permission-module-label.spec.ts (5 tests) 405ms
+ ✓ tests/pro-table.spec.ts (7 tests) 784ms
+ ✓ tests/entity-list-form.spec.ts (5 tests) 935ms
+ ✓ tests/views-compile.spec.ts (3 tests) 4677ms
+ Test Files  13 passed (13)
+      Tests  170 passed (170)
+
+$ vue-tsc --build --force
+vue-tsc-exit=0
+
+$ vite build
+✓ built in 12.83s
+```
+
+### 23.3 后端检查（真实输出）
+
+本轮无后端改动，下列检查用于确认没有意外影响：
+
+```text
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+$ ruff check --no-cache apps config tests ..\scripts\build_user_guide.py
+All checks passed!
+```
+
+后端测试本轮未重跑全量；上一次全量结果为 `322 passed`（见 §22.2），本轮改动不触及后端。
+**不得据此认为后端在本轮被验证过。**
+
+### 23.4 新增用例清单（`frontend/tests/login-view.spec.ts`，11 条）
+
+| 分组 | 用例 | 锁定行为 |
+| --- | --- | --- |
+| 渲染 | 渲染品牌、表单与登录按钮 | 品牌名、`账号登录`、账号/密码、按钮、安全提示都在 |
+| 渲染 | 输入框 autocomplete 正确 | `username` / `current-password`（密码管理器依赖） |
+| 渲染 | 只陈述已具备的能力 | 不出现 MES / WMS / QMS 等未实施模块字样 |
+| 提交 | 先取 CSRF 再登录 | 断言 `csrf` 调用顺序早于 `login`，且参数为 `('admin','secret')` |
+| 提交 | 成功后跳转 redirect | `/login?redirect=/system/users` → 最终在 `/system/users` |
+| 提交 | 账号两侧空格被去掉 | `'  admin  '` → 提交 `'admin'` |
+| 样式 | 样式单一定义处 | 组件内定义 `.ys-login`；全局 `index.css` **不再包含** `.ys-login` |
+| 样式 | 窄屏规则 | `max-width: 960px` 下隐藏左栏、显示紧凑品牌；宽屏下紧凑品牌为 `display:none` |
+| 样式 | 登录按钮 | 宽度 100% + 品牌渐变 |
+| 样式 | 动效保护 | `prefers-reduced-motion: no-preference` 内声明 `ys-login-rise` 动画 |
+| 样式 | 离线可用 | 装饰层 `pointer-events: none`；样式块内无 `http(s)` 外链资源 |
+
+### 23.5 本轮发现的环境限制（重要，不得当作通过）
+
+排查「空表单不能提交」时发现：**Element Plus 的表单校验在 jsdom 下不生效**。
+
+最小复现（一个 `el-form` + 一个带 `required` 规则的 `el-form-item` + 按钮调用
+`formRef.validate()`）：
+
+```text
+MINIMAL valid = true
+MINIMAL errors: 0
+```
+
+即：空值下 `validate()` 返回 `true` 且不渲染错误文案。原因是 `el-form-item`
+在 jsdom 中没有注册进 `el-form` 的 `fields`，`validate()` 走
+`fields.length === 0 → return true` 分支。
+
+- 这是**环境限制**，不是登录页缺陷：真实浏览器不受影响，且本项目所有表单页
+  （含 `EntityListPage`）使用同一套 Element Plus 写法。
+- 因此本轮的登录页用例**刻意不断言校验行为**，避免写一条恒真断言冒充覆盖。
+- 顺带说明一个容易误判的假象：如果用例里 `vi.mock('@/api/identity')`（整模块自动 mock），
+  `csrf` 会变成直接返回 `undefined` 的桩，于是流程会一路走到 `login('','')`，
+  看起来像「校验没拦住」。本轮改用 `vi.spyOn(identityApi, 'csrf')` 只替换单个方法，
+  既保留真实模块形状，也让断言反映真实调用链。
+
+### 23.6 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 核对（双栏布局、渐变按钮、960px 断点折叠） | **未执行**——本机浏览器自动化被安全策略拒绝。请人工打开 `http://127.0.0.1:5173/login` 并把窗口拖到 960px 以下验证 |
+| 表单必填校验与错误文案（「请输入账号 / 请输入密码」） | **未执行（jsdom 无法覆盖）**，原因见 23.5。需人工点击一次登录确认 |
+| Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（同前几节结论） |
+
+
+## 二十四、登录页左栏文案改为面向使用者的业务描述复验记录（本轮）
+
+> 变更：`frontend/src/views/LoginView.vue`（文案 + `features` 图标）、
+> `frontend/tests/login-view.spec.ts`（断言同步）。
+> 后端、接口、会话 / CSRF 逻辑未改，**无迁移**。
+
+### 24.1 变更范围
+
+| 文件 | 改动 |
+| --- | --- |
+| `frontend/src/views/LoginView.vue` | 主标题、定位文案、4 条要点文案重写为使用者视角；图标 `Document` → `ShoppingCart`；注释更新 |
+| `frontend/tests/login-view.spec.ts` | 重命名 1 条用例、改 2 条断言、新增开发术语黑名单断言、补主标题断言、补文件头说明 |
+
+### 24.2 前端检查（真实输出）
+
+```text
+$ node node_modules/vitest/vitest.mjs run
+ Test Files  13 passed (13)
+      Tests  170 passed (170)
+   Duration  8.47s
+
+$ node_modules/.bin/vue-tsc.cmd --build --force
+TSC_EXIT=0
+
+$ node_modules/.bin/vite.cmd build
+✓ built in 11.07s
+```
+
+### 24.3 本轮相关用例（`frontend/tests/login-view.spec.ts`，共 11 条，内容有调整）
+
+| 用例 | 锁定行为 |
+| --- | --- |
+| 渲染品牌、表单与登录按钮 | 补断言主标题 `服饰企业一体化经营管理平台`；安全提示仍在 |
+| **左侧要点用面向使用者的业务描述，不出现开发术语** | 4 条新要点文案存在；页面文本不含 `四层权限` / `后端` / `前端` / `接口` / `SKU` / `BOM`；仍不含 `MES` / `WMS` / `QMS` |
+| 其余 9 条（autocomplete、CSRF 顺序、redirect、trim、样式 5 条） | 未改动，全部通过 |
+
+### 24.4 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器截图级 UI 核对（新文案变长后左栏是否溢出、与右侧卡片是否挤压） | **未执行**——浏览器自动化被安全策略拒绝。请人工打开 `http://127.0.0.1:5173/login` 确认 |
+| 表单必填校验与错误文案 | **未执行（jsdom 无法覆盖）**，原因见 23.5 |
+| 后端测试 / Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（本轮无后端改动；端到端等与前几节结论相同） |
+
+
+## 二十五、空白工作台修复与全站文案去开发化复验记录（本轮）
+
+> 变更：`frontend/src/router/index.ts`、`frontend/src/layouts/BasicLayout.vue`、
+> `frontend/src/views/**`（40 余处文案）、`frontend/src/types/models.ts`、
+> `backend/apps/core/services.py`、`backend/apps/core/serializers.py`、
+> `backend/apps/analytics/services.py`、`backend/tests/test_audit_display.py`（新增）、
+> `frontend/tests/menu-home.spec.ts`（新增）。
+> **无迁移**（新增字段都是只读计算字段）。
+
+### 25.1 变更范围
+
+| 区域 | 改动 |
+| --- | --- |
+| 路由 | `resolveHomePath` / `menuTrail` 新增；守卫把 `/` 重定向到菜单第一个页面 |
+| 布局 | 面包屑按菜单层级渲染，不再写死「工作台」 |
+| 后端展示层 | `object_type_label` / `display_value` / `describe_changes` / `AUDIT_CHANGE_LABELS`；审计与工作台接口返回中文展示字段 |
+| 前端渲染 | 工作台时间线改句子；审计列表与详情改中文列与表格 |
+| 全站文案 | 40 余处页面说明、空状态、表单提示、弹窗、通用错误提示改写 |
+
+### 25.2 后端检查（真实输出）
+
+```text
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+$ python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ ruff check --no-cache apps config tests
+All checks passed!
+
+$ pytest tests -q --reuse-db -p no:logging
+331 passed in 130.91s (0:02:10)
+```
+
+### 25.3 前端检查（真实输出）
+
+```text
+$ node node_modules/vitest/vitest.mjs run
+ Test Files  14 passed (14)
+      Tests  177 passed (177)
+   Duration  8.95s
+
+$ node_modules/.bin/vue-tsc.cmd --build --force
+TSC_EXIT=0
+
+$ node_modules/.bin/vite.cmd build
+✓ built in 14.84s
+
+$ pytest tests/test_docs_sync.py -q
+7 passed
+```
+
+### 25.4 新增用例清单
+
+`frontend/tests/menu-home.spec.ts`（7 条）：
+
+| 分组 | 用例 | 锁定行为 |
+| --- | --- | --- |
+| 落地页解析 | 菜单里第一个页面就是落地页 | `resolveHomePath([工作台, 客户管理…]) === '/workspace'` |
+| 落地页解析 | 目录不是页面 | 只有「客户管理」目录时落到 `/crm/customers` |
+| 落地页解析 | 没有页面返回空串 | 由调用方保留原地址，不强行跳转 |
+| 面包屑 | 二级页面返回目录 + 页面 | `['客户管理', '客户档案']` |
+| 面包屑 | 一级页面只返回自身 | `['工作台']` |
+| 面包屑 | 不在菜单里的地址返回空 | 避免显示错误层级 |
+| 守卫 | 访问 `/` 自动跳到第一个页面 | 用**真实 router** `push('/')`，断言最终地址是 `/workspace`（即「不再停在空白布局」） |
+
+`backend/tests/test_audit_display.py`（9 条）：
+
+| 分组 | 用例 | 锁定行为 |
+| --- | --- | --- |
+| 对象类型 | 已登记模型翻译成中文名 | `identity.Role` → 角色 等 |
+| 对象类型 | 解析不到时原样返回 | `unknown.Thing` / `noDot` / `''` 不编名字 |
+| 对象类型 | 所有真实模型都能翻译成中文 | 遍历 `apps.*` 全部模型，白名单仅 `SKU` |
+| 取值展示 | 空值布尔集合转可读文字 | `None`→空、`True`→是、`["a","b"]`→`a、b` |
+| 变更摘要 | 模型字段用中文名、非字段键用登记表 | `company_id`→归属公司、`grants`→数据范围 |
+| 变更摘要 | 未登记的键保留原键名 | 不猜含义 |
+| 变更摘要 | 空摘要返回空列表 | `{}` / `None` |
+| 接口 | `/api/v1/audit-logs/` 同时返回原始值与中文展示值 | 原始 `object_type` 保留（排查用），展示值给用户 |
+| 接口 | 工作台 `recent_activity` 带中文操作与对象名 | `action_display` / `object_type_display` 必须来自接口 |
+
+### 25.5 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器观感核对（空白工作台是否消失、面包屑层级、工作台时间线、审计中文列） | **未执行**——本机未安装 Playwright，浏览器自动化被安全策略拒绝。请人工登录 `http://127.0.0.1:5173/` 逐条确认 |
+| 表单必填校验与错误文案 | **未执行（jsdom 无法覆盖）**，原因见 §23.5 |
+| Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（与前几节结论相同） |
+## 二十六、冒烟脚本拆除竞态修复 + 剩余文案去开发化复验记录（本轮）
+
+### 26.1 变更范围
+
+| 区域 | 改动 |
+| --- | --- |
+| 测试基建 | `frontend/tests/setup.ts`：`enableAutoUnmount(afterEach)` + `afterAll` 静默期 120ms + `requestAnimationFrame` 兜底桩 |
+| 后端展示层 | `apps/integration/serializers.py` 新增只读 `aggregate_type_display`（复用 `object_type_label`） |
+| 前端文案 | 采购申请 / 销售订单「审批单号」、角色「对象编号」、通知「关联业务编号」、内部协同「对象编号 / 事件编号 / 中文业务对象名」、数据范围弹窗提示、实施进度说明 |
+| 前端类型 | `types/models.ts`：`OutboxEvent` 增加 `aggregate_type_display` |
+| 文档 | `docs/user-guide.md` §6.9 补内部协同标识说明（并重建网页版）、`docs/progress.md` §26、本文 §26、`docs/requirements-matrix.md` 一之十六 |
+
+### 26.2 后端检查（真实输出）
+
+```text
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+$ python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ ruff check --no-cache apps config tests
+All checks passed!
+
+$ pytest tests -q --reuse-db -p no:logging
+332 passed in 126.38s (0:02:06)
+```
+
+### 26.3 前端与冒烟检查（真实输出）
+
+```text
+$ npm run test
+ Test Files  15 passed (15)
+      Tests  181 passed (181)
+
+$ node_modules/.bin/vue-tsc.cmd --build --force
+TSC_EXIT=0
+
+$ node_modules/.bin/vite.cmd build
+✓ built in 12.62s
+
+$ powershell -ExecutionPolicy Bypass -File scripts/smoke_check.ps1
+全部检查通过。
+SMOKE_EXIT=0
+```
+
+### 26.4 新增用例清单
+
+`frontend/tests/copy-tone.spec.ts`（4 条）：
+
+| 用例 | 锁定行为 |
+| --- | --- |
+| 表格与详情不用内部标识当列标题 | 全部视图与组件源码里不出现 `label="对象 ID"`、`label="业务 ID"`、`label="事件 ID"`、`label="审批实例"` |
+| 内部协同页展示中文业务对象名 | `OutboxList.vue` 用 `aggregate_type_display`，且不再有 `prop="aggregate_type"` |
+| 审计页展示后端算好的中文字段 | `AuditLogList.vue` 含 `object_type_display` 与 `changes_display` |
+| 工作台最近动态用中文句子 | `workspace/Index.vue` 含 `object_type_display` / `action_display`，不渲染原始变更 JSON |
+
+`backend/tests/test_audit_display.py`（新增 1 条，共 10 条）：
+
+| 用例 | 锁定行为 |
+| --- | --- |
+| 内部协同事件带中文业务对象名 | `/api/v1/integration/outbox-events/` 返回 `aggregate_type="sales.SalesOrder"`（原值）与 `aggregate_type_display="销售订单"`（展示值） |
+
+### 26.5 本轮未执行的测试（不得视为通过）
+
+| 项目 | 状态 |
+| --- | --- |
+| 浏览器观感核对（空白工作台、面包屑、工作台时间线、审计中文列、内部协同中文业务对象） | **未执行**——本机未安装 Playwright，浏览器自动化被安全策略拒绝。请人工登录 `http://127.0.0.1:5173/` 逐条确认 |
+| Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（与前几节结论相同） |
+| 表单必填校验与错误文案的浏览器级校验 | **未执行（jsdom 无法覆盖）**，原因见 §23.5 |
