@@ -39,6 +39,15 @@ S3 兼容对象存储（附件，默认私有）
 - Django Admin **不替代**正式业务前端 → 业务前端为独立 Vue 应用，Admin 仅作运维兜底。
 - Django signals **不承载**库存过账等隐式关键流程 → 关键链路一律走显式服务层调用。
 
+**业务 App 分层（当前 17 个 App，其中 16 个建表、`analytics` 不建表）**：`core`（审计 / 编号 / 幂等 / 附件 / 通知 / Outbox）、
+`identity`（账号 / 角色 / 权限 / 菜单 / 数据范围）、`factory`（公司 / 部门 / 工厂 / 车间 / 员工 / 班次）、
+`masterdata`（物料 / 款式 / SKU / 单位）、`crm`、`srm`、`procurement`、`sales`、`wms`（统一库存服务）、
+`planning`（BOM / 工艺 / MRP）、`workflow`（审批）、`integration`（内部协同）、`analytics`（工作台）、
+`equipment`（设备 / 备件 / 保养 / 维修 / 点巡检 / 异常）、`ems`（计量 / 抄表 / 报警 / 能耗报表）、
+`logistics`（自动化设备 / 物流任务 / 操作日志）、`ehs`（安全 / 环保 / 消防 / 设备设施安全）。
+四个新 App 与既有模块**共用同一套分层约定**：View 只做鉴权 + 装配 + 调服务，
+状态流转只在 `services.py`，跨模块引用**只读**（如 EHS 引用设备台账但不写设备表）。
+
 ## 三、后端目录结构
 
 ```text
@@ -51,7 +60,7 @@ backend/
 │   ├── identity/           用户、角色、权限点、菜单、登录会话、通知
 │   ├── factory/            公司、部门、工厂、车间、线体、工位、员工、班次、班组
 │   ├── masterdata/         物料、分类、款式、颜色、尺码、SKU、计量单位、标识
-│   ├── crm/                客户档案与联系人（阶段 6 扩展服务工单、投诉、满意度）
+│   ├── crm/                客户档案与联系人、客户投诉、产品评价
 │   ├── srm/                供应商、联系人、资质（寻源/报价/评分在阶段 2 后续增量）
 │   ├── wms/                仓库、库区、储位、库存余额与流水、库存单据（统一库存服务）
 │   ├── procurement/        采购申请、采购订单、采购收货（收货过账与放行调用 wms 库存服务）
@@ -59,17 +68,29 @@ backend/
 │   ├── planning/           BOM / 工艺路线（版本化工程数据）+ MRP（净算 / 建议 / 建议转单）
 │   ├── workflow/           审批模板、实例、节点、待办
 │   ├── integration/        Outbox 事件、单据关系（内部协同中心）
-│   └── analytics/          看板与报表聚合
+│   ├── analytics/          看板与报表聚合
+│   ├── equipment/          设备类型/台账/零部件/备件、保养、维修、点巡检、异常上报（阶段 4）
+│   ├── ems/                计量区域/设备/价格/阈值、抄表、运行记录、报警、看板与报表（阶段 5）
+│   ├── logistics/          自动化设备档案、物流任务状态机、操作日志（阶段 6）
+│   ├── ehs/                安全、环保、消防、设备设施安全与操作日志（阶段 6）
+│   ├── iot/                设备数采：连接配置、数采设备与令牌、测点、报文、读数、HTTP 采集入口与模拟器（阶段 5 首版）
+│   ├── qms/                检验项目、检验单与结果判定、质量报警、质量问题知识库（阶段 7）
+│   └── mes/                生产执行：生产工单（BOM / 工艺快照）、领料、报工、完工与完工入库（阶段 3）
 ├── tests/                  跨模块集成测试
 ├── manage.py  pyproject.toml  uv.lock
 ```
 
-**已创建**：`core / identity / factory / masterdata / crm / srm / wms / procurement / sales / planning / workflow / integration / analytics`。
+**已创建（20 个）**：`core / identity / factory / masterdata / crm / srm / wms / procurement / sales /
+planning / workflow / integration / analytics / equipment / ems / logistics / ehs / iot / qms / mes`。
 
-**未创建的模块**：`mes / qms / eam / ems / ehs / logistics / iot /
-endpoint_security` 当前**不创建目录**。任务书 20.3 要求「不创建大量空壳模块冒充完成」，
-因此这些模块在阶段 3–6 按需建立（`crm`、`srm` 于阶段 2 第一步，`procurement` 于阶段 2 第三步，
-`sales` 于阶段 2 第四步，`planning` 于阶段 3 第一步（BOM 与工艺路线）、阶段 3 第二步（MRP），均按此原则建立）。
+**仍未创建的模块**：`endpoint_security` 当前**不创建目录**。
+任务书 20.3 要求「不创建大量空壳模块冒充完成」，因此这些模块按需建立：
+`crm`、`srm` 于阶段 2 第一步，`procurement` 于阶段 2 第三步，`sales` 于阶段 2 第四步，
+`planning` 于阶段 3（BOM / 工艺路线 / MRP），`equipment` 于阶段 4，`ems` 于阶段 5，
+`ehs` 与 `logistics` 于阶段 6 首块，`iot` 于阶段 5 首版（HTTP 上报入口 + 内置模拟器 + 只读采集统计；
+MQTT / Modbus 待协议确认），`qms` 于阶段 7 首块（检验、判定、报警与质量问题知识库），
+`mes` 于阶段 3 第三步（工单下达快照、领料、报工、完工与完工入库）
+——**每一块都在有真实业务流程与用例之后才建目录**。
 
 **命名约定**：顶层不创建 `platform.py`（与标准库同名），平台级能力归属 `core`。
 
@@ -169,8 +190,8 @@ migrate ← 一次性发布步骤，由单个实例执行
 | ADR-05 | 阶段 0/1 不创建未实施模块目录 | 预建空壳 | 任务书 20.3：不以空壳模块冒充完成 |
 | ADR-06 | 工程数据（BOM / 工艺路线）**版本化 + 审批后冻结**，变更只能派生新版本 | 就地修改已审核版本 / 只留审计快照 | 已下达工单引用的版本内容必须不变（任务书 9.5、14.2 案例 13）；「同一范围唯一生效版本」由服务层 `select_for_update` 保证（MySQL 无部分唯一索引） |
 | ADR-07 | 工程版本范围唯一键用 `scope_key` 规范化字符串 | 直接对 `(company, style, sku, version_no)` 建唯一索引 | 同 ADR-03：MySQL 唯一索引不约束 NULL，「款式通用」多版本会冲突不到 |
-| ADR-08 | 快照由 `build_*_snapshot()` 输出 dict，**不预先建快照表** | 现在就建空的工单快照表 | 任务书 20.3：不建空壳；快照归属方是 MES 工单，阶段 3 后续增量落库 |
+| ADR-08 | 快照由 `build_*_snapshot()` 输出 dict，**不单独建快照表** | 预先建空的工单快照表 | 任务书 20.3：不建空壳。MES 工单落地后，快照以 `ProductionOrder.bom_snapshot` / `routing_snapshot` 两个 JSON 字段随工单落库（`apps/mes/services.py::release_order` 写入）；快照生命周期与工单一致，单独建表只会多一次 join |
 | ADR-09 | MRP 采用**同步计算 + 落库快照**（不投 Celery） | 异步任务 + 轮询结果 | 任务书 4.4「不将所有操作都异步化」、7.4「数据库是任务业务结果的最终依据」；演示规模下单次净算为毫秒级，同步执行让"运算—结果—转单"在同一个请求-响应周期内可解释、可复验；数据量增长后可再评估异步化 |
 | ADR-10 | MRP 内核拆分为**纯计算 `_compute()` + 落库 `_persist()`** | 边算边写表 | 计算逻辑可被测试直接调用（无副作用），落库集中在单一事务内完成；`MrpRun.parameters` / `summary` 固化本次口径，重算只产生新运行，不覆盖历史 |
-| ADR-11 | 生产建议**不伪造 MES 工单**，`convert_suggestion` 直接拒绝（`PRODUCTION_ORDER_NOT_IMPLEMENTED`） | 先建一个"占位工单" | 任务书 20.3「不创建大量空壳模块冒充完成」「不用模拟结果冒充真实」；错误码让前端能给出明确提示，MES 落地后再打开该分支 |
+| ADR-11 | 生产建议转单生成**草稿 MES 工单**（`status=draft`），不自动下达 | 先建"占位工单" / 转单即下达 | MES 已于阶段 3 第三步落地，`convert_suggestion` 生成**真草稿工单**（记录 `source_type=mrp_suggestion` + `source_no` 与 `DocumentLink`）。下达会冻结 BOM / 工艺快照并生成工序与用料，属于**独立动作**，由计划员确认后触发——转单不等于承诺产能 |
 | ADR-12 | MRP 对库存 / 采购**只读**，转单只产出**草稿**单据 | MRP 直接生成采购订单 / 工单 | 任务书 10.6「转单前重新检查建议有效性」「不得重复转单」，以及任务书 4.3「禁止在 View 中编写库存逻辑」；草稿单据仍走采购审批，审批与过账是不同动作 |

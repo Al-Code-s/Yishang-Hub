@@ -401,16 +401,16 @@ TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="scripts/build_user_guide.py">
 <meta name="robots" content="noindex, nofollow">
-<title>意尚智造集成平台 · 项目使用说明</title>
+<title>意尚智造集成平台 · 使用说明</title>
 <style>
 __CSS__
 </style>
 </head>
 <body>
 <header class="ys-top">
-  <div class="ys-top__brand">意尚智造集成平台 · 项目使用说明</div>
+  <div class="ys-top__brand">意尚智造集成平台 · 使用说明</div>
   <button class="ys-top__btn" data-action="print">打印 / 导出 PDF</button>
-  <div class="ys-top__meta">最后与代码核对：__DATE__<br>本页由 docs/user-guide.md 自动生成，请勿直接编辑</div>
+  <div class="ys-top__meta">最后更新：__DATE__</div>
 </header>
 <div class="ys-wrap">
   <nav class="ys-toc">
@@ -419,12 +419,11 @@ __CSS__
     __TOC__
   </nav>
   <main class="ys-doc">
-    <div class="ys-banner">本页是<b>使用说明</b>的网页版，内容与 <code>docs/user-guide.md</code> 一致；
-      部署、验收与测试证据见 <code>docs/deployment.md</code>、<code>docs/acceptance.md</code>、<code>docs/test-report.md</code>。</div>
+    <div class="ys-banner">本页是<b>平台使用说明</b>，可以离线打开，也可以直接打印或导出 PDF 分发给同事。</div>
 __BODY__
   </main>
 </div>
-<p class="ys-foot">意尚智造集成平台 · 项目使用说明 · 生成时间以 <code>docs/user-guide.md</code> 为准</p>
+<p class="ys-foot">意尚智造集成平台 · 使用说明</p>
 <button class="ys-top-btn" title="回到顶部">↑</button>
 <script>
 __JS__
@@ -436,7 +435,7 @@ __JS__
 
 def render(md: str) -> str:
     body, toc = convert(md)
-    match = re.search(r"最后与代码核对：(\d{4}-\d{2}-\d{2})", md)
+    match = re.search(r"最后更新：\**\s*(\d{4}-\d{2}-\d{2})", md)
     date = match.group(1) if match else "未标注"
     return (
         TEMPLATE.replace("__CSS__", CSS.strip())

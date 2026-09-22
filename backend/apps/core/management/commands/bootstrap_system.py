@@ -125,7 +125,7 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
             "masterdata.sku.view",
             "masterdata.material.view",
         ),
-        remark="客户档案与联系人维护。服务工单、投诉与满意度属于阶段 6。",
+        remark="客户档案、联系人、客户投诉与产品评价的登记与处理。",
     ),
     RoleDef(
         code="srm_admin",
@@ -140,7 +140,7 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
             "masterdata.material.view",
             "masterdata.material_category.view",
         ),
-        remark="供应商档案、联系人与资质维护。准入审批复用 workflow 审批体系。",
+        remark="供应商档案、联系人、资质与五维量化评价维护。准入审批复用 workflow 审批体系。",
     ),
     RoleDef(
         code="procurement_admin",
@@ -188,6 +188,7 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
         data_scope_type=DataScopeType.COMPANY,
         sort_order=26,
         include=(
+            "qms.",
             "procurement.receipt.view",
             "procurement.receipt.inspect",
             "sales.return.view",
@@ -204,7 +205,10 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
             "core.attachment.upload",
             "core.attachment.download",
         ),
-        remark="来料检验与销售退货检验判定；质量放行必须走库存服务 wms.quality.release。",
+        remark=(
+            "来料检验与销售退货检验判定，检验项目 / 检验单 / 质量报警 / 质量问题知识库维护；"
+            "质量放行必须走库存服务 wms.quality.release。"
+        ),
     ),
     RoleDef(
         code="sales_admin",
@@ -285,10 +289,151 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
             # 因此计划角色必须具备采购申请的新建权限；这是真实约束，不靠绕过服务实现。
             "procurement.requisition.view",
             "procurement.requisition.create",
+            # MRP 生产建议转成**草稿 MES 生产工单**（下达仍由生产角色执行），
+            # 同理必须具备工单新建权限，否则转单会被服务层拒绝。
+            "mes.order.view",
+            "mes.order.create",
         ),
         remark=(
             "BOM、工艺路线与 MRP 运算；采购建议转单只生成草稿采购申请，"
             "BOM / 工艺 / 采购申请审批由审批人执行。"
+        ),
+    ),
+    RoleDef(
+        code="production_manager",
+        name="生产管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=30,
+        include=("mes.", "analytics.dashboard.view"),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "factory.workshop.view",
+            "factory.line.view",
+            "factory.employee.view",
+            "masterdata.style.view",
+            "masterdata.sku.view",
+            "masterdata.material.view",
+            "masterdata.uom.view",
+            "planning.bom.view",
+            "planning.routing.view",
+            "planning.mrp.view",
+            "wms.warehouse.view",
+            "wms.location.view",
+            "wms.inventory.view",
+            # 领料与完工入库都经由统一库存服务记账，缺少库存单据权限会被服务拒绝
+            "wms.document.create",
+            "wms.document.post",
+            # 质检点工序报满时会自动生成检验单，缺少质检新建权限时该笔报工整体回滚
+            "qms.inspection.create",
+            "qms.inspection.view",
+        ),
+        remark=(
+            "生产工单下达、领料、报工、完工与完工入库；质检点检验单由质检角色判定，"
+            "生产侧只负责发起。"
+        ),
+    ),
+    RoleDef(
+        code="equipment_admin",
+        name="设备管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=29,
+        include=("equipment.", "analytics."),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "factory.department.view",
+            "factory.employee.view",
+            "factory.workshop.view",
+            "masterdata.material.view",
+            "masterdata.uom.view",
+            # 库存台账读的是仓储的统一库存余额，没有库存查询权限就看不到现存量
+            "wms.warehouse.view",
+            "wms.zone.view",
+            "wms.location.view",
+            "wms.inventory.view",
+            # 备件采购申请复用采购申请单据（计划申请 / 紧急申请），审批仍由审批人执行
+            "procurement.requisition.view",
+            "procurement.requisition.create",
+            "procurement.requisition.update",
+            "procurement.requisition.submit",
+        ),
+        remark="设备台账、零部件与备品备件、保养、维修、点巡检与异常处理；备件采购申请走采购审批。",
+    ),
+    RoleDef(
+        code="ems_admin",
+        name="能源管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=31,
+        include=("ems.", "analytics."),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "factory.department.view",
+            "factory.employee.view",
+            "equipment.equipment.view",
+        ),
+        remark="计量区域与仪表、水电气液价格与阈值、抄表、运行记录、报警与能耗报表。",
+    ),
+    RoleDef(
+        code="logistics_admin",
+        name="厂内物流管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=32,
+        include=("logistics.", "analytics."),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "factory.department.view",
+            "factory.employee.view",
+            "factory.workshop.view",
+            "masterdata.material.view",
+            "masterdata.sku.view",
+            "wms.warehouse.view",
+            "wms.zone.view",
+            "wms.location.view",
+        ),
+        remark="AGV / 穿梭车 / 堆垛机等自动化设备档案、物流任务下发与操作日志。",
+    ),
+    RoleDef(
+        code="ehs_admin",
+        name="安全环保管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=33,
+        include=("ehs.", "analytics."),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "factory.department.view",
+            "factory.employee.view",
+            "equipment.equipment.view",
+            "equipment.type.view",
+        ),
+        remark="安全制度与培训、隐患排查、应急预案、事故处理、环保台账、消防与设备设施安全。",
+    ),
+    RoleDef(
+        code="iot_admin",
+        name="设备数采管理员",
+        data_scope_type=DataScopeType.COMPANY,
+        sort_order=34,
+        include=("iot.", "analytics."),
+        extra=(
+            "core.attachment.upload",
+            "core.attachment.download",
+            "factory.company.view",
+            "equipment.equipment.view",
+            "equipment.type.view",
+            "ems.alarm.view",
+            "ems.meter.view",
+        ),
+        remark=(
+            "数采连接、数采设备与采集测点维护，设备令牌下发，采集读数与日志查询；"
+            "只读采集，不下发控制逻辑。"
         ),
     ),
     RoleDef(
@@ -319,6 +464,9 @@ BUILTIN_ROLES: tuple[RoleDef, ...] = (
 CODE_RULES: tuple[tuple[str, str, str, str], ...] = (
     # 主数据编码按年重置（长期引用，不适合在编码里写死到日）
     ("CUS", "客户编码", "CUS{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    # 客户管理：投诉与评价属于流程单据，按日重置
+    ("CMPL", "客户投诉编号", "CMPL{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("PRV", "产品评价编号", "PRV{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("AP", "审批单号", "AP{YYYYMMDD}{SEQ:5}", ResetPeriod.DAILY),
     ("SO", "销售订单号", "SO{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("SH", "销售发货单号", "SH{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
@@ -328,11 +476,56 @@ CODE_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("GR", "采购收货单号", "GR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("RC", "采购收货单号（业务）", "RC{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("MO", "生产工单号", "MO{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("RPT", "生产报工单号", "RPT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("TR", "移库单号", "TR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("ST", "盘点单号", "ST{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("BOM", "BOM 编号", "BOM{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("ROUTING", "工艺路线编号", "RT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
     ("MRP", "MRP 运行编号", "MRP{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    # 质量管理：检验项目、检验单、质量报警与质量问题知识库
+    # 供应商管理：五维评价单（流程单据，按日重置）
+    ("SEV", "供应商评价单号", "SEV{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("QIT", "检验项目编码", "QIT{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("QC", "检验单号", "QC{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("QAL", "质量报警编号", "QAL{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("KI", "质量问题编号", "KI{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("EQ", "设备编号", "EQ{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("SP", "备件编号", "SP{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("MP", "保养计划编号", "MP{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("MT", "保养任务编号", "MT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("MR", "保养记录编号", "MR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("FR", "故障报修单号", "FR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("RT", "维修任务编号", "RT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("RR", "维修记录编号", "RR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("IT", "点巡检任务编号", "IT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("IR", "点巡检记录编号", "IR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("AT", "异常任务编号", "AT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("AR", "异常记录编号", "AR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    # 能源管理：计量仪表、报警与设备运行记录
+    ("EM", "计量仪表编码", "EM{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("EAL", "能源报警编号", "EAL{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("ERN", "设备运行记录编号", "ERN{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    # 生产物流：自动化设备与物流任务
+    ("AD", "自动化设备编码", "AD{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("LT", "物流任务编号", "LT{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    # 安全环保：安全、环保、消防、设备设施安全四类台账
+    ("SRG", "安全制度编号", "SRG{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("TRN", "安全培训编号", "TRN{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("HZD", "隐患编号", "HZD{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("EPL", "应急预案编号", "EPL{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("ACR", "事故编号", "ACR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("ENV", "环保监测编号", "ENV{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("WST", "固废危废记录编号", "WST{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("CMP", "环保合规检查编号", "CMP{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("FDR", "消防演练编号", "FDR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("FFC", "消防设施编号", "FFC{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("WPR", "作业许可编号", "WPR{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("SCH", "安全检查编号", "SCH{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    ("SPI", "特种设备检验编号", "SPI{YYYYMMDD}{SEQ:4}", ResetPeriod.DAILY),
+    # 设备数采：连接、数采设备与测点编码
+    ("IOTCN", "数采连接编码", "IOTCN{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("IOTGW", "数采设备编码", "IOTGW{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
+    ("IOTPT", "采集测点编码", "IOTPT{YYYY}{SEQ:4}", ResetPeriod.YEARLY),
 )
 
 DICTIONARIES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (

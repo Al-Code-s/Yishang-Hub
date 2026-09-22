@@ -10,6 +10,9 @@
       </div>
     </div>
 
+    <!-- 统计/概览区（可选）：放在筛选条之前，页面自己决定放什么 -->
+    <slot name="summary" :reload="list.load" />
+
     <pro-table
       v-model:page="list.page.value"
       v-model:page-size="list.pageSize.value"
@@ -20,7 +23,7 @@
       :error-message="list.errorMessage.value"
       :empty-text="emptyText"
       :action-width="actionWidth"
-      @refresh="list.load()"
+      @refresh="refresh"
       @reset="list.resetFilters()"
       @sort-change="list.onSortChange"
     >
@@ -112,6 +115,8 @@
           >
             {{ scope.row.is_active === false ? '启用' : '停用' }}
           </el-button>
+          <!-- 追加动作（开始 / 完成 / 派工 …）：保留上面的默认按钮，不覆盖 -->
+          <slot name="row-actions" :row="scope.row" :reload="list.load" />
         </slot>
       </template>
     </pro-table>
@@ -139,6 +144,9 @@
                 v-if="field.type === 'select'"
                 v-model="formModel[field.prop]"
                 :placeholder="field.placeholder ?? `请选择${field.label}`"
+                :multiple="field.multiple === true"
+                :collapse-tags="field.multiple === true"
+                :collapse-tags-tooltip="field.multiple === true"
                 clearable
                 filterable
                 style="width: 100%"
@@ -163,6 +171,13 @@
                 v-model="formModel[field.prop]"
                 type="date"
                 value-format="YYYY-MM-DD"
+                style="width: 100%"
+              />
+              <el-date-picker
+                v-else-if="field.type === 'datetime'"
+                v-model="formModel[field.prop]"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
                 style="width: 100%"
               />
               <el-input-number
@@ -250,6 +265,7 @@ export interface FormFieldDef {
     | 'select'
     | 'switch'
     | 'date'
+    | 'datetime'
   required?: boolean
   options?: EnumOption[]
   /** 远程选项加载器：父组件不必手写加载逻辑，页面会缓存结果 */
@@ -265,6 +281,8 @@ export interface FormFieldDef {
   defaultValue?: unknown
   /** 数值字段允许清空时提交 null 而不是 0 */
   nullable?: boolean
+  /** select 字段允许多选（例如一个保养计划挂多个保养项目） */
+  multiple?: boolean
 }
 
 const props = withDefaults(
@@ -300,6 +318,13 @@ const props = withDefaults(
     transform?: (payload: Record<string, unknown>, mode: 'create' | 'update') => Record<string, unknown>
     /** 用于 select 字段的原始值转 ID（例如父级对象） */
     optionsKey?: string
+    /**
+     * 是否提供「启用 / 停用」动作。
+     *
+     * 任务、记录这类**只有状态没有启用标记**的资源必须传 false：
+     * 否则界面会出现一个点下去必然报错的「停用」按钮。
+     */
+    toggleable?: boolean
   }>(),
   {
     description: '',
@@ -310,6 +335,7 @@ const props = withDefaults(
     actionWidth: 200,
     formWidth: '720px',
     defaultOrdering: 'code',
+    toggleable: true,
   },
 )
 
@@ -318,7 +344,7 @@ const auth = useAuthStore()
 const list = useCrudList<{ id: number; version?: number } & Record<string, unknown>>({
   api: props.api as never,
   defaultFilters: props.initialFilters,
-  activeField: 'is_active',
+  activeField: props.toggleable ? 'is_active' : '',
   removable: props.removable,
   removeWarning: props.removeWarning,
   defaultOrdering: props.defaultOrdering,
@@ -442,6 +468,8 @@ function resetForm(mode: 'create' | 'update', source?: Record<string, unknown>):
       formModel[field.prop] = field.defaultValue
     } else if (field.type === 'switch') {
       formModel[field.prop] = true
+    } else if (field.type === 'select' && field.multiple === true) {
+      formModel[field.prop] = []
     } else {
       formModel[field.prop] = ''
     }
@@ -471,6 +499,10 @@ function buildPayload(): Record<string, unknown> {
     let value = formModel[field.prop]
     if (field.type === 'switch') {
       payload[field.prop] = Boolean(value)
+      continue
+    }
+    if (Array.isArray(value) && field.multiple === true) {
+      payload[field.prop] = value
       continue
     }
     if (value === '' || value === undefined || value === null) {
@@ -526,10 +558,21 @@ onMounted(async () => {
   await list.load()
 })
 
+const emit = defineEmits<{ refresh: [] }>()
+
+/**
+ * 刷新列表并通知外部（例如页面上方的统计区要跟着一起刷新）。
+ * 工具栏的「刷新」按钮、动作完成后的 `pageRef.reload()` 都走这里。
+ */
+async function refresh(): Promise<void> {
+  await list.load()
+  emit('refresh')
+}
+
 watch(formVisible, async (value) => {
   if (value) {
     await loadOptionSources().catch(() => undefined)
   }
 })
 
-defineExpose({ reload: list.load })</script>
+defineExpose({ reload: refresh })</script>

@@ -83,6 +83,8 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke_check.ps1
 4. 更新 `docs/progress.md` 与 `docs/requirements-matrix.md`。
 5. 新增能力时同步更新对应专项文档（`architecture.md`、`data-model.md`、
    `permission-matrix.md`、`api-conventions.md` 等）。
+6. 若改动影响**使用者能看到的行为**（菜单、操作步骤、错误提示、业务口径），
+   同步更新面向客户的 `docs/user-guide.md`，并重新生成网页版（见 §九）。
 
 ## 六、文档地图
 
@@ -104,6 +106,7 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke_check.ps1
 | `docs/deployment.md` | 部署与运行（含未验证项） |
 | `docs/backup-restore.md` | 备份恢复方案 |
 | `docs/hardware-integration.md` | 硬件接入方案与边界 |
+| `docs/user-guide.md` | **面向客户的使用说明**（业务操作手册：登录、菜单、按模块操作、错误处理）。只写使用者能看到的行为，不写实现细节；网页版见 §九 |
 
 ## 七、已知陷阱（本仓库踩过）
 
@@ -122,6 +125,53 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke_check.ps1
 
 ## 八、阶段边界
 
-当前完成的是**阶段 0 与阶段 1**（工程基座 + 登录/权限/组织/主数据/审批/审计）。
-阶段 2 起（客户、供应商、采购、销售、WMS 库存等）尚未实现，**不要声称已完成**。
-新增阶段时，先更新 `docs/requirements-matrix.md` 再写代码。
+当前已完成：阶段 0~1（工程基座 + 登录/权限/组织/主数据/审批/审计）、阶段 2
+（客户/供应商/采购/销售/WMS 统一库存）、阶段 3（BOM/工艺/MRP/**MES 生产工单与报工**）、**阶段 4 设备管理**、
+**阶段 5 能源管理 + 设备数采首版（HTTP 上报入口与内置模拟器）**、
+阶段 6 的**安全环保管理**与**厂内物流**、客户管理的**客户投诉与产品评价**，
+以及**质量管理（QMS）**：检验项目、检验单与结果判定、质量报警、质量问题知识库，
+以及供应商管理的**五维量化评价**（权重配置与只增不改的版本派生、缺数据两种口径、按明细聚合的评价统计）。
+按明细实时聚合的**只读统计**（设备数采采集统计、投诉 / 评价统计、质量信息动态监测、MES 生产统计）也已实现，**不建汇总表**。
+
+**明确未实现、不要声称已完成**：销售计划 / 分销商 / 市场预测、
+供应商寻源与报价、跨系统数据交换中间件、MQTT / Modbus 等工业协议解析与真实设备接入
+（现只有 HTTP 上报入口与内置模拟器，且未与真实设备联调）、采集原始数据的归档 / 清理任务、
+工业终端安全（防病毒与补丁管理）、OEE 统计、职业健康管理、能源调度、
+MES 的线体排产 / 裁剪任务 / 工位派工 / 在制品转移 / 扫码硬件控制、
+综合报表 / 成本 / 运维演练。
+新增能力时，先更新 `docs/requirements-matrix.md` 再写代码。
+
+## 九、面向客户的使用说明与文档同步
+
+`docs/user-guide.md` 是**发给客户看的使用说明**（业务操作手册），
+因此：**启动命令、环境变量、测试命令、代码路径、文档同步规则等开发内容不写进该文件**，
+它们属于本文件与 `docs/deployment.md`、`docs/test-report.md`。
+
+同一份说明还有**自动生成的单文件网页版**，供系统内「使用说明」入口与客户直接打开：
+
+| 产物 | 位置 | 用途 |
+| --- | --- | --- |
+| `docs/user-guide.html` | 仓库内 | 单文件、离线可用：双击打开，或作为附件发给客户 |
+| `frontend/public/guide.html` | 随前端发布 | 浏览器访问 `/guide.html`（Nginx 作为静态资源发布） |
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe ..\scripts\build_user_guide.py           # 生成 / 覆盖两份产物
+.\.venv\Scripts\python.exe ..\scripts\build_user_guide.py --check   # 只校验是否最新
+```
+
+**不要直接编辑 HTML**（生成物，改了会被覆盖）。改了 Markdown 不重新生成，
+`pytest tests/test_docs_sync.py` 会失败。
+
+该用例还校验下面这条**机器可读事实行**，它与注册表 / 模型 / 迁移文件逐项比对，
+**改了代码就按实际值更新这一行**：
+
+<!-- yishang-doc-sync: permissions=368 menus=144 models=146 migrations=30 builtin_roles=19 -->
+
+| 键 | 含义 | 权威来源 |
+| --- | --- | --- |
+| `permissions` | 权限点总数 | `apps/identity/permissions_registry.PERMISSIONS` |
+| `menus` | 菜单项总数（含目录） | `apps/identity/permissions_registry.MENUS` |
+| `models` | 受管数据模型总数 | Django `apps.get_models()`（排除自动生成模型） |
+| `migrations` | 迁移文件总数 | `backend/apps/*/migrations/0*.py` |
+| `builtin_roles` | 内置角色数（**不含** `seed_demo` 建的演示角色） | `bootstrap_system.BUILTIN_ROLES` |

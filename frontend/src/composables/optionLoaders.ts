@@ -1,17 +1,30 @@
 import {
+  abnormalTypeApi,
+  automationDeviceApi,
   colorApi,
   companyApi,
   customerApi,
   departmentApi,
   employeeApi,
+  energyAreaApi,
+  energyMeterApi,
+  emergencyPlanApi,
+  equipmentApi,
+  equipmentTypeApi,
+  inspectionItemApi,
+  iotConnectionApi,
+  iotGatewayApi,
+  iotPointApi,
   factoryApi,
   lineApi,
   locationApi,
+  maintenanceItemApi,
   materialApi,
   materialCategoryApi,
   roleApi,
   shiftApi,
   sizeApi,
+  skuApi,
   stationApi,
   styleApi,
   supplierApi,
@@ -105,6 +118,8 @@ export const colorOptions = (): Promise<EnumOption[]> => loadAll(colorApi.list, 
 
 export const sizeOptions = (): Promise<EnumOption[]> => loadAll(sizeApi.list, 'code', 'name')
 
+export const skuOptions = (): Promise<EnumOption[]> => loadAll(skuApi.list, 'code', 'name')
+
 export const warehouseOptions = (): Promise<EnumOption[]> => loadAll(warehouseApi.list, 'code', 'name')
 
 export const zoneOptions = (): Promise<EnumOption[]> => loadAll(zoneApi.list, 'code', 'name')
@@ -114,3 +129,38 @@ export const locationOptions = (): Promise<EnumOption[]> => loadAll(locationApi.
 export const customerOptions = (): Promise<EnumOption[]> => loadAll(customerApi.list, 'code', 'name')
 
 export const supplierOptions = (): Promise<EnumOption[]> => loadAll(supplierApi.list, 'code', 'name')
+
+export const equipmentTypeOptions = (): Promise<EnumOption[]> =>
+  loadAll(equipmentTypeApi.list, 'code', 'name')
+
+export const equipmentOptions = (): Promise<EnumOption[]> =>
+  loadAll(equipmentApi.list, 'code', 'name')
+
+export const maintenanceItemOptions = (): Promise<EnumOption[]> =>
+  loadAll(maintenanceItemApi.list, 'code', 'name')
+
+export const inspectionItemOptions = (): Promise<EnumOption[]> =>
+  loadAll(inspectionItemApi.list, 'code', 'name')
+
+export const abnormalTypeOptions = (): Promise<EnumOption[]> =>
+  loadAll(abnormalTypeApi.list, 'code', 'name')
+
+export const energyAreaOptions = (): Promise<EnumOption[]> =>
+  loadAll(energyAreaApi.list, 'code', 'name')
+
+export const energyMeterOptions = (): Promise<EnumOption[]> =>
+  loadAll(energyMeterApi.list, 'code', 'name')
+
+export const iotGatewayOptions = (): Promise<EnumOption[]> =>
+  loadAll(iotGatewayApi.list, 'code', 'name')
+
+export const iotConnectionOptions = (): Promise<EnumOption[]> =>
+  loadAll(iotConnectionApi.list, 'code', 'name')
+
+export const iotPointOptions = (): Promise<EnumOption[]> => loadAll(iotPointApi.list, 'code', 'name')
+
+export const automationDeviceOptions = (): Promise<EnumOption[]> =>
+  loadAll(automationDeviceApi.list, 'code', 'name')
+
+export const emergencyPlanOptions = (): Promise<EnumOption[]> =>
+  loadAll(emergencyPlanApi.list, 'code', 'name')

@@ -102,6 +102,25 @@ class ReferenceIdSerializer(DisplayLabelsMixin, serializers.ModelSerializer):
         return fields
 
 
+class ServerDerivedCodeSerializerMixin:
+    """编号（或组织归属）由服务端推导的序列化器基类：关掉 DRF 自动派生的唯一性校验。
+
+    背景：模型的 ``UniqueConstraint``（例如「公司 + 投诉编号」）会被 DRF 自动转成
+    ``UniqueTogetherValidator``，而该校验器会**强制约束里的每个字段必填**，
+    包括由服务端推导、客户端根本不会传的字段（自动取的编号、由来源单据推导的公司）。
+    结果是新增会被一句「该字段是必填项」挡在门外，而页面上连填的地方都没有。
+
+    这里关掉自动生成的唯一性校验，重复数据由数据库唯一约束兜底，再由视图的
+    ``uniqueness_error_map`` 翻译成「同一公司下编号已存在」这类中文提示；
+    编号格式与取号时机仍由服务层保证，不受影响。
+
+    由客户端显式指定全部约束字段的对象不要继承本基类，保留 DRF 的前置校验。
+    """
+
+    def get_unique_together_validators(self):
+        return []
+
+
 
 class DictionaryItemSerializer(ReferenceIdSerializer):
     class Meta:

@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -66,6 +66,44 @@ def business_now() -> datetime:
 
 def business_today() -> date:
     return business_now().date()
+
+
+def parse_business_moment(
+    value: Any, *, field: str = "时间", end_of_day: bool = False
+) -> datetime | None:
+    """解析查询参数里的时间，把「只有日期」的写法按业务时区展开成时刻。
+
+    支持 ``2026-09-01``（``end_of_day=True`` 时取当天最后一刻）与带时区的 ISO 串。
+    解析不了时抛 400，而不是静默当成「没传」——否则用户会拿到一个自己没要过的统计区间。
+    """
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        moment = value
+    elif isinstance(value, date):
+        moment = datetime.combine(value, time.max if end_of_day else time.min)
+    else:
+        text = str(value).strip()
+        # 先判「只有日期」的写法：Python 3.11 起 datetime.fromisoformat 也接受
+        # "2026-09-21"，若先走它，end_of_day 会被静默忽略（当天 00:00 变成上界）。
+        try:
+            day = date.fromisoformat(text)
+        except ValueError:
+            day = None
+        if day is not None:
+            moment = datetime.combine(day, time.max if end_of_day else time.min)
+        else:
+            try:
+                moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValidationFailed(
+                    f"{field} 不是合法时间，示例：2026-09-01 或 2026-09-01T08:00:00。",
+                    code="INVALID_TIME_RANGE",
+                    details={field: text},
+                ) from exc
+    if timezone.is_naive(moment):
+        moment = moment.replace(tzinfo=business_timezone())
+    return moment
 
 
 # --------------------------------------------------------------------------
@@ -614,6 +652,7 @@ __all__ = [
     "idempotent_execute",
     "mark_event_done",
     "mark_event_failed",
+    "parse_business_moment",
     "publish_event",
     "record_audit",
     "requeue_event",

@@ -13,5 +13,15 @@ router.register(
     views.SupplierQualificationViewSet,
     basename="srm-supplier-qualification",
 )
+router.register(
+    "supplier-evaluation-weights",
+    views.SupplierEvaluationWeightViewSet,
+    basename="srm-supplier-evaluation-weight",
+)
+router.register(
+    "supplier-evaluations",
+    views.SupplierEvaluationViewSet,
+    basename="srm-supplier-evaluation",
+)
 
 urlpatterns = [path("", include(router.urls))]

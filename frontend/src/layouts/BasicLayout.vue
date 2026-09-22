@@ -61,7 +61,6 @@
                 </el-dropdown-item>
                 <el-dropdown-item divided @click="passwordVisible = true">修改密码</el-dropdown-item>
                 <el-dropdown-item @click="openGuide">使用说明</el-dropdown-item>
-                <el-dropdown-item @click="openDocs">接口文档</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -178,10 +177,6 @@ function closeTab(path: string | number): void {
  */
 function refreshCurrent(): void {
   refreshKey.value += 1
-}
-
-function openDocs(): void {
-  window.open('/api/v1/docs/', '_blank', 'noopener')
 }
 
 /** 使用说明网页版：由 scripts/build_user_guide.py 从 docs/user-guide.md 生成 */

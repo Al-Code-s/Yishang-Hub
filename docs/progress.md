@@ -19,17 +19,17 @@
 | 1 | 登录、权限、组织、主数据、仓库储位、基础审批、审计、后台界面 | 已完成（阶段验收待人工确认） |
 | 2 | 客户、供应商、采购、销售、WMS 单据 | **进行中**：客户/供应商主数据、**统一库存服务（收发存/移库/质量放行/冲销/幂等）已完成**、**采购模块（申请 → 订单 → 收货 → 来料检验放行）已完成**、**销售模块（订单 → 库存占用 → 发货出库 → 退货 → 检验判定）已完成**；**客户编码改为按编码规则自动生成**（见 §十九）；询价/报价/供应商评价、销售计划与预测、应收/收款登记、调拨在途与盘点未开始 |
 | 3 | BOM、工艺、MRP、MES、QMS | **进行中**：BOM 与工艺路线版本快照已完成（见 §十四）；**MRP（任务书 10.6）已完成**——时间分段净需求、多层 BOM 展开与损耗、循环 BOM 检查、缺料清单、采购 / 生产建议、供需追溯、计算快照、采购建议转单（见 §十五）；**MES、QMS 未开始** |
-| 4 | 设备、备件、保养、点检、维修 | 未开始 |
-| 5 | 采集、EMS、能源报表与告警 | 未开始 |
-| 6 | CRM 深化、EHS、厂内物流、终端安全 | 未开始 |
+| 4 | 设备、备件、保养、点检、维修 | **已完成**（设备台账 / 类型 / 零部件 / 备品备件 / 配件 / 故障报修 / 备件库存台账 / 保养 / 维修 / 点巡检 / 异常上报，见 §二十八） |
+| 5 | 采集、EMS、能源报表与告警 | **部分完成**：EMS（区域、仪表、价格、阈值、抄表、运行记录、报警、看板 / 报表 / 统计）已完成；**硬件采集未开始**（见 §二十八） |
+| 6 | CRM 深化、EHS、厂内物流、终端安全 | **部分完成**：EHS（安全 / 环保 / 消防 / 设备设施安全）与厂内物流已完成；**CRM 深化（投诉、产品评价）与终端安全未开始**（见 §二十八） |
 | 7 | 综合报表、基础成本、性能、安全、运维与恢复演练 | 未开始 |
 
-当前规模（统计自 `permissions_registry` 与开发库，2026-09-18 实测）：**173 个权限点 / 56 项菜单（45 个业务页面 + 11 个目录）/
-86 个数据模型**（`apps.get_models()` 全量，含 Django 框架自带模型）；数据库共 **92 张表**（其中框架表 13 张、业务表 79 张）；
-已提交迁移文件 **19 个**；前端 **48 个 `.vue` 视图**；内置角色 **16 个**（`bootstrap_system` 13 + `seed_demo` 3 个演示角色）。
+当前规模（统计自 `permissions_registry` 与开发库，2026-09-21 实测）：**310 个权限点 / 125 项菜单（105 个业务页面 + 20 个目录）/
+127 个数据模型**（`apps.get_models()` 全量，含 Django 框架自带模型）；数据库共 **135 张表**（其中框架表 13 张、业务表 122 张）；
+已提交迁移文件 **24 个**；前端 **106 个 `.vue` 视图**；内置角色 **17 个**（`bootstrap_system` 17 个，另有 `seed_demo` 演示角色）。
 
-**使用说明**见 `docs/user-guide.md`（启动 / 账号 / 菜单 / 操作 / 错误码）；
-其 §11.5 事实行由 `backend/tests/test_docs_sync.py` 与代码比对，防止文档静默过期。
+**使用说明**见 `docs/user-guide.md`（面向客户的业务操作手册，另有网页版 `docs/user-guide.html`）；
+文档同步的事实行在 `AGENTS.md` §九，由 `backend/tests/test_docs_sync.py` 与代码比对，防止文档静默过期。
 
 **未实施的模块不在左侧导航中展示，也不存在可访问路由**（任务书 8.2）。
 `apps/identity/permissions_registry.py` 只登记已实现页面；前端路由按后端菜单动态注册，
@@ -2722,3 +2722,722 @@ SKU / BOM / 后端校验 / 服务端判定」这类实现词汇。业务用户�
 2. 权限四层术语里的「接口权限」按任务书保留（`docs/permission-matrix.md` 同名），未改名。
 3. 内部协同页的 `event_type`（如 `sales.order.approved`）仍显示原始标识：
    它是管理员定位失败原因用的事件编码，**不做翻译**。
+
+## 二十七、个人中心移除「接口文档」入口 + 使用说明改为面向客户（本轮增量）
+
+> 起因：用户反馈 ①登录后个人中心下拉里的「接口文档」不该出现；②`docs/user-guide.md` 是给客户看的，
+> 却混入了启动命令、环境变量、测试命令、文档同步规则等开发内容。
+> 本轮去掉入口，并把使用说明改写为**纯客户使用手册**。**无迁移、无接口变化**。
+
+### 27.1 界面：个人中心不再出现「接口文档」
+
+| 改动 | 文件 | 说明 |
+| --- | --- | --- |
+| 删除下拉项「接口文档」 | `frontend/src/layouts/BasicLayout.vue` | 个人中心下拉只剩「修改密码 / 使用说明 / 退出登录」 |
+| 删除 `openDocs()` | 同上 | 不再从界面跳转 `/api/v1/docs/` |
+
+- 后端 OpenAPI 端点（`/api/v1/docs/`、`/api/v1/schema/`）**保留**，只是界面不再提供入口，
+  开发者仍可直接访问（地址见 `docs/deployment.md` §二 7）。
+- 顶部工具栏与个人中心的「使用说明」入口**保留**。
+
+### 27.2 文档：`docs/user-guide.md` 改写为面向客户
+
+改写前该文件同时承载两类内容：客户怎么用（登录、菜单、按模块操作、报错处理）与
+开发怎么跑（启动命令、环境变量、测试命令、文档同步规则、未执行清单）。
+本轮按「客户手册」重写，开发内容**迁移而非删除**。
+
+| 原章节 | 处理 |
+| --- | --- |
+| §一 这份文档怎么用 | 保留，改为客户视角（去掉「开发人员，改了代码」一行） |
+| §二 能力边界 | 保留，去掉技术规模计数（权限点 / 模型 / 迁移 / `.vue` 数量）；「两条最容易误会的规则」改为表格 |
+| §三 环境准备与启动 | **移出** → `docs/deployment.md` §二 5~8（启动脚本、命令开关、访问地址、数据库与文件位置） |
+| §四 账号与权限 | 保留可用部分（四层权限、内置角色、分配步骤）；**删除演示账号表与角色的权限点计数** |
+| §五 界面导航与通用操作 | 保留；菜单清单由「路由 + 权限编码」改为「目录 + 页面 + 用途」 |
+| §六 按模块操作指南 | 保留并去开发化（如幂等键、接口路径、快照接口） |
+| §七 跟着做一遍 | 保留；演示账号名换成角色名，演示单号仍作示例 |
+| §八 测试与自检 | **移出** → `AGENTS.md` §四/§五、`docs/test-report.md` |
+| §九 常见问题与错误码 | 保留错误码表；「环境类问题」（后端未启动 / Vite 端口 / 驱动编译 / CSRF）改为面向客户的「界面与其他问题」 |
+| §十 未执行 / 未验证 | **移出** → `docs/test-report.md` |
+| §十一 代码更新后同步 | **移出** → `AGENTS.md` §九（含机器可读事实行与网页版生成规则） |
+
+配套改动：
+
+| 文件 | 改动 |
+| --- | --- |
+| `AGENTS.md` | 新增 §九「面向客户的使用说明与文档同步」：定位约束、网页版生成命令、事实行与键说明；§五 收尾清单加第 6 条；§六 文档地图加 `docs/user-guide.md` |
+| `backend/tests/test_docs_sync.py` | 事实行改从 `AGENTS.md` 读取（`SYNC_DOC_PATH`），用例名与提示同步更新；网页版新鲜度校验不变 |
+| `scripts/build_user_guide.py` | 日期标记改为「最后更新：YYYY-MM-DD」；标题 / 横幅 / 页脚改为面向客户的文案（不再出现 `docs/*.md` 路径） |
+| `docs/deployment.md` | 顶部交叉引用改写；补齐原属使用说明的开发内容（日常启动、命令开关、访问地址、数据库与文件位置） |
+| `docs/acceptance.md` | 「现在的数字」指向 `AGENTS.md` §九 事实行（原指向已移除的 `user-guide.md` §2.3） |
+| `README.md` | 文档地图与访问地址表更新；文档同步要求指向 `AGENTS.md` §九 |
+
+### 27.3 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed in 0.12s` |
+| `python scripts/build_user_guide.py` | 生成 `docs/user-guide.html`（49950 字符）与 `frontend/public/guide.html` |
+| `ruff check --no-cache apps config tests ../scripts/build_user_guide.py` | `All checks passed!` |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| 前端 `vue-tsc --build --force` | 退出码 `0` |
+| 前端 `npm run test` | `Test Files 15 passed (15) / Tests 181 passed (181)` |
+| 前端 `vite build` | `✓ built in 12.68s` |
+| HTML 静态校验 | 17 张表格、36 个标题（8 个一级 / 28 个二级）、0 处未渲染的 `**`、0 行表格语法泄漏 |
+
+### 27.4 未完成事项
+
+1. **浏览器观感未人工确认**：本轮尝试用浏览器打开页面被安全策略拒绝
+   （`file://` 与 `http://127.0.0.1:5173` 均被 Browser use 策略拦截），
+   因此只做了 HTML 静态校验与源码级检查。请登录后确认：
+   ①个人中心下拉里不再有「接口文档」；②顶部与个人中心的「使用说明」仍能打开 `/guide.html`。
+2. 使用说明正文的描述性内容（菜单名称、操作步骤、错误码解释）仍只能人工维护，
+   自动校验只覆盖「网页版是否与 Markdown 一致」与 `AGENTS.md` 的事实行数量。
+
+
+## 二十八、设备管理 / 能源管理 / 生产物流 / 安全环保四大模块落地（本轮增量）
+
+> 起因：用户给出约 60 个页面的功能清单（设备管理、能源管理、客户管理、生产物流管理、安全环保管理），
+> 要求「加一下这些功能」。本轮落地**设备管理 / 能源管理 / 生产物流管理 / 安全环保管理**四块，
+> 共新增 4 个后端 App、41 个数据模型、5 个迁移、137 个权限点、69 项菜单、4 个内置角色；
+> **客户管理深化（客户投诉、产品评价）与设备数采硬件接入明确不在本轮**（理由见 28.8）。
+
+### 28.1 需求清单逐项对照
+
+| 用户清单 | 落地情况 | 页面 / 接口 |
+| --- | --- | --- |
+| 设备基础信息管理：设备信息管理、设备类型管理、设备零部件管理、设备台账 | **已实现** | `/equipment/equipments`、`/equipment/types`、`/equipment/parts`、`/equipment/ledger` |
+| 备品备件、配件管理、故障保修 | **已实现** | `/equipment/spare-parts`、`/equipment/accessories`（配件视角复用备件台账）、`/equipment/fault-reports` |
+| 库存台账（备件现存量与寿命） | **已实现（只读）** | `/equipment/spare-part-stock`，数字来自仓储统一库存余额，不新建库存表 |
+| 采购申请（备件，兼容计划 / 紧急采购） | **已实现** | 菜单指向 `/procurement/requisitions`（`procurement.Requisition` 已有 `plan` / `urgent` 类型） |
+| 设备保养管理：项目 / 计划 / 任务 / 日历 / 记录 | **已实现** | `/equipment/maintenance-items`、`maintenance-plans`（可一键生成到期任务）、`maintenance-tasks`、`maintenance-calendar`、`maintenance-records` |
+| 设备维修管理：维修任务、维修记录 | **已实现** | `/equipment/repair-tasks`、`/equipment/repair-records` |
+| 点巡检管理：项目 / 任务 / 记录 | **已实现** | `/equipment/inspection-items`、`inspection-tasks`、`inspection-records` |
+| 设备异常上报：异常类型 / 任务 / 记录 | **已实现** | `/equipment/abnormal-types`、`abnormal-tasks`、`abnormal-records` |
+| 设备数采和监控（设备数据采集展示） | **未实现** | 需要采集网关 / 协议接入，属硬件接入阶段，见 `docs/hardware-integration.md` |
+| 能源管理：首页 / 设备监控 / 运行记录 / 报警 / 看板 / 报表 / 统计 | **已实现** | `/ems/home`、`/ems/monitor`、`/ems/run-records`、`/ems/alarms`、`/ems/kanban`、`/ems/report`、`/ems/statistics` |
+| 用水 / 用电 / 用气 / 用液统计 | **已实现** | 四条菜单共用 `/api/v1/ems/statistics/`，只固定 `medium` 参数 |
+| 基础管理：水价 / 电价 / 气价 / 液价 / 阈值 / 区域 / 设备 | **已实现** | `/ems/base/*`（价格按介质分页，阈值支持读数上下限、日用量、单耗、离线时长） |
+| 客户管理：客户投诉、产品评价 | **未实现** | 属 CRM 深化（阶段 6），见 28.8 |
+| 生产物流管理：自动化设备 / 任务管理 / 操作日志 | **已实现** | `/logistics/devices`、`/logistics/tasks`、`/logistics/logs` |
+| 安全环保管理：安全管理 / 环保管理 / 消防管理 / 设备设施安全 / 操作日志 | **已实现** | `/ehs/safety/*`、`/ehs/environment/*`、`/ehs/fire/*`、`/ehs/equipment-safety/*`、`/ehs/logs` |
+
+### 28.2 后端新增（4 个 App、41 个模型、5 个迁移）
+
+| App | 模型数 | 迁移 | 说明 |
+| --- | --- | --- | --- |
+| `apps/equipment` | 17 | `0001_initial`、`0002_...` | 设备类型 / 设备 / 零部件 / 备品备件、保养项目计划任务记录、报修单、维修任务记录、点巡检项目任务记录、异常类型任务记录 |
+| `apps/ems` | 7 | `0001_initial` | 计量区域、计量设备、能源价格、能源阈值、抄表读数、设备运行记录、能源报警 |
+| `apps/logistics` | 3 | `0001_initial` | 自动化设备、物流任务、操作日志 |
+| `apps/ehs` | 14 | `0001_initial` | 安全制度 / 培训 / 隐患 / 应急预案 / 事故、排污监测 / 固废危废 / 环保合规、消防设施 / 演练 / 作业许可、安全检查 / 特种设备检验、操作日志 |
+
+编码规则新增 30 条（`EQ` / `SP` / `MP` / `MT` / `MR` / `FR` / `RT` / `RR` / `IT` / `IR` / `AT` / `AR`、
+`EM` / `EAL` / `ERN`、`AD` / `LT`、`SRG` / `TRN` / `HZD` / `EPL` / `ACR` / `ENV` / `WST` / `CMP` / `FDR` / `FFC` / `WPR` / `SCH` / `SPI`），
+`CODE_RULES` 由 15 条增至 **45 条**。
+
+### 28.3 分层与业务规则的落实方式
+
+1. **状态只由服务层推进。** 保养 / 维修 / 点巡检任务、报修单、异常任务、能源报警、运行记录、
+   物流任务、隐患、事故、作业许可、环保合规检查的 `status` 在序列化器里一律 `read_only`，
+   前端点 PATCH 改不动；流转只能走动作接口（如 `.../dispatch/`、`.../finish/`、`.../verify/`）。
+   **本轮为 3 个序列化器补上了这个漏洞**（见 28.4）。
+2. **公司由服务端推导。** 设备 / 能源 / 物流 / EHS 的单据都挂在当前用户的公司下，
+   前端不传 `company_id`；越权写入由 `assert_in_scope` 拦截并返回 `OUT_OF_DATA_SCOPE`。
+3. **不碰库存表。** 备件现存量（库存台账）是只读汇总，数据来自 `wms` 的统一库存余额，
+   设备模块不写任何库存表；备件采购走既有 `procurement` 申请流程，不另建申请单。
+4. **环保达标由服务层判定。** 排污监测保存后由 `apply_monitor_compliance` 按「实测值 vs 排放限值」
+   自动写入 `is_compliant`，该字段只读，客户端改不动。
+5. **操作日志只读。** 物流与安全环保的操作日志由服务层在业务事务内写入，接口只提供列表 / 详情。
+
+### 28.4 本轮修复的两个真实缺陷（都会让页面直接不可用）
+
+| 缺陷 | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| `dispatch` 覆盖 `APIView.dispatch` | 报修单与物流任务**整个视图集**所有请求 500（`WSGIRequest has no attribute query_params`） | DRF `@action(..., url_path="dispatch")` 会把方法装成实例属性，与 `APIView.dispatch` 同名即覆盖 | 方法改名 `dispatch_repair` / `dispatch_task`，URL 仍是 `.../dispatch/`，权限键同步改名 |
+| DRF `UniqueTogetherValidator` 强制必填 | 保养计划 / 任务 / 记录、报修单、维修、点巡检、异常的新增全部 400「该字段是必填项」 | 模型上 `UniqueConstraint(company, xxx_no)` 被 DRF 转成唯一性校验器后，把服务端推导的 `company` 变成必填 | 新增 `DerivedCompanySerializerMixin.get_unique_together_validators()` 返回 `[]`，10 个「公司由服务端推导」的序列化器继承它；编号字段改 `allow_blank=True, default=""` |
+
+### 28.5 前端
+
+新增 58 个 `.vue` 页面（设备 20、能源 18、物流 3、安全环保 17）与 3 个共享组件
+（`EnergyChart.vue`、`EnergyStatisticsPanel.vue`、`WorkPermitPanel.vue`），
+新增 `frontend/src/api/energy.ts`。菜单仍由后端下发（`identity/menus/mine/`），
+前端没有硬编码业务菜单权限；`EMPTY_META` / `MetaPayload` / `MetaView` 三处枚举键同步扩充。
+
+### 28.6 测试（本轮新增）
+
+| 文件 | 用例数 | 覆盖重点 |
+| --- | --- | --- |
+| `backend/tests/test_equipment_api.py` | 12 | 公司范围、取号、保养到期任务幂等、任务完成生成记录并关闭报修单、点检异常转报修、状态不可 PATCH、只读库存台账 |
+| `backend/tests/test_ems_api.py` | 15 | 取号、倍率与上次读数算用量、读数回退拒绝、越限报警去重、离线扫描、运行记录单耗与报警、报表价格折算与 xlsx 导出、只读抄表 |
+| `backend/tests/test_logistics_api.py` | 11 | 取号、状态机跳步拒绝、故障设备不可下发、设备忙冲突、取消需理由、设备状态动作写日志、日志只读 |
+| `backend/tests/test_ehs_api.py` | 11 | 取号、隐患整改验收闭环（不通过退回）、事故调查整改关闭、动火作业必须监护人、许可驳回需理由、排污达标服务端判定、日志只读 |
+
+### 28.7 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db`（全量） | `381 passed in 201.53s` |
+| `pytest tests/test_equipment_api.py` | `12 passed` |
+| `pytest tests/test_ems_api.py` | `15 passed` |
+| `pytest tests/test_logistics_api.py` | `11 passed` |
+| `pytest tests/test_ehs_api.py` | `11 passed` |
+| `pytest tests/test_docs_sync.py` | `7 passed` |
+| `manage.py bootstrap_system`（开发库，幂等重跑） | `权限点：新增 0，更新 310，注册表共 310 条。` / `菜单：新增 0，更新 125，注册表共 125 条。` / `编码规则：新增 0，共计 45 条。` |
+| 前端 `npm run typecheck` | 退出码 `0`（vue-tsc） |
+| 前端 `npm run test` | `Test Files 15 passed (15) / Tests 241 passed (241)` |
+| 前端 `npm run build` | `✓ built in 16.91s` |
+
+### 28.8 未完成事项（不要按「能用」去承诺）
+
+1. ~~**设备数据采集与实时监控**未实现~~ —— **已于 §二十九补齐首版**（HTTP 上报入口 + 内置模拟器；
+   MQTT / Modbus 与真实设备联调仍未做）。能源数据的「在线 / 离线」在 `ems` 侧仍是抄表超时推断，
+   数采设备另有基于 `last_seen_at` 的在线状态。
+2. ~~**客户投诉与产品评价**未实现~~ —— **已于 §二十九补齐**（`apps/crm` 的 `CustomerComplaint` /
+   `ProductReview` 与两个页面）。
+3. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / 浏览器，本轮只做源码级与接口级验证。
+   请登录后确认：①左侧出现「设备管理 / 能源管理 / 生产物流管理 / 安全环保管理」四个目录；
+   ②设备保养计划能否生成到期任务；③抄表后报警是否按阈值生成。
+4. **EHS 与设备台账是两套表**：特种设备检验、本质安全检查引用设备台账但**不写设备表**，
+   安全检查发现问题也**不会自动生成隐患单**（需要人工在「隐患排查」登记），避免跨模块隐式副作用。
+5. **能源报表导出未做权限细分**：导出动作记审计日志（`EXPORT`），但与查看报表共用 `ems.report.view`。
+
+### 28.9 与既有文档的关系
+
+| 文档 | 变动 |
+| --- | --- |
+| `AGENTS.md` | 事实行更新为 `permissions=310 menus=125 models=127 migrations=24 builtin_roles=17` |
+| `docs/permission-matrix.md` | §三 / §四 按注册表**重新生成**（310 条权限 / 125 项菜单） |
+| `docs/requirements-matrix.md` | 新增 §一之十八 逐条对照 |
+| `docs/data-model.md` | 新增 §九 equipment / ems / logistics / ehs 表清单 |
+| `docs/test-report.md` | 新增 §二十七 本轮复验记录 |
+| `docs/assumptions.md` | 新增 §四之七 本轮实现假设与偏差 |
+| `docs/energy-calculation.md` | 补阶段 5 的计量、计价与报警口径 |
+| `docs/business-flows.md` | 新增 §13 设备保养与维修闭环、§14 隐患整改闭环 |
+| `docs/architecture.md` | §二 分层说明补四个新 App |
+| `docs/deployment.md` | 补 `manage.py ems_offline_check` 定时任务说明 |
+| `docs/user-guide.md` + `docs/user-guide.html` + `frontend/public/guide.html` | 能力表、菜单清单（125 项）、内置角色表同步并重新生成网页版 |
+
+> 上表是 §二十八 当时的记录。本轮（§二十九）已把 `AGENTS.md` 事实行更新为
+> `permissions=333 menus=134 models=134 migrations=27 builtin_roles=18`，
+> 并按注册表重新生成 `docs/permission-matrix.md` §三 / §四 与网页版说明（菜单 134 项）。
+
+## 二十九、客户投诉 / 产品评价 + 设备数采首版（本轮增量）
+
+> 起因：用户确认「客户管理：客户投诉、产品评价」与「设备管理：设备数采和监控」两项要补做
+> （上一轮 §二十八 明确标注为未实现）。本轮新增 `apps/iot`（5 个模型、1 个迁移）、
+> 扩展 `apps/crm`（+2 个模型、1 个迁移）、`apps/ems` 增 `source_ref`（1 个迁移）；
+> 新增 24 个权限点、9 项菜单、1 个内置角色、31 个后端用例。
+
+### 29.1 需求清单逐项对照
+
+| 用户清单 | 落地情况 | 页面 / 接口 |
+| --- | --- | --- |
+| 客户管理：客户投诉 | **已实现** | `/crm/complaints`（`accept` / `resolve` / `close` 动作接口） |
+| 客户管理：产品评价 | **已实现** | `/crm/product-reviews`（`reply` / `close` 动作接口） |
+| 设备管理：设备数采和监控 | **已实现（首版）** | 「设备数采和监控」目录：连接配置 / 数采设备 / 采集测点 / 设备监控 / 采集读数 / 采集日志 |
+
+### 29.2 后端新增
+
+| App | 模型数 | 迁移 | 说明 |
+| --- | --- | --- | --- |
+| `apps/crm` | +2（合计 4） | `0002_customercomplaint_productreview` | 客户投诉（`CMPL` 取号，`satisfaction` 约束 0~5）、产品评价（`PRV` 取号，`score` 约束 1~5） |
+| `apps/iot` | 5（新建） | `0001_initial` | 连接配置（`IOTCN`）、数采设备（`IOTGW`，含令牌摘要）、测点（`IOTPT`）、采集报文、标准化读数 |
+| `apps/ems` | 0（字段） | `0002_energyalarm_source_ref` | 报警增 `source_ref`，让数采报警按来源去重 |
+
+编码规则新增 5 条（`CMPL` / `PRV` / `IOTCN` / `IOTGW` / `IOTPT`），`CODE_RULES` 由 45 条增至 **50 条**。
+
+### 29.3 分层与业务规则的落实方式
+
+1. **状态只由服务层推进。** 投诉的「受理 → 处理 → 关闭」与评价的「回复 → 关闭」都是 Service 动作，
+   跳步抛 `StateConflict`（409），关闭前必须写处理措施（空措施 400）；`status` 与各时间戳字段在序列化器里只读，
+   每次流转写审计日志（`record_audit`），**不另建业务日志表**。
+2. **设备独立凭证，不复用员工会话。** `POST /api/v1/iot/ingest/` 显式 `authentication_classes = []`，
+   只认 `X-Device-Token`（或 `Authorization: Device <token>`）；库里只存 SHA-256 摘要，
+   明文令牌仅在生成 / 轮换响应里返回一次，轮换后旧令牌立即失效。
+3. **采集读数不写能源抄表。** 测点上的 `meter` 只是对照线索；越限与离线统一调用
+   `apps/ems/services.py::raise_alarm` 写入能源报警台账（`source_ref` = `iot:<设备编码>:<测点编码>`），
+   **没有**在 iot 模块直接写 EMS 的表。
+4. **模拟数据必须可辨识。** `is_simulated` 从连接 → 设备 → 报文 → 读数逐级传递；模拟设备**不参与离线判定**；
+   模拟器走真实采集链路（`services.ingest_report`），不绕过校验直接写库。
+5. **公司范围由服务端推导。** 测点的公司取自所属设备，序列化器不接受 `company_id`；
+   跨公司引用（如把 A 公司客户挂到 B 公司投诉）在 `validate()` 与 `assert_object_in_scope` 两处拒绝。
+
+### 29.4 本轮发现并修复的问题
+
+| 问题 | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 数采报警互相顶掉 | 数采侧同一天多个测点越限时只留得下一条报警 | `raise_alarm` 的去重条件是「公司 + 类型 + 当日窗口 + 仪表」，而数采报警没有仪表（`meter` 为空），同类型的都被压成一条 | `EnergyAlarm` 增 `source_ref` 并纳入去重条件；EMS 自身报警 `source_ref` 留空，原口径不变（`test_over_limit_alarm_is_raised_once_per_day` 仍通过） |
+| 新增代码未过 ruff | `ruff check` 报 5 项（未使用的导入、导入未排序、嵌套 `if`） | 新模块编写时未跑 ruff | 清理未用导入、合并嵌套判断；`All checks passed!` |
+
+### 29.5 前端
+
+新增 5 个 `.vue` 页面（`iot/GatewayList`、`iot/PointList`、`iot/DeviceMonitor`、`iot/ReadingList`、
+`iot/MessageList`）与 `frontend/src/api/iot.ts`（设备监控聚合接口 + 令牌轮换动作）；
+`views/iot/ConnectionList.vue`、`views/crm/ComplaintList.vue`、`views/crm/ProductReviewList.vue` 为前序增量。
+菜单仍由后端下发（`identity/menus/mine/`）；`EMPTY_META` / `MetaPayload` / `MetaView` 三处枚举键同步扩充
+（投诉 / 评价 5 个 + 数采 7 个）。设备令牌明文只在弹出窗口里展示一次，并提示「关闭后只能重新轮换」。
+
+### 29.6 测试（本轮新增）
+
+| 文件 | 用例数 | 覆盖重点 |
+| --- | --- | --- |
+| `backend/tests/test_crm_api.py` | 28（+11） | 投诉取号、完整生命周期与审计、跳步 409、未填处理措施 400、状态不可 PATCH、跨公司客户拒绝、公司范围、权限 403、评价取号与评分校验、回复 / 关闭生命周期、元数据枚举 |
+| `backend/tests/test_iot_api.py` | 20（新建） | 未登录拒绝、无令牌 / 用员工会话上报被拒、令牌只存摘要、读数入库与双重去重、模拟标识、失败留痕、超批次与非法协议 400、按设备限流 429、越限报警每测点一条、离线扫描跳过模拟设备与最近上报设备、令牌轮换使旧令牌失效、测点公司由设备推导、取号、公司范围、权限 403、监控聚合、模拟器命令、元数据枚举 |
+
+### 29.7 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check apps config tests` | `All checks passed!` |
+| `pytest tests/test_crm_api.py -q --reuse-db` | `28 passed in 15.43s` |
+| `pytest tests/test_iot_api.py -q --reuse-db` | `20 passed in 5.88s` |
+| `pytest tests -q --reuse-db`（全量） | `412 passed in 203.42s (0:03:23)` |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed in 0.13s` |
+| `manage.py bootstrap_system`（开发库，幂等重跑） | `权限点：新增 0，更新 333，注册表共 333 条。` / `菜单：新增 0，更新 134，注册表共 134 条。` / `编码规则：新增 0，共计 50 条。` / `角色 iot_admin（设备数采管理员）：新增，权限 21 个。` |
+| 前端 `npm run typecheck` | 退出码 `0`（vue-tsc） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 249 passed (249)` |
+| 前端 `npm run build` | `✓ built in 12.31s` |
+| `python scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+
+### 29.8 未完成事项（不要按「能用」去承诺）
+
+1. **只实现了 HTTP 上报与内置模拟器**：连接配置可以登记 `mqtt` / `modbus`，但采集入口对未实现的协议
+   返回 `PROTOCOL_NOT_IMPLEMENTED`（409）——**协议适配与真实设备联调未做**（待现场确认协议）。
+2. **没有采集数据的小时 / 日汇总表与原始数据归档清理**：监控页按原始读数实时聚合，数据量增长后需要补汇总与归档。
+3. **平台没有内置调度器**：数采离线扫描要由部署侧配置 `manage.py iot_offline_check`
+   （能源侧同理是 `ems_offline_check`），当前只在开发机手工执行过。
+4. **投诉不含外部渠道自动接入、自动分派与统计报表**；投诉与订单 / 批次的一键追溯仍是文字登记（`related_no`）。
+5. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev` / 浏览器，
+   四个新页面只做了源码级（`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）与接口级验证。
+   请登录后确认：①左侧出现「设备数采和监控」目录与 6 个页面；②「数采设备」里能生成令牌并只显示一次；
+   ③用 `python manage.py iot_simulate --seed-demo --company <ID> --rounds 2 --out-of-range` 造数据后，
+   「设备监控 / 采集读数 / 采集日志」有数据且带「模拟」标签，能源报警台账里出现越限报警。
+6. **客户投诉 / 产品评价的统计报表**未做（本轮只做登记与处理闭环）。
+
+### 29.9 与既有文档的关系
+
+| 文档 | 变动 |
+| --- | --- |
+| `AGENTS.md` | 事实行更新为 `permissions=333 menus=134 models=134 migrations=27 builtin_roles=18`；§八 阶段边界改「设备数采首版 + 客户投诉与产品评价已完成」 |
+| `README.md` | 当前状态、模块表（+2 行）、未开始清单、测试结果数字同步 |
+| `docs/permission-matrix.md` | §三 / §四 按注册表**重新生成**（333 条权限 / 134 项菜单） |
+| `docs/requirements-matrix.md` | 新增 §一之十九；REQ-11.3-01~09 由「未开始」改为「已完成」；REQ-12.2 / 12.3 / 12.4 闭环状态更新 |
+| `docs/data-model.md` | `ems_energyalarm` 补 `source_ref`；新增 §十 crm / iot 表清单 |
+| `docs/test-report.md` | 新增 §二十八 本轮复验记录 |
+| `docs/assumptions.md` | §四之七 补 13~18 条实现假设；§六 未做清单同步 |
+| `docs/hardware-integration.md` | 状态改为「首版已实现」；§六 未完成清单勾掉已做项，保留 MQTT / Modbus 等 |
+| `docs/business-flows.md` | §12.2 / 12.3 / 12.4 状态更新；新增 §十五 设备数采闭环 |
+| `docs/architecture.md` | §三 目录树与「已创建 / 未创建」清单同步（18 个 App） |
+| `docs/user-guide.md` + `docs/user-guide.html` + `frontend/public/guide.html` | 能力表、菜单清单（134 项）、内置角色表同步，新增 §6.10 / §6.11 操作说明并重新生成网页版 |
+| `frontend/src/views/system/ProgressView.vue` | 实施进度页的阶段说明与「已完成 / 未完成」清单同步 |
+
+## 三十、采集统计与客户服务统计 + 两处实测缺陷修复（本轮增量）
+
+> 起因：上一轮 §29.8 列出的未做项里，「数采采集数据的汇总与归档」与「客户投诉 / 产品评价的统计报表」
+> 是**本方能自行完成**的部分。本轮 **不新增模型、不新增迁移、不新增权限点、不新增菜单**
+> （事实行仍为 `permissions=333 menus=134 models=134 migrations=27 builtin_roles=18`），
+> 只新增 3 个**只读统计接口**与前端统计区块，并修掉 3 个实测问题；后端用例 412 → **424**。
+
+### 30.1 本增量内容
+
+| 能力 | 落地情况 | 页面 / 接口 |
+| --- | --- | --- |
+| 设备数采：采集统计 | **已实现** | `GET /api/v1/iot/statistics/`；「设备数采和监控 → 设备监控」下方「采集统计」区块 |
+| 客户投诉：统计 | **已实现** | `GET /api/v1/crm/complaints/statistics/`；「客户管理 → 客户投诉」顶部统计卡片与分布表 |
+| 产品评价：统计 | **已实现** | `GET /api/v1/crm/product-reviews/statistics/`；「客户管理 → 产品评价」顶部统计卡片与评分分布 |
+
+三个接口都是**只读**：不新增写路由，也不复用「列表」接口做客户端聚合（避免把整表拉到浏览器）。
+
+### 30.2 后端新增
+
+| 文件 | 内容 |
+| --- | --- |
+| `apps/iot/selectors.py`（新建） | `reading_statistics(user, *, granularity, since, until, company_id, gateway_id, point_id, is_simulated, limit)`：按「测点 × 时间桶」聚合采集读数，返回 `rows` / `buckets` / `totals` / `truncated` / `row_limit` |
+| `apps/crm/selectors.py`（新建） | `complaint_statistics(...)` 与 `product_review_statistics(...)`：总量、未关闭 / 待回复、状态 / 类型 / 级别 / 来源分布、满意度平均分、评分分布与好评率 |
+| `apps/iot/views.py` + `apps/iot/urls.py` | 新增 `IoTStatisticsView`（权限 `iot.reading.view`）与 `statistics/` 路由 |
+| `apps/crm/views.py` | 两个 ViewSet 各加一个 `@action(url_path="statistics")`，权限复用 `crm.complaint.view` / `crm.product_review.view` |
+| `apps/core/services.py` | 新增 `parse_business_moment(value, *, field, end_of_day)`：把查询串里的日期 / 日期时间按**业务时区**解析成 UTC 时刻 |
+
+**统计口径（刻意如此，不要改成汇总表）**：
+
+1. **一律按明细实时聚合，不落汇总表**——与 `apps/ems/selectors.py` 同一口径。设备会补发、会重传，
+   任何「小时 / 日汇总表」在一次补发之后就会与明细对不上；实时聚合保证页面上的数字永远能回到
+   「采集读数 / 投诉 / 评价」列表逐条核对。
+2. **分桶按业务时区**（`YISHANG['BUSINESS_TIME_ZONE']`，默认 Asia/Shanghai）。按 UTC 截断会把北京时间
+   08:00 之前的读数算进前一天。
+3. **超限只做标记、不生成报警**：报警的判定与去重只发生在采集入库路径（`services.evaluate_point_limits`）
+   与离线扫描上，避免同一份数据两处报警。
+4. **不粉饰的空样本**：窗口内没有已回访样本时，平均满意度返回 `null`（前端显示「未回访」），
+   而不是拿 0 分拉低平均值；未评价条数单独返回 `unrated_total`。好评 = 4 分及以上，`good_rate` 按百分比返回。
+5. **时间窗上限是为了保护接口**：按小时默认近 48 小时、最多 31 天；按天默认近 30 天、最多 1096 天（约 3 年）；
+   明细行默认 500 行、最多 2000 行，超出只标记 `truncated`，趋势桶最多 200 个。
+
+### 30.3 前端
+
+| 文件 | 内容 |
+| --- | --- |
+| `frontend/src/components/EntityListPage.vue` | 新增 `#summary` 插槽（位于页头与表格之间）与 `@refresh` 事件；`refresh()` = 重新拉列表 + 抛出 `refresh` 事件，供列表页在「刷新」时同步刷新统计 |
+| `frontend/src/views/crm/ComplaintList.vue` | 顶部 3 张统计卡片（总数 / 未关闭 / 平均满意度，未回访时显示「未回访」）+ 分布表（处理状态 / 投诉类型 / 投诉级别 / 投诉来源） |
+| `frontend/src/views/crm/ProductReviewList.vue` | 顶部 4 张统计卡片（总数 / 待回复 / 平均评分 / 好评率）+ 评分分布表（含各分数占比） |
+| `frontend/src/views/iot/DeviceMonitor.vue` | 新增「采集统计」区块：按小时 / 按天切换、统计区间提示、4 张卡片（样本数 / 覆盖测点 / 超限时间桶 / 读数合计）+ 明细表（时间桶 / 设备 / 测点 / 样本数 / 最小 / 最大 / 平均 / 单位 / 越限 / 数据标识） |
+| `frontend/src/api/crm.ts`（新建）、`frontend/src/api/iot.ts`、`frontend/src/types/models.ts` | 三个统计接口的封装与类型定义 |
+
+统计请求失败时**静默降级**（不打断列表与页面），页面主体功能不受影响。
+前端未新增 scoped 样式，仍只用共享原语（`ys-stat-cards` / `ys-ml-4` / `ys-muted` 等），
+`frontend/tests/styles.spec.ts` 与 `views-compile.spec.ts` 继续通过。
+
+### 30.4 本轮发现并修复的三个问题
+
+| 问题 | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 日期型 `until` 被静默当成当天 00:00 | 统计接口传 `until=今天` 时，**当天全部数据被排除** | Python 3.11+ 的 `datetime.fromisoformat` 也接受纯日期串，先走它则 `end_of_day=True` 永远不生效 | `parse_business_moment` 先 `date.fromisoformat` 判纯日期，再回退到 `datetime.fromisoformat`，并加注释说明原因 |
+| 设备监控接口 N+1 查询 | 测点多时，设备监控页对**每个测点**单独查一次最新读数 | 逐点查询 | 改为「每测点取最新 id」子查询（`Subquery(latest_ids.values("id")[:1])`）一次性取回再按 `point_id` 映射；无读数的测点仍会显示（`latest_value=null`） |
+| 新增用例未过 ruff | `ruff check apps config tests` 报 5 项：`tests/test_iot_api.py` 的导入块未排序（`I001`）、4 处 `datetime(tzinfo=timezone.utc)` 应使用 `datetime.UTC`（`UP017`） | 新增用例时未跑 ruff（写入在测试之后） | 改为 `from datetime import UTC, datetime, timedelta`，4 处改用 `tzinfo=UTC`；`ruff check --no-cache apps config tests` → `All checks passed!` |
+
+### 30.5 测试（本轮新增）
+
+后端新增 12 个用例（`tests/test_iot_api.py` +6、`tests/test_crm_api.py` +6）：
+
+- 数采统计：权限 403；**按业务时区分桶**（并验证「删掉明细后统计跟着变」，证明不是汇总表）；
+  筛选（设备 / 测点 / 模拟标识）与 `is_simulated` 判定；非法粒度与超宽区间被拒；
+  公司范围收敛；设备监控每测点取最新读数。
+- 客户服务统计：投诉总量与分布；无评分样本时平均满意度为 `null` 且 `unrated_total` 正确；
+  统计接口权限 403；公司范围收敛；评价平均分与好评率；评价统计的日期筛选（含 `until` 含当天）。
+
+### 30.6 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_iot_api.py -q --reuse-db` | `26 passed` |
+| `pytest tests/test_crm_api.py -q --reuse-db` | `34 passed` |
+| `pytest tests -q --reuse-db`（全量） | **`424 passed in 209.98s (0:03:29)`** |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed` |
+| 前端 `vue-tsc`（等价执行） | 退出码 `0`（两个 project 均无输出） |
+| 前端 `npm run test`（等价执行） | `Test Files 15 passed (15)` / `Tests 249 passed (249)` |
+| 前端 `npm run build`（等价执行） | `✓ built in 12.87s` |
+| `python scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+
+> 说明：本轮没有新增模型 / 迁移 / 权限点 / 菜单，因此 `makemigrations --check` 预期仍为
+> `No changes detected`；沙箱内该命令因写入 `.tmp` 受限未能执行，已按「未执行」处理（见 `docs/test-report.md` §二十九）。
+
+### 30.7 未完成事项（不要按「能用」去承诺）
+
+1. **协议适配与真实设备联调仍未做**：`mqtt` / `modbus` 依旧是「待协议确认」的选项，
+   采集入口对未实现协议返回 `PROTOCOL_NOT_IMPLEMENTED`（409）。
+2. **没有汇总表，也没有原始数据归档 / 清理任务**：数据量继续增长后仍需补归档策略；
+   本轮只把「按天」区间上限放宽到 1096 天，用来替代「查历史报表」的部分诉求。
+3. **投诉 / 评价仍未做外部渠道自动接入与自动分派**；统计只做「按明细现算」，没有定时快照与趋势同环比。
+4. **数采统计没有做超大数据量的性能压测**：按明细聚合在测点 × 时间桶量级上成本可控，
+   但单公司读数达到千万级时的响应时间**未测量**。
+5. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev` / 浏览器，
+   本轮前端改动只做了源码级（`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）与构建级验证。
+   请登录后核对：①「客户管理 → 客户投诉 / 产品评价」列表顶部的统计卡片与分布；
+   ②「设备数采和监控 → 设备监控」的「采集统计」区块（先跑
+   `python manage.py iot_simulate --seed-demo --company <ID> --rounds 2 --out-of-range` 造数据）。
+
+### 30.8 与既有文档的关系
+
+| 文档 | 变动 |
+| --- | --- |
+| `AGENTS.md` | 事实行**数字不变**（本轮无模型 / 迁移 / 权限点 / 菜单变化）；§八 阶段边界补「采集统计与客户服务统计已实现」 |
+| `README.md` | 当前状态与模块表补统计能力；测试结果数字 **412 → 424**；下一步清单勾掉已做项 |
+| `docs/requirements-matrix.md` | 新增 §一之二十；数采「监控与数据查看」与投诉 / 评价条目补统计能力与用例名 |
+| `docs/test-report.md` | 新增 §二十九 本轮复验记录 |
+| `docs/data-model.md` | §十 补「统计按明细实时聚合、不新增汇总表」 |
+| `docs/api-conventions.md` | §一 补设备 / 能源 / 安全环保 / 物流 / 数采模块前缀，并列出本条新增的三个只读统计接口 |
+| `docs/architecture.md` | §三 「未创建模块 → 已创建」清单里 `iot` 的说明补「只读采集统计」 |
+| `docs/hardware-integration.md` | §六 未完成清单同步（勾掉「实时聚合查询」，保留归档清理，注明按天已支持 ~3 年） |
+| `docs/assumptions.md` | §四之七 追加 19~20 条实现假设 |
+| `docs/user-guide.md` + `docs/user-guide.html` + `frontend/public/guide.html` | 能力表、§6.10 / §6.11 统计说明、§8.5 新增错误码，并重新生成网页版 |
+| `frontend/src/views/system/ProgressView.vue` | 「已完成 / 未完成」清单同步 |
+
+## 三十一、质量管理（QMS）
+
+> 来源：任务书 §10.9 QMS 质量（阶段 3），以及「已有但功能不足」清单中对制造执行系统（MES）的补充项
+> 「质量在线检测与分析、产品质量知识库」。本轮新增应用 `apps/qms`，
+> 事实行由 `permissions=333 menus=134 models=134 migrations=27` 变为
+> `permissions=350 menus=139 models=139 migrations=28`（`builtin_roles=18` 不变）。
+
+### 31.1 后端
+
+| 文件 | 内容 |
+| --- | --- |
+| `apps/qms/models.py`（新建） | 5 个模型：`QualityInspectionItem`（检验项目，定量 / 定性、上下限含端点）、`QualityInspectionOrder`（检验单，`source_no` 引用来源单据）、`QualityInspectionResult`（结果明细，**不挂 `company`**，归属由单据确定）、`QualityAlert`（质量报警）、`QualityIssue`（质量问题知识库） |
+| `apps/qms/services.py`（新建） | `judge_measured_value` / `_row_judgement`（定量按上下限判定）、`record_results`（`update_or_create` 覆盖，判定后拒改）、`submit_order`（无结果不许提交）、`judge_order`（结论不得与结果矛盾；让步接收必须有说明；不合格自动建报警且**同单只建一条**）、`close_order`（报警未闭环拒绝）、`handle_alert` / `close_alert`（必须写说明）、`publish_issue` / `archive_issue` / `create_issue_from_alert`、`next_*_code` |
+| `apps/qms/selectors.py`（新建） | `inspection_statistics`：单据量、**合格率（分母只含已判定单据）**、判定分布、不合格项 TOP10、未关闭报警与级别分布；**按明细实时聚合、不落汇总表** |
+| `apps/qms/serializers.py`、`views.py`、`urls.py`（新建） | 4 个 ViewSet + 动作端点 `results/`（GET 查看 / POST 录入）、`submit/`、`judge/`、`close/`、报警 `handle/` / `close/` / `create-issue/`、知识库 `publish/` / `archive/`、只读 `statistics/` |
+| `apps/qms/migrations/0001_initial.py`（新建） | 5 张表 + 唯一约束 / 检查约束 / 索引 |
+| `config/settings/base.py`、`config/urls.py` | 注册 `apps.qms`，挂载 `/api/v1/qms/` |
+| `apps/identity/permissions_registry.py` | 17 个 `qms.*` 权限点；菜单目录「质量管理」+ 4 个页面（`sort_order` 80~89 区间，排在「仓储管理」之后、「设备管理」之前）；`MODULE_LABELS` 登记 `qms` |
+| `apps/core/management/commands/bootstrap_system.py` | `CODE_RULES` 新增 `QIT` / `QC` / `QAL` / `KI`；内置角色「质检员」并入 `qms.` 权限 |
+| `apps/core/views.py::MetaView` | 下发 9 个质量枚举，前端不硬编码中文标签 |
+
+**一条铁律：检验结论不允许粉饰。** 定量项目（有上下限）的 `is_qualified` **只由服务层按标准区间计算**，
+请求里携带的结论被忽略；定性项目必须由检验员给出结论。判定时再校验一次：
+存在不合格项不能判「合格」，全部合格不能判「不合格」，判「让步接收」必须写清原因。
+判定不合格自动生成一条质量报警，**同一检验单重复判定不会重复报警**；
+报警未闭环时检验单**关不掉**，避免「点一下就算处理完」。
+
+### 31.2 本轮发现并修复的两个问题
+
+| 问题 | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 录入结果后接口返回旧数据 | `POST /qms/inspections/{id}/results/` 返回的 `results` 为空，页面看不到刚录入的行 | `get_object()` 的 `prefetch_related("results__item")` 缓存已过期，`record_results` 新建的明细不在缓存里 | 写入后重新取一次对象（`self.get_queryset().get(pk=...)`）再序列化 |
+| 一个 action 两种权限，写路径被放行 | 只有查看权限的「只读用户」也能录入检验结果 | 权限按 `self.action` 解析，`results` 一个 action 只能声明一份编码，`required_permissions["record_results"]` 是**死代码** | 写路径在方法内部用 `require_codes(request.user, "qms.inspection.update")` 做二次校验，并加用例锁定 |
+
+> 另外修正了一处**平台约定冲突**：`apps/core/viewsets.py` 把视图允许的方法限定为
+> `get / post / patch`，而 `results/` 最初设计为 `GET + PUT`，导致写操作直接 405。
+> 已改为 `GET + POST`（动作接口一律 POST），与全平台一致。
+
+### 31.3 前端
+
+| 文件 | 内容 |
+| --- | --- |
+| `frontend/src/views/qms/InspectionItemList.vue`（新建） | 检验项目台账；列表里直接显示标准区间与判定方式 |
+| `frontend/src/views/qms/InspectionOrderList.vue`（新建） | 检验单：结果录入弹窗（选项目、填实测值 / 定性结论，实时显示标准区间与系统判定说明）、提交 / 判定 / 关闭 |
+| `frontend/src/views/qms/QualityAlertList.vue`（新建） | 质量报警：开始处理 / 关闭（必须写说明）/ 沉淀知识库 |
+| `frontend/src/views/qms/QualityIssueList.vue`（新建） | 质量问题知识库：发布 / 归档 |
+| `frontend/src/api/endpoints.ts`、`frontend/src/types/models.ts`、`frontend/src/stores/meta.ts` | 4 个接口封装、5 个类型定义、9 个枚举键 |
+| `frontend/tests/fixtures/menu-components.json` | 从注册表按运行顺序**整体重新导出**（139 项），顺带消除此前累积的顺序漂移 |
+| `frontend/src/views/system/ProgressView.vue` | 「已完成 / 未完成」清单同步 |
+
+前端未新增 scoped 样式，只使用共享原语（`ys-mono` / `ys-ml-4` / `ys-muted` / `ys-form-error`），
+`frontend/tests/styles.spec.ts` 与 `views-compile.spec.ts` 继续通过。
+
+### 31.4 测试（本轮新增）
+
+后端新增 14 个用例（`tests/test_qms_api.py`）：检验项目取号与公司范围（越界写入 403 `OUT_OF_DATA_SCOPE`）；
+定量项目必须给出一侧界限；**定量结果由服务层判定（客户端谎报「合格」被忽略）**；
+定性项目必须给出结论；无结果不许提交、`status` 不能用 PATCH 推进、跳步 409；
+结论不得与结果矛盾；**判定不合格生成唯一报警且报警未闭环时单据关不掉**；
+让步接收必须写说明且不生成报警；报警转知识库保留来源链路；知识库发布 / 归档；
+**合格率分母只含已判定单据**（草稿不计入，让步接收单列）；
+公司范围在报警与知识库上生效；只读角色不能写入；受检物料必须与单据同公司。
+
+### 31.5 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py migrate` | `Applying qms.0001_initial... OK` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_qms_api.py -q --reuse-db` | `14 passed` |
+| `pytest tests -q --reuse-db`（全量） | **`438 passed in 242.34s (0:04:02)`** |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | 随全量通过（事实行已同步为 `permissions=350 menus=139 models=139 migrations=28 builtin_roles=18`） |
+| 前端 `npm run typecheck` | 通过（退出码 `0`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 253 passed (253)` |
+| 前端 `npm run build` | `✓ built in 15.70s` |
+| `python scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+
+> 顺带修掉一个**与时钟相关的用例缺陷**：`test_iot_api.py::test_device_monitor_picks_latest_reading_per_point`
+> 用「本地日期字符串前缀」比对接口返回的 **UTC** 时间戳，在北京时间 00:00~09:00 之间跑必然失败。
+> 已改为比对**时刻**（`datetime.fromisoformat(...) == 期望时刻.astimezone(UTC)`），与运行时间无关。
+
+### 31.6 未完成事项（不要按「能用」去承诺）
+
+1. **检验标准的版本快照未做**：检验单保存受检对象与来源单据，但标准改动不会回写历史单据；
+   面向物料的「检验标准集 / 版本」还没有建模。
+2. **返工 / 退货 / 报废的处置工单未做**：本轮落地的是「合格 / 不合格 / 让步接收 + 报警闭环」。
+3. **检测仪器直连未做**：结果全部人工录入，没有在线检测分析设备的采集接口。
+4. **与既有流程尚未接线**：`procurement.receipt.inspect`（收货单人工判定）与 `wms` 的质量放行仍是独立路径，
+   QMS 检验单没有取代它们；按工艺路线 `is_quality_gate` 决定质检点需要 MES 落地后一并做。
+5. **MES 仍未开始**：生产工单与报工是本轮清单里最大的一块，尚未实现。
+6. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev` / 浏览器，
+   本轮前端改动只做了源码级（`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）与构建级验证。
+   请登录后核对：「质量管理 → 检验项目 / 检验单 / 质量报警 / 质量问题知识库」四个页面，
+   以及检验单的「录入结果」弹窗（定量项应显示「系统判定」，定性项才出现结论下拉）。
+
+### 31.7 与既有文档的关系
+
+| 文档 | 变动 |
+| --- | --- |
+| `AGENTS.md` | 事实行改为 `permissions=350 menus=139 models=139 migrations=28 builtin_roles=18`；§八 阶段边界补 QMS，并明确 MES、销售计划 / 分销商 / 市场预测、供应商寻源与量化评价、跨系统数据交换、工业终端安全、OEE、职业健康、能源调度仍未实现 |
+| `README.md` | 权限 / 菜单数字、当前状态、模块表新增「质量管理（阶段 7 首块）」、下一步清单勾掉 QMS 并列出未做项 |
+| `docs/requirements-matrix.md` | 新增 §一之二十一（质量逐条追踪）；§10.9 QMS 逐条状态由「未开始」改为实际状态；§十六 阶段计划表按实际进度重写 |
+| `docs/architecture.md` | §三 App 清单加 `qms`，「已创建」改为 19 个，「未创建」只剩 `mes / endpoint_security` |
+| `docs/data-model.md` | 新增 §十一 质量管理表清单（5 张表 + 跨模块引用边界 + 统计口径） |
+| `docs/api-conventions.md` | §一 模块前缀补 `qms`，并说明检验单动作端点、`results/` 的 GET/POST 与二次权限校验 |
+| `docs/permission-matrix.md` | §三 / §四 按注册表整体重新生成（350 条权限 / 139 项菜单） |
+| `docs/test-report.md` | 新增 §三十 本轮复验记录 |
+| `docs/assumptions.md` | 新增 §四之八（检验结论不接受客户端指定、结果覆盖口径、不合格唯一报警、报警未闭环不可关单、标准快照缺口、与既有质量路径并行、结果人工录入、统计口径） |
+| `docs/acceptance.md` | §七 未通过 / 未执行项补质量条目；§八 验收结论补「阶段 3 第四步首块：通过（含未实现项声明）」并更新「不声称已完成」；新增 §五之五 验收明细 |
+| `docs/user-guide.md` + `docs/user-guide.html` + `frontend/public/guide.html` | 能力表新增质量管理、§2.2 未实现项收窄、菜单清单更新为 139 项、新增 §6.12 质量管理与 §8.6 错误码，并重新生成网页版 |
+| `frontend/src/views/system/ProgressView.vue` | 阶段 3 说明与「已完成 / 未完成」清单同步 |
+
+
+## 三十二、生产执行（MES）
+
+> 用户要求「继续帮我做」。本轮交付「订单到交付」闭环的最后一块：**生产执行（MES）**，
+> 并把 MRP 的**在制供给**与**生产建议转单**真正接入。
+> 新增 `apps/mes`（**4 个模型 / 1 个迁移 / 10 个权限点 / 3 项菜单**），
+> 事实行由 `permissions=350 menus=139 models=139 migrations=28 builtin_roles=18` 变为
+> `permissions=360 menus=142 models=143 migrations=29 builtin_roles=19`。
+
+### 32.1 交付内容
+
+| 能力 | 实现位置 | 页面 / API |
+| --- | --- | --- |
+| 生产工单（草稿 / 下达 / 生产中 / 已完工 / 已关闭 / 已取消） | `apps/mes/models.py::ProductionOrder` | 「生产执行 → 生产工单」；`/api/v1/mes/orders/` |
+| 工单下达（冻结 BOM / 工艺快照、展开用料与工序） | `apps/mes/services.py::release_order` | `POST /api/v1/mes/orders/{id}/release/` |
+| 生产领料（经统一库存服务过账） | `apps/mes/services.py::issue_materials` → `apps/wms/services/stock.py` | `POST /api/v1/mes/orders/{id}/issue-materials/` |
+| 报工（数量 / 工时 / 不良，守恒校验） | `apps/mes/services.py::report_production` | `POST /api/v1/mes/orders/{id}/report/`；`/api/v1/mes/reports/`（只读台账） |
+| 完工（工序完成 + 质检点判定）与完工入库 | `apps/mes/services.py::complete_order` / `receipt_finished_goods` | `POST …/complete/`、`…/receipt/` |
+| 关闭 / 取消（必填原因） | `apps/mes/services.py::close_order` / `cancel_order` | `POST …/close/`、`…/cancel/` |
+| 质检点自动开 QMS 检验单 | `apps/mes/services.py::_ensure_gate_inspection` → `apps/qms/services.py` | 报工时内部触发（校验 `qms.inspection.create`） |
+| 生产统计 | `apps/mes/selectors.py::production_statistics` | `GET /api/v1/mes/orders/statistics/` |
+
+关键设计：
+
+- **工单下达即冻结快照**：`bom_snapshot` / `routing_snapshot`（JSON）随工单落库，
+  不单独建快照表（ADR-08）；之后工程数据出新版本**不影响已下达工单**。
+- **完工数量取末道工序合格数**（按工单汇总所有工序会重复计数），
+  `scrap_quantity` 取全工序报废之和。
+- **报工只追加、不可回改**：报工台账无修改接口，填错补一条返工报工。
+- **质检点是完工硬门**：工序报满自动开检验单，未判定 / 不合格均不放行。
+
+### 32.2 两处跨模块接线（本轮关键）
+
+1. **MRP 在制供给**（`apps/planning/mrp.py`）：新增 `_in_progress_supplies()`，
+   取**已下达 / 生产中**工单的未完工数量。**这里修了一个真实缺陷**：
+   原实现把在制写进 `supplies`，但净算只认 `ON_ORDER`，导致**在制供给从未参与净算**。
+   现已把 `_net_item` 的 `on_order_by_bucket` 改为 `inbound_by_bucket`，同时纳入两者。
+2. **MRP 生产建议转单**：`convert_suggestion()` 的生产分支改为
+   `_convert_production_suggestion()`，生成**草稿 MES 工单**（`source_type=mrp_suggestion` + `source_no` + `DocumentLink`）。
+   **不自动下达**：下达会冻结快照并生成工序与用料，是独立动作，
+   由计划员确认后触发——转单不等于承诺产能。旧错码 `PRODUCTION_ORDER_NOT_IMPLEMENTED` 随之废弃。
+
+### 32.3 本轮修复的四个缺陷（均已复验）
+
+| 缺陷 | 现象 | 修正 |
+| --- | --- | --- |
+| `progress_rate` 输出 `0E+6` | Serializer 直接输出 `Decimal`，零值被序列化为科学计数法 | 改为 `_percent()`：Decimal×100 后保留 2 位，输出 `"0.00"` |
+| 非草稿工单表头未冻结 | PATCH 能改已下达工单的数量 / 排期 | `perform_update()` 新增状态校验，报 **409 `STATE_CONFLICT`** |
+| MRP 在制供给不参与净算 | 供给行写入了，但净算只认采购在途 | `_net_item` 改用 `inbound_by_bucket`（同纳 `ON_ORDER` 与 `IN_PROGRESS`） |
+| `mrp.convert_suggestion` docstring 过期 | 仍写着「生产建议不在此转单」 | 同步为「按类型分流」，与代码一致 |
+
+### 32.4 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_mes_api.py -q --reuse-db` | `32 passed` |
+| `pytest tests/test_mrp.py -q --reuse-db` | `34 passed` |
+| `pytest tests -q --reuse-db`（全量） | **`472 passed in 354.92s (0:05:54)`** |
+| 前端 `npm run typecheck` | 通过（退出码 `0`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 255 passed (255)` |
+| 前端 `npm run build` | `✓ built in 16.95s` |
+
+### 32.5 未完成事项（不要按「能用」去承诺）
+
+1. **线体排产**：工单可指定厂区 / 车间 / 线体，但没有排产优化与产能冲突检查。
+2. **裁剪任务 / 裁片批次**、**工位派工与接单**未建模。
+3. **在制品转移与独立返工工单**：返工只以报工类型与数量留痕，
+   也没有「返工报工必须引用原不良行」的强约束。
+4. **扫码 / RFID 与硬件控制**：无协议不伪造，报工全部人工。
+5. **工序级良率与 OEE**：需设备运行时长，本轮未算；工单成本也未算。
+6. **并发报工 / 并发领料的多连接压测未执行**（幂等与锁已用例覆盖）。
+7. **浏览器截图级观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev` / 浏览器，
+   本轮前端只做了源码级（`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）与构建级验证。
+   请登录后核对「生产执行 → 生产工单 / 生产报工」两个页面与工单详情抽屉、「报工」弹窗。
+
+### 32.6 与既有文档的关系
+
+| 文档 | 变动 |
+| --- | --- |
+| `AGENTS.md` | 事实行改为 `permissions=360 menus=142 models=143 migrations=29 builtin_roles=19` |
+| `README.md` | 权限 / 菜单 / 模型数字、当前状态、模块表新增「生产执行（MES）」、下一步清单 |
+| `docs/requirements-matrix.md` | 新增 §一之二十二（MES 逐条追踪）；§10.7 MES 逐条状态由「未开始」改为实际状态；§12.1 / 案例 21 / §十六阶段表同步 |
+| `docs/data-model.md` | 新增 §十二 生产执行表清单（4 张表 + 快照不单独建表） |
+| `docs/architecture.md` | §三 App 清单加 `mes`（已创建 20 个，未创建只剩 `endpoint_security`）；ADR-08 / ADR-11 改为已落地 |
+| `docs/api-conventions.md` | §一 模块前缀补 `mes`，并新增「生产执行（mes）约定」（动作端点、幂等、表头冻结） |
+| `docs/permission-matrix.md` | §三 / §四 按注册表重新生成（360 权限 / 142 菜单） |
+| `docs/business-flows.md` | §12.1 改为已打通；新增 §十六 生产执行闭环 |
+| `docs/assumptions.md` | A-33 / A-37 过期条目改正；新增 §四之九 生产执行实现假设 |
+| `docs/acceptance.md` | 新增 §五之六 MES 验收；§七 / §八 / §九 同步 |
+| `docs/test-report.md` | 新增 §三十一 本轮复验记录 |
+| `docs/user-guide.md` + 网页版 | 能力表、未实现清单、菜单清单（142）与新增 §6.13 生产执行 |
+| `frontend/src/views/system/ProgressView.vue` | 已完成 / 未完成清单补 MES |
+
+## 三十三、供应商五维量化评价（SRM）
+
+> 用户要求「仍未实现 帮我完成」。本轮把上一轮总结里遗留清单中的
+> **「供应商寻源与五维量化评价（质量 / 技术 / 响应 / 交付 / 成本）」** 做出可用闭环：
+> 该口径在 `docs/assumptions.md` A-10~A-12 中**事先约定**，此前「只有文档约定、
+> 不落任何评分数据、界面也不展示评分」，本轮按约定真正落地。
+> 事实行由 `permissions=360 menus=142 models=143 migrations=29 builtin_roles=19` 变为
+> `permissions=368 menus=144 models=146 migrations=30 builtin_roles=19`。
+
+### 33.1 交付内容
+
+| 能力 | 实现位置 | 页面 / API |
+| --- | --- | --- |
+| 五维权重配置（合计必须 100%） | `apps/srm/models.py::SupplierEvaluationWeight`、`services.create_weight_config` | 「供应商管理 → 评价权重配置」；`/api/v1/srm/supplier-evaluation-weights/` |
+| 权重版本留痕（改权重 = 派生新版本） | `apps/srm/services.py::derive_weight_config` | `PATCH /api/v1/srm/supplier-evaluation-weights/{id}/` |
+| 评价单（建单即冻结权重快照） | `apps/srm/models.py::SupplierEvaluation`、`services.create_evaluation` | 「供应商管理 → 供应商评价」；`/api/v1/srm/supplier-evaluations/` |
+| 五维明细录入与重算（缺数据两种口径） | `apps/srm/services.py::set_evaluation_lines` / `recalculate` / `_redistributed_weights` | `GET|POST /api/v1/srm/supplier-evaluations/{id}/lines/` |
+| 生效 / 归档状态机 | `apps/srm/services.py::publish_evaluation` / `archive_evaluation` | `POST …/publish/`、`…/archive/` |
+| 评价统计 | `apps/srm/selectors.py::evaluation_statistics` | `GET /api/v1/srm/supplier-evaluations/statistics/` |
+
+关键设计：
+
+- **总分只能由服务层算**：请求里带 `total_score` 会被忽略；界面也填不了总分。
+- **权重只增不改**：`PATCH` 派生新版本（响应体是新那条），旧版本原样保留；
+  评价单保存 `weight_snapshot`，**改权重不回头改历史分**。
+- **「没有数据」≠「0 分」**：五个维度各一行，缺数据维度 `is_missing=True`、
+  有效权重 0、加权得分 `NULL`；「标注缺失」不给等级，「重新分配有效权重」合计仍精确 100% 并给等级。
+- **生效后不可改**：只能归档后重新发起，历史始终可核对。
+
+### 33.2 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_srm_api.py -q --reuse-db` | **`29 passed`**（本轮新增 18 例） |
+| 前端 `npm run typecheck` | 通过（退出码 `0`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 257 passed (257)` |
+
+全量复验结果见 `docs/test-report.md` §三十二。
+
+### 33.3 未完成事项（不要按「能用」去承诺）
+
+1. **供应商寻源与候选供应商**（REQ-10.4-01 的寻源部分）未开始。
+2. **准入审批接入 `workflow`**（REQ-10.4-02）未做，`admission_status` 仍只是档案字段。
+3. **可供物料、报价及有效期**（REQ-10.4-03）未开始，与采购价的联动因此也没有。
+4. **评分数据仍需人工录入**：评价明细由界面手填，**没有**检测仪器 / ERP 直连数据源。
+5. **评价不会自动改写供应商等级**：`Supplier.grade` 仍是人工维护字段，
+   本轮刻意不做「评价生效就覆盖主数据等级」的隐式副作用（见 §33.4）。
+6. **浏览器截图级观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev` / 浏览器，
+   新增两个页面只做了源码级与构建级验证。请登录后核对
+   「供应商管理 → 评价权重配置 / 供应商评价」两个页面与「录入评分」弹窗。
+
+### 33.4 一处刻意的设计取舍
+
+**评价生效时不回写 `Supplier.grade`。** 一次评价直接改写供应商主数据等级是隐式的跨实体副作用，
+且等级还被其他流程（采购例外授权等）当作判断依据；本轮只把等级留在评价单上，
+由人工决定是否更新档案等级。若项目方要求自动评级，需要先确认「用哪一次评价、多久一次」的口径。
+
+### 33.5 与既有文档的关系
+
+| 文档 | 变动 |
+| --- | --- |
+| `AGENTS.md` | 事实行改为 `permissions=368 menus=144 models=146 migrations=30 builtin_roles=19`；§八 阶段边界补五维评价 |
+| `README.md` | 权限 / 菜单 / 模型数字与当前状态、下一步清单 |
+| `docs/requirements-matrix.md` | 新增 §一之二十三（逐条追踪）；§10.4 的 REQ-10.4-05~08 由「未开始 / 仅文档约定」改为实际状态 |
+| `docs/data-model.md` | 新增 §十三 供应商五维评价表清单（3 张表） |
+| `docs/permission-matrix.md` | §三 / §四 按注册表重新生成（368 权限 / 144 菜单） |
+| `docs/assumptions.md` | 第 9 / 13 条过期表述改正；新增 §四之十 评价实现假设（36~42） |
+| `docs/test-report.md` | 新增 §三十二 本轮复验记录 |
+| `docs/user-guide.md` + 网页版 | 能力表、未实现清单、菜单清单（144）与新增 §6.14 供应商评价 |
+| `frontend/src/views/system/ProgressView.vue` | 已完成 / 未完成清单补五维评价 |

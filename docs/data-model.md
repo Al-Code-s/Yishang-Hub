@@ -376,9 +376,9 @@ COMMIT
 
 ## 八、迁移规范
 
-- 使用 Django migrations，**迁移文件随代码提交**（当前 12 个 App 共 **19 个迁移文件**：
-  `core` 3、`wms` 3、`factory` 3、`planning` 2，`identity`/`masterdata`/`workflow`/`integration`/`crm`/`srm`/
-  `procurement`/`sales` 各 1；`analytics` 不建表故无迁移）。`planning/0002` 新增 4 张 MRP 表与 8 个约束；
+- 使用 Django migrations，**迁移文件随代码提交**（当前 16 个 App 共 **24 个迁移文件**：
+  `core` 3、`wms` 3、`factory` 3、`equipment` 2、`planning` 2，`identity`/`masterdata`/`workflow`/`integration`/`crm`/
+  `srm`/`procurement`/`sales`/`ems`/`logistics`/`ehs` 各 1；`analytics` 不建表故无迁移）。`planning/0002` 新增 4 张 MRP 表与 8 个约束；
   `factory/0003` 先 `RunPython` 修正历史非法枚举值，再扩展 `Department.department_type` 与
   `Workshop.workshop_type` 的 choices（反向迁移为显式空操作）。
 - **生产启动时不自动执行 `makemigrations`**；`compose.yaml` 中迁移是独立的一次性步骤（`migrate` 服务），
@@ -388,3 +388,181 @@ COMMIT
 - 数据迁移分批、可恢复。
 - **明确声明：MySQL 部分 DDL（如 `ALTER TABLE`）不能像业务事务一样完整回滚**，
   因此不虚假保证「迁移失败后自动恢复」；发布前必须备份，并编写恢复步骤（见 `docs/backup-restore.md`）。
+
+
+## 九、表清单（设备 / 能源 / 生产物流 / 安全环保）
+
+> 本轮新增四个 App：`equipment` 17 张、`ems` 7 张、`logistics` 3 张、`ehs` 14 张，共 **41 张表**。
+> 全部继承 `CompanyScopedModel`（含 `company` + 审计字段 + `version` 乐观锁），
+> 编号一律由编码规则取号，**金额 / 数量一律 `Decimal`**（`money_field` / `quantity_field` / `rate_field`）。
+
+### equipment（设备管理，17 张）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `equipment_equipmenttype` | `code(唯一/公司外全局), name, category, is_special, maintenance_cycle_days` | 设备类型；`is_special` 标记特种设备 |
+| `equipment_equipment` | `company, code, name, equipment_type, status, factory/workshop/production_line/station, location, brand, model_no, serial_no, supplier, purchase_date, start_date, original_value, warranty_until, is_special, owner_department, owner_employee` | 设备台账；`code` 按 `EQ` 取号；`status` 为台账可维护字段 |
+| `equipment_equipmentpart` | `equipment, name, part_type, spec, quantity, uom, position, life_days` | 设备零部件；挂在设备下，不单独建库存 |
+| `equipment_sparepart` | `company, code(按 `SP` 取号), name, part_type, spec, material, equipment_type, uom, safety_stock, reference_price, life_days, supplier` | 备品备件档案 |
+| `equipment_maintenanceitem` | `code, name, category, equipment_type, cycle_days, standard` | 保养项目与标准 |
+| `equipment_maintenanceplan` | `company, plan_no(MT 之外的 `MP`), name, equipment, cycle_days, start_date, next_date, responsible_employee, department, items(M2M)` | 保养计划；`next_date` 由生成任务推进 |
+| `equipment_maintenancetask` | `company, task_no（MT 取号）, plan, equipment, item, plan_date, status, assignee, started_at, finished_at, result` | 保养任务；`(company, plan, plan_date, item)` 唯一，保证重复生成幂等 |
+| `equipment_maintenancerecord` | `company, record_no（MR 取号）, task, equipment, item, maintain_date, executor, content, result, is_qualified, cost` | 保养记录；任务完成时同事务生成 |
+| `equipment_faultreport` | `company, report_no（FR 取号）, equipment, level, description, reporter, reported_at, status, closed_at` | 故障报修单；维修完成后由服务层关闭 |
+| `equipment_repairtask` | `company, task_no（RT 取号）, fault_report, equipment, symptom, level, assignee, assigned_date, status, started_at, finished_at, downtime_minutes` | 维修任务 |
+| `equipment_repairrecord` | `company, record_no（RR 取号）, task, equipment, repair_date, repairer, fault_reason, solution, parts_used, cost, downtime_minutes, result` | 维修记录（更换备件、费用、停机时长） |
+| `equipment_inspectionitem` | `code, name, method, standard, uom, lower_limit, upper_limit` | 点巡检项目与上下限 |
+| `equipment_inspectiontask` | `company, task_no（IT 取号）, task_type, equipment, plan_date, status, assignee, started_at, finished_at, items(M2M)` | 点巡检任务 |
+| `equipment_inspectionrecord` | `company, record_no（IR 取号）, task, equipment, item, inspected_at, inspector, measured_value, result, abnormal_desc` | 点巡检记录；异常可转报修 |
+| `equipment_abnormaltype` | `code, name, level` | 设备异常类型 |
+| `equipment_abnormaltask` | `company, task_no（AT 取号）, abnormal_type, equipment, source, description, reported_by, reported_at, status, handler, deadline, handling, closed_at` | 异常任务 |
+| `equipment_abnormalrecord` | `company, record_no（AR 取号）, task, abnormal_type, equipment, handle_date, handler, action, result` | 异常处置记录 |
+
+> 备件现存量**不建表**：`GET /api/v1/equipment/spare-part-stock/` 只读汇总 `wms` 的库存余额，
+> 与 `docs/inventory-rules.md` 的「库存只能经统一库存服务」一致。
+
+### ems（能源管理，7 张）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `ems_energyarea` | `company, code, name, parent(自关联), department, manager, area_size` | 计量区域，支持上下级 |
+| `ems_energymeter` | `company, code（EM 取号）, name, medium, area, equipment, department, meter_model, serial_no, `multiplier`, unit, status, location, install_date, last_reading_at, is_monitored` | 计量设备；`ck_energy_meter_multiplier_positive` 保证倍率 > 0 |
+| `ems_energyprice` | `company, medium, tariff_period, name, unit_price, currency_unit, effective_from, effective_to` | 能源价格；按「介质 + 时段 + 生效区间」解析 |
+| `ems_energythreshold` | `company, name, medium, meter(可空=介质通用), upper_limit, lower_limit, daily_limit, unit_consumption_limit, offline_minutes, alarm_level` | 报警阈值 |
+| `ems_meterreading` | `company, meter, reading_at, reading, consumption, tariff_period, source, recorder, note` | 抄表读数；**只追加**，用量由服务层按上次读数算 |
+| `ems_energyrunrecord` | `company, record_no（ERN 取号）, meter, equipment, status, started_at, finished_at, run_minutes, output_desc, output_qty, energy_consumption, unit_consumption, operator` | 设备运行记录；结束时算时长 / 能耗 / 单耗 |
+| `ems_energyalarm` | `company, alarm_no（EAL 取号）, meter, area, alarm_type, level, status, source, source_ref(来源线索：数采测点 / 设备), occurred_at, message, triggered_value, threshold_value, handler, handled_at, handle_note, closed_at` | 能源报警；`source_ref` 让数采越限 / 离线报警按「仪表 + 类型 + 来源 + 当天」去重 |
+
+### logistics（生产物流，3 张）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `logistics_automationdevice` | `company, code（AD 取号）, name, device_type, status, workshop, location, max_load, speed, battery_level, commissioned_date, last_maintenance_date, next_maintenance_date` | AGV / 穿梭车 / 堆垛机等；`status` 只由动作接口改 |
+| `logistics_logisticstask` | `company, task_no（LT 取号）, task_type, device, priority, status, warehouse, from_location, to_location, material, quantity, container_no, requested_by, assignee, planned_at, dispatched_at, started_at, finished_at, result` | 物流任务；状态机 pending → dispatched → executing → finished / cancelled |
+| `logistics_logisticsoperationlog` | `company, device, task, action, operator, occurred_at, detail, payload(JSON)` | 操作日志，只读 |
+
+### ehs（安全环保，14 张）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `ehs_safetyregulation` | `company, code（SRG 取号）, name, category, version_no, issue_org, issue_date, effective_date, status, owner_department, owner_employee` | 安全制度 |
+| `ehs_safetytraining` | `company, training_no（TRN 取号）, topic, training_type, trainer, department, planned_date, actual_date, duration_hours, participant_count, passed_count, status` | 安全培训 |
+| `ehs_hazardrecord` | `company, hazard_no（HZD 取号）, title, description, level, source, location, department, reported_by, found_date, due_date, status, rectify_measure, rectified_by, rectified_date, verify_result, verified_by, verified_date` | 隐患排查；整改 → 待验收 → 验收（不通过退回） |
+| `ehs_emergencyplan` | `company, code（EPL 取号）, name, plan_type, response_level, issue_date, review_date, drill_cycle_days, next_drill_date, status, owner_employee` | 应急预案 |
+| `ehs_accidentrecord` | `company, accident_no（ACR 取号）, title, category, level, occurred_at, location, department, injured_count, lost_days, loss_amount, description, causes, measures, reporter, reported_at, investigator, investigation_result, status, closed_date` | 事故记录 |
+| `ehs_environmentmonitor` | `company, monitor_no（ENV 取号）, medium, point_name, pollutant, limit_value, measured_value, unit, is_compliant, monitored_at, permit_no, monitor_org` | 排污监测；`is_compliant` 由服务层按实测值判定（只读） |
+| `ehs_wasterecord` | `company, waste_no（WST 取号）, waste_name, waste_type, waste_code, quantity, unit, produced_date, storage_location, disposal_method, disposal_org, transfer_no, disposed_date, status` | 固废危废台账 |
+| `ehs_compliancecheck` | `company, check_no（CMP 取号）, title, check_type, check_date, organization, checker, result, issues, rectify_due_date, status, rectified_date, owner_employee` | 环保合规检查 |
+| `ehs_firefacility` | `company, code（FFC 取号）, name, facility_type, location, quantity, unit, last_check_date, next_check_date, status, department, owner_employee` | 消防设施 |
+| `ehs_firedrill` | `company, drill_no（FDR 取号）, topic, drill_type, planned_date, actual_date, organizer, participant_count, duration_minutes, assessment, issues, plan` | 消防演练 |
+| `ehs_workpermit` | `company, permit_no（WPR 取号）, permit_type, status, work_content, work_location, risk_level, protective_measures, applicant, department, start_at, end_at, approver, approved_at, guardian, started_at, finished_at, accepted_by, accepted_at, result` | 作业许可（动火 / 检修 / 防爆防静电 / 受限空间）；`guardian` 在动火类作业中必填 |
+| `ehs_safetycheck` | `company, check_no（SCH 取号）, check_type, title, check_date, checker, department, equipment, check_content, problem_count, conclusion, status, rectify_requirement, rectified_date` | 本质安全 / 防爆防静电 / 防火防爆检查 |
+| `ehs_specialequipmentinspection` | `company, certificate_no（SPI 取号）, equipment, equipment_name, inspection_org, inspection_date, next_inspection_date, result, inspector, issue_date` | 特种设备检验报告 |
+| `ehs_ehsoperationlog` | `company, domain, business_type, business_label, action, operator, occurred_at, detail, payload(JSON)` | 安全环保操作日志，只读 |
+
+> **跨模块引用不产生写副作用**：`ehs_specialequipmentinspection.equipment` 与 `ehs_safetycheck.equipment`
+> 引用 `equipment_equipment`，但 EHS 不修改设备表；`ems_energymeter.equipment` 同理。
+
+## 十、表清单（客户投诉 / 产品评价 / 设备数采）
+
+> 本轮扩展 `apps/crm`（+2 张）并新增 `apps/iot`（5 张），共 **7 张表**。
+> 全部继承 `CompanyScopedModel`（含 `company` + 审计字段 + `version` 乐观锁），
+> 编号一律由编码规则取号（`CMPL` / `PRV` / `IOTCN` / `IOTGW` / `IOTPT`），
+> 读数用 `reading_field`（`Decimal`，入库 6 位小数，API 以字符串输出）。
+
+### crm（客户投诉与产品评价，2 张）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `crm_customercomplaint` | `company, complaint_no（CMPL 取号）, customer, complaint_type, level, status, source, title, content, complained_at, reporter, reporter_phone, related_no, receiver, handler, accepted_at, resolved_at, closed_at, handle_measure, satisfaction, remark` | 客户投诉；`uq_customer_complaint_company_no` 保证公司内编号唯一；`ck_customer_complaint_satisfaction_range` 限制 0~5（0 = 未评价）；`idx_complaint_status`；`status` 只由服务层动作推进 |
+| `crm_productreview` | `company, review_no（PRV 取号）, customer, sku(可空), product_desc, score, status, reviewer_name, reviewed_at, content, reply, replier, replied_at, closed_at, remark` | 产品评价；`uq_product_review_company_no`；`ck_product_review_score_range` 限制 1~5；`idx_product_review_status`；回复与关闭走动作接口 |
+
+### iot（设备数采，5 张）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `iot_iotconnection` | `company, code（IOTCN 取号）, name, protocol, endpoint, credential_ref, timeout_seconds, batch_limit, rate_limit_per_minute, is_enabled, is_simulated` | 连接配置；`credential_ref` 只登记凭证存放位置，**平台不存明文密钥**；只有 `http` / `simulator` 有采集入口 |
+| `iot_iotgateway` | `company, code（IOTGW 取号）, name, gateway_type, connection, equipment, factory, workshop, production_line, location, status, last_seen_at, offline_minutes, token_prefix, token_hash, token_rotated_at, is_simulated` | 数采设备；`token_hash` 为 SHA-256 摘要（**API 永不外泄**），明文令牌只在生成 / 轮换响应里返回一次；`status` / `last_seen_at` 只读 |
+| `iot_iotpoint` | `company, gateway, code（IOTPT 取号）, name, quantity, unit, range_min, range_max, precision, is_cumulative, upper_limit, lower_limit, alarm_enabled, meter(对照线索)` | 采集测点；`uq_iot_point_gateway_code`（同一设备下编码唯一）；公司**由设备推导**，客户端传 `company_id` 无效 |
+| `iot_iotmessage` | `company, gateway, message_id, received_at, device_time, source_ip, payload(JSON), point_count, status, error_message, is_simulated` | 原始报文（采集日志）；`idx_iot_message_dedupe` 支持按「设备 + 消息 ID」判重，**重复与失败报文同样留痕** |
+| `iot_iotreading` | `company, gateway, point, message(可空), device_time, received_at, value, unit, quality, source, is_simulated` | 标准化读数；`uq_iot_reading_point_time`（测点 + 设备时间唯一）比报文判重更硬，网关重启重发旧报文不会产生第二条读数 |
+
+> `iot_iotpoint.meter` 只是**对照线索**：采集读数**不写入** `ems_meterreading`，
+> 避免与人工抄表重复计量；越限 / 离线报警统一经 `apps/ems/services.py::raise_alarm` 写入能源报警台账。
+
+**统计不新增表。** 设备数采的采集统计（`GET /api/v1/iot/statistics/`）与客户投诉 / 产品评价统计
+（`GET /api/v1/crm/complaints|product-reviews/statistics/`）都**按明细实时聚合**，因此**没有**小时 / 日汇总表、
+也没有统计快照表。理由见上面 `iot_iotreading` 的去重口径：设备会补发、会重传、读数质量可能被重新判定，
+任何汇总表在一次补发之后就会与明细对不上；实时聚合保证页面上的数字永远能回到明细逐条核对
+（与 `apps/ems/selectors.py` 同一口径）。目前成本落在「测点 × 时间桶」与「枚举分布」量级上；
+数据继续增长后若确实要加汇总层，必须同时给出「汇总表与明细对账」的口径，不能只加表不对账。
+
+## 十一、表清单（质量管理）
+
+> 新增 `apps/qms`（5 张表）。检验项目 / 检验单 / 报警 / 知识库继承 `CompanyScopedModel`；
+> **检验结果明细**继承 `BaseModel` 并**不挂 `company`**：公司归属通过检验单确定
+> （与设备零部件 `equipment_equipmentpart` 同一口径），避免出现「明细的公司与单据的公司不一致」。
+> 编号一律由编码规则取号（`QIT` / `QC` / `QAL` / `KI`）。
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `qms_qualityinspectionitem` | `company, code（QIT 取号）, name, category, value_type, unit, method, standard_text, lower_limit, upper_limit, is_active` | 检验项目，**判定口径的唯一来源**；`uq_qms_item_company_code`；`ck_qms_item_limit_order` 保证下限 ≤ 上限；定量项目在 Serializer 层强制「至少给出一侧界限」 |
+| `qms_qualityinspectionorder` | `company, order_no（QC 取号）, inspection_type, status, judgement, source_no, material, product_desc, batch_no, supplier, workshop, production_line, equipment, quantity, sample_quantity, unit, inspector, inspected_at, judge_remark, judged_at, is_active` | 检验单；`uq_qms_order_company_no`；`ck_qms_order_quantity_non_negative` / `ck_qms_order_sample_non_negative`；`idx_qms_order_state(status, judgement)`；`status` / `judgement` / `judged_at` 只由服务层推进 |
+| `qms_qualityinspectionresult` | `order, item, measured_value, text_value, is_qualified, remark, sort_order` | 检验结果明细；`uq_qms_result_order_item`（同一单据同一项目只保留一条，重复录入即覆盖）；`is_qualified` **由服务层按项目口径计算**，定量项目不接受客户端结论 |
+| `qms_qualityalert` | `company, alert_no（QAL 取号）, order, level, status, title, description, material, batch_no, handler, handled_at, close_remark, closed_at` | 质量报警；`uq_qms_alert_company_no`；`idx_qms_alert_state(status, level)`；**同一检验单只生成一条**（重复判定不重复报警）；`order` 用 `SET_NULL`，单据被删也不丢报警留痕 |
+| `qms_qualityissue` | `company, issue_no（KI 取号）, title, category, severity, phenomenon, cause, corrective_action, preventive_action, material, product_desc, tags(JSON), source_order, source_alert, status, published_at, is_active` | 质量问题知识库；`uq_qms_issue_company_no`；`source_order` / `source_alert` 保留「这条经验从哪次不合格来」的链路 |
+
+> **跨模块引用不产生写副作用**：`qms_qualityinspectionorder.material / supplier / workshop /
+> production_line / equipment / inspector` 只引用主数据与设备台账，QMS 不改动它们的表；
+> 与 `procurement` 的来料检验放行、`wms` 的质量放行是**并行**的两条线，
+> 检验单通过 `source_no` 引用来源单据，不做跨模块隐式联动。
+
+**质量统计同样不新增表。** 质量信息动态监测（`GET /api/v1/qms/inspections/statistics/`）
+按检验单与检验结果**实时聚合**，没有日 / 月质量汇总表。合格率的统计口径刻意如此：
+**分母只含「已判定且不是待判定」的单据**（草稿、已提交未判定不计入），
+否则「还没检验」会被算成不合格，合格率凭空变低；「让步接收」单列，不并入合格也不并入不合格。
+
+## 十二、表清单（生产执行 MES）
+
+> 新增 `apps/mes`（4 张表）。生产工单、用料、工序、报工都继承 `CompanyScopedModel`：
+> MES 数据必须按公司隔离，四层权限的第四层（数据范围）直接作用于四张表。
+> 编号由编码规则取号（`MO` 生产工单号 / `RPT` 报工单号）。
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `mes_productionorder` | `company, order_no（MO 取号）, source_type, source_no, factory, workshop, production_line, style, sku, product_material, quantity, completed_quantity, qualified_quantity, scrap_quantity, unit, status, planned_start, planned_end, actual_start, actual_end, material_warehouse, receipt_warehouse, bom_snapshot(JSON), routing_snapshot(JSON), owner, released_at, released_by, closed_at, closed_by, cancel_reason, issue_document, receipt_document, is_active` | 生产工单。`uq_mes_order_company_no`；`ck_mes_order_quantity_non_negative`；`idx_mes_order_state(status, planned_end)`。**`completed_quantity` / `qualified_quantity` 取末道工序累计合格数，`scrap_quantity` 取全部工序报废之和**（同一件产品过多道工序，汇总所有工序会重复计数） |
+| `mes_productionordermaterial` | `order, line_no, material, source（bom / manual）, required_quantity, issued_quantity, unit, is_active` | 工单用料；不挂 `company`，公司归属由工单确定（与 `qms_qualityinspectionresult` 同一口径） |
+| `mes_productionorderstep` | `order, sequence, process_name, workshop, standard_hours, is_quality_gate, is_outsourced, status, reported_quantity, qualified_quantity, scrap_quantity, started_at, finished_at, inspection_order, remark` | 工单工序，由下达时的工艺快照展开；`uq_mes_step_order_sequence`（同一工单工序号不重复）；`ck_mes_step_hours_non_negative`；`is_quality_gate` 工序报满时自动开 QMS 检验单（`inspection_order` 用 `SET_NULL`） |
+| `mes_productionreport` | `company, report_no（RPT 取号）, order, step, report_type（normal / first_article / rework）, quantity, qualified_quantity, rework_quantity, scrap_quantity, operator, equipment, work_hours, started_at, finished_at, reported_at, reported_by, remark` | 生产报工台账，**只追加、不提供修改接口**；`uq_mes_report_company_no`；`ck_mes_report_quantity_positive`（报工数量必须 > 0）；`idx_mes_report_order(order_id, step_id)`；数量口径在服务层校验（合格 + 返工 + 报废 = 报工量） |
+
+> **快照不单独建表。** `bom_snapshot` / `routing_snapshot` 两个 JSON 字段就在工单上，
+> 由 `release_order` 在下达瞬间冷冻：之后工程数据（BOM / 工艺路线）出新版本**不影响已下达工单**（任务书 9.5、14.2 案例 13）。
+> 快照的生命周期与工单一致，单独建表只会多一次 join（见 `docs/architecture.md` ADR-08）。
+
+> **跨模块引用不产生写副作用**：`style / sku / product_material / factory / workshop /
+> production_line / equipment / operator` 只引用主数据与厂区资料，MES 不改动它们；
+> **领料与完工入库只能经 `apps/wms/services/stock.py`** 生成并过账库存单据
+> （`issue_document` / `receipt_document` 保留链路），MES **不写库存余额与流水**（AGENTS.md 三.5）。
+
+**生产统计不新增表。** `GET /api/v1/mes/orders/statistics/` 按工单与报工**实时聚合**，
+没有日 / 月产量汇总表；与设备 / 能源 / 数采 / 客户服务 / 质量统计同一口径，页面数字永远可回到明细逐条核对。
+
+## 十三、表清单（供应商五维量化评价 SRM）
+
+> 新增 3 张表（`apps/srm`）。权重配置与评价单继承 `CompanyScopedModel`（按公司隔离）；
+> **评价明细不挂 `company`**，公司归属由父单确定，范围过滤经 `evaluation__company_id`
+> ——与 `qms_qualityinspectionresult`、`mes_productionordermaterial` 同一口径。
+> 评价单号由编码规则取号（`SEV` 供应商评价单号，按日重置）。
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `srm_supplierevaluationweight` | `company, version_no, quality_weight, technology_weight, response_weight, delivery_weight, cost_weight, is_active, remark` | 五维权重配置。`uq_srm_eval_weight_company_version`（同一公司版本号唯一）；`ck_srm_eval_weight_range`（五项均 0~100）；**权重合计必须为 100 由服务层校验**（MySQL 的 CHECK 不能跨行求和，这类规则只能由服务层保证并有测试覆盖）。**只增不改**：调整权重派生新版本，旧版本原样保留，历史评分因此始终可解释 |
+| `srm_supplierevaluation` | `company, evaluation_no（SEV 取号）, supplier, weight_config, weight_snapshot(JSON), missing_dimension_policy（mark_missing / redistribute）, period_start, period_end, evaluated_by, evaluated_at, status（draft / effective / archived）, total_score, effective_weight_total, grade, missing_dimensions(JSON), remark, is_active` | 评价单。`uq_srm_eval_company_no`；`ck_srm_eval_period_order`（`period_end >= period_start`）。`weight_snapshot` 是**评分当时的权重快照**，历史评价不因后来改权重而变化。`grade` 只在口径完整时给出：缺数据且选择「标注缺失」时留空（不完整口径不贴等级） |
+| `srm_supplierevaluationline` | `evaluation, dimension（quality / technology / response / delivery / cost）, raw_score, raw_observation(JSON), weight, effective_weight, weighted_score, is_missing, remark` | 评价明细，一个维度一行。`uq_srm_eval_line_dimension`（同一评价单维度不重复）。**四列一起保存计算过程**：配置权重 `weight`、有效权重 `effective_weight`（重新分配后会大于配置权重）、加权得分 `weighted_score`；缺数据时 `is_missing=True`、`effective_weight=0`、`weighted_score=NULL` |
+
+> **「没有数据」与「0 分」在表结构上就是两件事**：没有数据是 `raw_score IS NULL` +
+> `is_missing=TRUE`，打了 0 分是 `raw_score = 0.00` + `is_missing=FALSE`。
+> 前者不参与加权、不参与平均分统计，也不给等级；后者照常计入（`docs/assumptions.md` A-12）。
+
+**评价统计不新增表。** `GET /api/v1/srm/supplier-evaluations/statistics/` 按评价单与明细
+**实时聚合**，没有日 / 月评价汇总表；与设备 / 能源 / 数采 / 客户服务 / 质量 / 生产统计同一口径。

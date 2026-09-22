@@ -326,10 +326,102 @@ class MetaView(APIView):
     required_permissions: list[str] = []
 
     def get(self, request, *args, **kwargs) -> Response:
-        from apps.crm.models import CustomerCategory, CustomerLevel, CustomerStatus
+        from apps.crm.models import (
+            ComplaintLevel,
+            ComplaintSource,
+            ComplaintStatus,
+            ComplaintType,
+            CustomerCategory,
+            CustomerLevel,
+            CustomerStatus,
+            ProductReviewStatus,
+        )
+        from apps.ehs.models import (
+            AccidentCategory,
+            AccidentLevel,
+            AccidentStatus,
+            ComplianceCheckType,
+            ComplianceResult,
+            ComplianceStatus,
+            EhsDomain,
+            EmergencyPlanType,
+            EnvironmentMedium,
+            FireDrillType,
+            FireFacilityStatus,
+            FireFacilityType,
+            HazardLevel,
+            HazardSource,
+            HazardStatus,
+            PermitRiskLevel,
+            PermitStatus,
+            PermitType,
+            RegulationCategory,
+            RegulationStatus,
+            ResponseLevel,
+            SafetyCheckStatus,
+            SafetyCheckType,
+            SpecialEquipmentResult,
+            TrainingStatus,
+            TrainingType,
+            WasteStatus,
+            WasteType,
+        )
+        from apps.ems.models import (
+            AlarmLevel,
+            AlarmSource,
+            AlarmStatus,
+            AlarmType,
+            EnergyMedium,
+            MeterStatus,
+            ReadingSource,
+            RunStatus,
+            TariffPeriod,
+        )
+        from apps.equipment.models import (
+            AbnormalSource,
+            AbnormalStatus,
+            EquipmentCategory,
+            EquipmentStatus,
+            FaultLevel,
+            FaultReportStatus,
+            InspectionMethod,
+            InspectionTaskType,
+            MaintenanceCategory,
+            PartType,
+            TaskStatus,
+        )
+        from apps.equipment.models import (
+            InspectionResult as EquipmentInspectionResult,
+        )
         from apps.factory.models import Department, Employee, ProductionLine, Workshop
         from apps.identity.models import DataScopeType, PermissionType
+        from apps.iot.models import (
+            GatewayStatus,
+            GatewayType,
+            IoTProtocol,
+            MessageStatus,
+            PointQuantity,
+            ReadingQuality,
+        )
+        from apps.iot.models import (
+            ReadingSource as IoTReadingSource,
+        )
+        from apps.logistics.models import (
+            AutomationDeviceStatus,
+            AutomationDeviceType,
+            LogisticsLogAction,
+            LogisticsTaskPriority,
+            LogisticsTaskStatus,
+            LogisticsTaskType,
+        )
         from apps.masterdata.models import IdentifierType, MaterialCategory, UoM
+        from apps.mes.models import (
+            ProductionMaterialSource,
+            ProductionOrderStatus,
+            ProductionReportType,
+            ProductionSourceType,
+            ProductionStepStatus,
+        )
         from apps.planning.models import (
             BomLineType,
             BomStatus,
@@ -348,6 +440,17 @@ class MetaView(APIView):
             RequisitionStatus,
             RequisitionType,
         )
+        from apps.qms.models import (
+            InspectionCategory,
+            InspectionValueType,
+            QualityAlertLevel,
+            QualityAlertStatus,
+            QualityInspectionStatus,
+            QualityInspectionType,
+            QualityIssueCategory,
+            QualityIssueStatus,
+            QualityJudgement,
+        )
         from apps.sales.models import (
             OrderPriority,
             ReturnDisposition,
@@ -357,8 +460,11 @@ class MetaView(APIView):
         )
         from apps.srm.models import (
             AdmissionStatus,
+            EvaluationDimension,
+            MissingDimensionPolicy,
             QualificationType,
             SupplierCategory,
+            SupplierEvaluationStatus,
             SupplierGrade,
         )
         from apps.wms.models import (
@@ -426,6 +532,21 @@ class MetaView(APIView):
                 "mrp_suggestion_statuses": [
                     {"value": v, "label": n} for v, n in MrpSuggestionStatus.choices
                 ],
+                "production_order_statuses": [
+                    {"value": v, "label": n} for v, n in ProductionOrderStatus.choices
+                ],
+                "production_source_types": [
+                    {"value": v, "label": n} for v, n in ProductionSourceType.choices
+                ],
+                "production_material_sources": [
+                    {"value": v, "label": n} for v, n in ProductionMaterialSource.choices
+                ],
+                "production_step_statuses": [
+                    {"value": v, "label": n} for v, n in ProductionStepStatus.choices
+                ],
+                "production_report_types": [
+                    {"value": v, "label": n} for v, n in ProductionReportType.choices
+                ],
                 "sales_order_statuses": [
                     {"value": v, "label": n} for v, n in SalesOrderStatus.choices
                 ],
@@ -444,19 +565,146 @@ class MetaView(APIView):
                     {"value": v, "label": n} for v, n in InspectionResult.choices
                 ],
                 "customer_categories": [{"value": v, "label": n} for v, n in CustomerCategory.choices],
+                "task_statuses": [{"value": v, "label": n} for v, n in TaskStatus.choices],
+                "maintenance_categories": [
+                    {"value": v, "label": n} for v, n in MaintenanceCategory.choices
+                ],
+                "inspection_methods": [
+                    {"value": v, "label": n} for v, n in InspectionMethod.choices
+                ],
+                "inspection_task_types": [
+                    {"value": v, "label": n} for v, n in InspectionTaskType.choices
+                ],
+                "equipment_inspection_results": [
+                    {"value": v, "label": n} for v, n in EquipmentInspectionResult.choices
+                ],
+                "fault_levels": [{"value": v, "label": n} for v, n in FaultLevel.choices],
+                "fault_report_statuses": [
+                    {"value": v, "label": n} for v, n in FaultReportStatus.choices
+                ],
+                "abnormal_sources": [{"value": v, "label": n} for v, n in AbnormalSource.choices],
+                "abnormal_statuses": [{"value": v, "label": n} for v, n in AbnormalStatus.choices],
+                "quality_inspection_types": [
+                    {"value": v, "label": n} for v, n in QualityInspectionType.choices
+                ],
+                "quality_inspection_statuses": [
+                    {"value": v, "label": n} for v, n in QualityInspectionStatus.choices
+                ],
+                "quality_judgements": [
+                    {"value": v, "label": n} for v, n in QualityJudgement.choices
+                ],
+                "inspection_categories": [
+                    {"value": v, "label": n} for v, n in InspectionCategory.choices
+                ],
+                "inspection_value_types": [
+                    {"value": v, "label": n} for v, n in InspectionValueType.choices
+                ],
+                "quality_alert_levels": [
+                    {"value": v, "label": n} for v, n in QualityAlertLevel.choices
+                ],
+                "quality_alert_statuses": [
+                    {"value": v, "label": n} for v, n in QualityAlertStatus.choices
+                ],
+                "quality_issue_categories": [
+                    {"value": v, "label": n} for v, n in QualityIssueCategory.choices
+                ],
+                "quality_issue_statuses": [
+                    {"value": v, "label": n} for v, n in QualityIssueStatus.choices
+                ],
+                "equipment_categories": [
+                    {"value": v, "label": n} for v, n in EquipmentCategory.choices
+                ],
+                "equipment_statuses": [
+                    {"value": v, "label": n} for v, n in EquipmentStatus.choices
+                ],
+                "part_types": [{"value": v, "label": n} for v, n in PartType.choices],
                 "customer_levels": [{"value": v, "label": n} for v, n in CustomerLevel.choices],
                 "customer_statuses": [{"value": v, "label": n} for v, n in CustomerStatus.choices],
+                "complaint_types": [{"value": v, "label": n} for v, n in ComplaintType.choices],
+                "complaint_levels": [{"value": v, "label": n} for v, n in ComplaintLevel.choices],
+                "complaint_statuses": [{"value": v, "label": n} for v, n in ComplaintStatus.choices],
+                "complaint_sources": [{"value": v, "label": n} for v, n in ComplaintSource.choices],
+                "product_review_statuses": [
+                    {"value": v, "label": n} for v, n in ProductReviewStatus.choices
+                ],
                 "supplier_categories": [{"value": v, "label": n} for v, n in SupplierCategory.choices],
                 "supplier_grades": [{"value": v, "label": n} for v, n in SupplierGrade.choices],
                 "admission_statuses": [{"value": v, "label": n} for v, n in AdmissionStatus.choices],
                 "qualification_types": [{"value": v, "label": n} for v, n in QualificationType.choices],
+                "supplier_evaluation_statuses": [
+                    {"value": v, "label": n} for v, n in SupplierEvaluationStatus.choices
+                ],
+                "supplier_evaluation_dimensions": [
+                    {"value": v, "label": n} for v, n in EvaluationDimension.choices
+                ],
+                "missing_dimension_policies": [
+                    {"value": v, "label": n} for v, n in MissingDimensionPolicy.choices
+                ],
                 "data_scope_types": [{"value": v, "label": n} for v, n in DataScopeType.choices],
                 "permission_types": [{"value": v, "label": n} for v, n in PermissionType.choices],
                 "approver_types": [{"value": v, "label": n} for v, n in ApproverType.choices],
                 "approval_statuses": [{"value": v, "label": n} for v, n in InstanceStatus.choices],
                 "approval_step_statuses": [{"value": v, "label": n} for v, n in StepStatus.choices],
+                # 能源管理：介质、时段、仪表状态、抄表来源、运行状态、报警
+                "energy_media": _enum(EnergyMedium.choices),
+                "tariff_periods": _enum(TariffPeriod.choices),
+                "meter_statuses": _enum(MeterStatus.choices),
+                "reading_sources": _enum(ReadingSource.choices),
+                "run_statuses": _enum(RunStatus.choices),
+                "alarm_types": _enum(AlarmType.choices),
+                "alarm_levels": _enum(AlarmLevel.choices),
+                "alarm_statuses": _enum(AlarmStatus.choices),
+                "alarm_sources": _enum(AlarmSource.choices),
+                "iot_protocols": _enum(IoTProtocol.choices),
+                "iot_gateway_types": _enum(GatewayType.choices),
+                "iot_gateway_statuses": _enum(GatewayStatus.choices),
+                "iot_point_quantities": _enum(PointQuantity.choices),
+                "iot_message_statuses": _enum(MessageStatus.choices),
+                "iot_reading_qualities": _enum(ReadingQuality.choices),
+                "iot_reading_sources": _enum(IoTReadingSource.choices),
+                # 生产物流管理
+                "automation_device_types": _enum(AutomationDeviceType.choices),
+                "automation_device_statuses": _enum(AutomationDeviceStatus.choices),
+                "logistics_task_types": _enum(LogisticsTaskType.choices),
+                "logistics_task_priorities": _enum(LogisticsTaskPriority.choices),
+                "logistics_task_statuses": _enum(LogisticsTaskStatus.choices),
+                "logistics_log_actions": _enum(LogisticsLogAction.choices),
+                # 安全环保管理
+                "ehs_domains": _enum(EhsDomain.choices),
+                "regulation_statuses": _enum(RegulationStatus.choices),
+                "regulation_categories": _enum(RegulationCategory.choices),
+                "training_types": _enum(TrainingType.choices),
+                "training_statuses": _enum(TrainingStatus.choices),
+                "hazard_levels": _enum(HazardLevel.choices),
+                "hazard_sources": _enum(HazardSource.choices),
+                "hazard_statuses": _enum(HazardStatus.choices),
+                "accident_categories": _enum(AccidentCategory.choices),
+                "accident_levels": _enum(AccidentLevel.choices),
+                "accident_statuses": _enum(AccidentStatus.choices),
+                "response_levels": _enum(ResponseLevel.choices),
+                "emergency_plan_types": _enum(EmergencyPlanType.choices),
+                "environment_media": _enum(EnvironmentMedium.choices),
+                "waste_types": _enum(WasteType.choices),
+                "waste_statuses": _enum(WasteStatus.choices),
+                "compliance_results": _enum(ComplianceResult.choices),
+                "compliance_statuses": _enum(ComplianceStatus.choices),
+                "compliance_check_types": _enum(ComplianceCheckType.choices),
+                "fire_facility_types": _enum(FireFacilityType.choices),
+                "fire_facility_statuses": _enum(FireFacilityStatus.choices),
+                "fire_drill_types": _enum(FireDrillType.choices),
+                "permit_types": _enum(PermitType.choices),
+                "permit_risk_levels": _enum(PermitRiskLevel.choices),
+                "permit_statuses": _enum(PermitStatus.choices),
+                "safety_check_types": _enum(SafetyCheckType.choices),
+                "safety_check_statuses": _enum(SafetyCheckStatus.choices),
+                "special_equipment_results": _enum(SpecialEquipmentResult.choices),
             }
         )
+
+
+def _enum(choices) -> list[dict[str, str]]:
+    """把 TextChoices 转成前端下拉用的 value/label 列表。"""
+    return [{"value": value, "label": label} for value, label in choices]
 
 
 def _choices(model, field_name: str) -> list[dict[str, str]]:

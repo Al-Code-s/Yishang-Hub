@@ -66,6 +66,26 @@ class NotPermitted(APIError):
     default_message = "没有执行该操作的权限"
 
 
+class NotAuthenticated(APIError):
+    """未通过身份校验（例如设备令牌缺失或无效）。
+
+    与 DRF 的 ``NotAuthenticated`` 不同，这里走平台的统一错误信封，
+    携带 ``code`` 便于设备侧上报日志直接定位问题。
+    """
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "NOT_AUTHENTICATED"
+    default_message = "未提供有效的身份凭证"
+
+
+class TooManyRequests(APIError):
+    """请求过于频繁（限流）。"""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "TOO_MANY_REQUESTS"
+    default_message = "请求过于频繁，请稍后重试"
+
+
 class StateConflict(APIError):
     status_code = status.HTTP_409_CONFLICT
     code = "STATE_CONFLICT"

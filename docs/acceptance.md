@@ -3,10 +3,10 @@
 > 验收依据：任务书 19.3「完成标准」。**「页面已存在」不等于「已通过阶段验收」。**
 > 所有数字来自本轮**实际执行**的命令输出，原始记录见 `docs/test-report.md`。
 >
-> **最新核对（2026-09-18）**：权限点 **173** / 菜单 **56** / 数据模型 **86** / 数据表 **92** /
-> 迁移文件 **19**；自动化测试 **后端 313 + 前端 135** 通过。
+> **最新核对（2026-09-21）**：权限点 **333** / 菜单 **134**（113 个页面 + 21 个目录）/
+> 数据模型 **134** / 迁移文件 **27**；自动化测试 **后端 412 + 前端 249** 通过。
 > 下面各小节里的数字是**该阶段验收当时的快照**，不回改；要「现在是多少」请看
-> `docs/user-guide.md` §2.3 与 `docs/test-report.md` §16。
+> `AGENTS.md` §九 的文档同步事实行与 `docs/test-report.md` §16。
 
 ## 一、阶段 0 验收
 
@@ -221,6 +221,74 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
 - Outbox 事件仍为 `pending`（Celery Worker / Beat 未启动，**未执行**消费侧验证）；
 - Playwright、浏览器截图级校验、高性能压测、备份恢复、MySQL 8.4 与 `mysqlclient` 驱动均未执行（与第七节口径一致）。
 
+## 五之五、阶段 3 第四步验收（质量管理 QMS 首块）
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 页面可操作 | ✅ | `views/qms/InspectionItemList.vue`、`InspectionOrderList.vue`、`QualityAlertList.vue`、`QualityIssueList.vue`，位于「质量管理」目录下（sort 85~89，排在「仓储管理」之后、「设备管理」之前）；`views-compile.spec.ts` 实际编译并加载；`router.spec.ts` 的菜单契约由 `frontend/tests/fixtures/menu-components.json`（139 项，按注册表运行顺序重新导出）覆盖；`npm run build` 产物含 4 个页面 chunk |
+| API 可访问 | ✅ | `/api/v1/qms/inspection-items/`、`/inspections/`（`{id}/results/`、`submit/`、`judge/`、`close/`、`statistics/`）、`/alerts/`（`{id}/handle/`、`close/`、`create-issue/`）、`/issues/`（`{id}/publish/`、`archive/`），全部由 `tests/test_qms_api.py` 走真实 HTTP 验证 |
+| 数据持久化 | ✅ | MySQL 真实写入并读回：`qms_qualityinspectionorder` / `qms_qualityinspectionresult` / `qms_qualityalert` / `qms_qualityissue`；`manage.py migrate` → `Applying qms.0001_initial... OK` |
+| 权限生效 | ✅ | 匿名 403；只有 `.view` 的只读角色写入 403（**含 `results/` 的 POST 路径**）；跨公司写入 403 `OUT_OF_DATA_SCOPE`；四个台账均按公司收敛 |
+| 状态迁移正确 | ✅ | 检验单 `draft → submitted → judged → closed`；报警 `open → handling → closed`；知识库 `draft → published → archived`；`status` / `judgement` 只读（PATCH 推不动）；跳步（草稿直接判定、无结果提交、报警未闭环关单、重复发布）一律 409 |
+| 异常处理明确 | ✅ | `ITEM_NOT_QUANTITATIVE`、`MEASURED_VALUE_REQUIRED`、`RESULT_JUDGEMENT_REQUIRED`、`INSPECTION_NO_RESULT`、`INSPECTION_STATUS_INVALID`、`INVALID_JUDGEMENT`、`JUDGEMENT_CONFLICT`、`ALERT_CLOSE_REMARK_REQUIRED`、`QUALITY_ALERT_STATUS_INVALID`、`QUALITY_ISSUE_STATUS_INVALID`、`ITEM_COMPANY_MISMATCH` |
+| 关键操作可审计 | ✅ | 结果录入、提交、判定（合格走 `approve`、不合格走 `reject` 并带判定说明）、关闭、报警处理 / 关闭、知识库发布 / 归档均写 `core` 审计 |
+| 跨模块结果正确 | ✅（本增量范围内） | 只**引用** `masterdata` / `srm` / `factory` / `equipment` 台账，不修改它们的表；与 `procurement.receipt.inspect`、`wms` 质量放行**并行**，不做隐式联动（`test_material_must_belong_to_same_company` 锁定同公司约束） |
+| 自动化测试实际执行 | ✅ | `tests/test_qms_api.py` **14 例**；全量 `pytest tests -q --reuse-db` → `438 passed in 242.34s`；前端 `vitest` → 15 文件 / 253 项；`ruff` / `vue-tsc` / `vite build` 全过 |
+| 文档已更新 | ✅ | `docs/progress.md` §三十一、`docs/requirements-matrix.md` §一之二十一与 §10.9 逐条状态、`docs/data-model.md` §十一、`docs/api-conventions.md` §一与质量约定、`docs/permission-matrix.md`（重生成 350 权限 / 139 菜单）、`docs/architecture.md` §三、`docs/assumptions.md` §四之八、`docs/test-report.md` §三十、面向客户的 `docs/user-guide.md`（+ 网页版）、`AGENTS.md` 事实行 |
+| 未完成内容明确列出 | ✅ | 见下方「未实现项」 |
+
+**本增量明确的未实现项**（不得视为通过）：
+
+- **检验标准版本快照**：检验单不保存项目标准的历史快照，改标准会影响历史单据的解读；
+- **不合格处置工单**：返工 / 退货 / 报废的处置流程未做（本轮只做合格 / 不合格 / 让步接收 + 报警闭环）；
+- **检测仪器直连**：结果全部人工录入，没有在线检测分析设备的采集接口；
+- **与既有质量路径尚未接线**：`procurement.receipt.inspect`（收货单人工判定）与 `wms` 质量放行仍是独立路径，
+  QMS 检验单没有取代它们；按工艺路线 `is_quality_gate` 决定质检点需要 MES 落地后一并做；
+- 质量统计的定时快照与同环比、性能压测。
+
+**未执行的验证**：
+
+- **浏览器截图级校验未执行**（沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化被策略拦截）：
+  4 个新页面与「录入结果」弹窗只做了源码级与构建级验证；
+- 真实检测设备 / 在线检测仪器的联调**未执行**（没有设备可接）；
+- 与第七节口径一致：Playwright、高性能压测、备份恢复、容器环境启动验证均未执行。
+
+## 五之六、阶段 3 第三步验收（生产执行 MES）
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 页面可操作 | ✅ | `views/mes/ProductionOrderList.vue`、`ProductionReportList.vue`，位于「生产执行」目录下（sort 79，排在「计划管理」之后、「仓储管理」之前）；`views-compile.spec.ts` 实际编译并加载；`router.spec.ts` 菜单契约由 `frontend/tests/fixtures/menu-components.json`（142 项）覆盖；`npm run build` 产物含 2 个页面 chunk |
+| API 可访问 | ✅ | `/api/v1/mes/orders/`（`{id}/materials/`、`steps/`、`statistics/`、`release/`、`issue-materials/`、`report/`、`complete/`、`receipt/`、`close/`、`cancel/`）、`/api/v1/mes/reports/`，全部由 `tests/test_mes_api.py` 走真实 HTTP 验证 |
+| 数据持久化 | ✅ | MySQL 真实写入并读回：`mes_productionorder` / `mes_productionordermaterial` / `mes_productionorderstep` / `mes_productionreport`；`manage.py migrate` → `Applying mes.0001_initial... OK` |
+| 权限生效 | ✅ | 匿名 403；只有 `.view` 的只读角色写入 403；跨公司写入 403 `OUT_OF_DATA_SCOPE`；四张表均按公司收敛（`test_company_scope_hides_other_company_orders`）；质检点自动开单内部校验 `qms.inspection.create`（缺权整笔回滚） |
+| 状态迁移正确 | ✅ | 工单 `draft → released → in_progress → completed → closed`，`draft / released → cancelled`；非草稿 `PATCH` 报 **409 `STATE_CONFLICT`**；未下达就领料 / 报工、工序未完就完工、质检点未判定就完工均 409 |
+| 快照冻结正确 | ✅ | 下达即写入 `bom_snapshot` / `routing_snapshot`；BOM 展开用量按含损耗计算（2.8×1.06×10 = 29.68）；工程数据派生新版本后已下达工单的用料与工序不变（`test_release_freezes_snapshot_and_expands_bom`） |
+| 报工守恒 | ✅ | 合格 + 返工 + 报废 ≠ 报工量 → `QUANTITY_MISMATCH`；同一工序累计超计划 → `OVER_PRODUCTION`；报工台账**只读、不可回改**（无 PATCH 路由） |
+| 库存经统一服务 | ✅ | 领料与完工入库均调 `apps/wms/services/stock.py` 生成并过账库存单（`issue_document` / `receipt_document`），MES 不写库存余额；幂等重放返回首次结果，重复请求报 `MATERIAL_ALREADY_ISSUED` / `RECEIPT_ALREADY_POSTED` |
+| 异常处理明确 | ✅ | `ROUTING_REQUIRED`、`ROUTING_EMPTY`、`BOM_REQUIRED`、`BOM_EMPTY`、`INVALID_QUANTITY`、`QUANTITY_MISMATCH`、`OVER_PRODUCTION`、`QUALITY_GATE_NOT_PASSED`、`STEPS_NOT_FINISHED`、`STEP_ALREADY_COMPLETED`、`STEP_ORDER_MISMATCH`、`MATERIAL_ALREADY_ISSUED`、`NOTHING_TO_ISSUE`、`RECEIPT_ALREADY_POSTED`、`NOTHING_TO_RECEIPT`、`STATE_CONFLICT`、`REASON_REQUIRED`、`WAREHOUSE_REQUIRED`、`STYLE_INACTIVE`、`COMPANY_STYLE_MISMATCH`、`SKU_STYLE_MISMATCH`、`DUPLICATE_MATERIAL` |
+| 关键操作可审计 | ✅ | 建单、修改、下达、领料、报工、完工、入库、关闭、取消均写 `core` 审计，并写 `integration.Outbox`（`ORDER_RELEASED` / `ORDER_COMPLETED`） |
+| 跨模块结果正确 | ✅ | MRP 生产建议转单 → 草稿工单 + `DocumentLink`；MRP 在制供给取已下达 / 生产中工单未完工量；质检点报满自动开 QMS 检验单；入库走 `wms` 库存服务 |
+| 自动化测试实际执行 | ✅ | `tests/test_mes_api.py` **32 例**；全量 `pytest tests -q --reuse-db` 见 `docs/test-report.md` §三十一；前端 `vitest` → 15 文件 / 255 项；`ruff` / `vue-tsc` / `vite build` 全过 |
+| 文档已更新 | ✅ | `docs/progress.md` §三十二、`docs/requirements-matrix.md` §一之二十二与 §10.7 逐条状态、`docs/data-model.md` §十二、`docs/api-conventions.md` §一与生产执行约定、`docs/permission-matrix.md`（重生成 360 权限 / 142 菜单）、`docs/architecture.md` §三与 ADR-08 / ADR-11、`docs/assumptions.md` §四之九、`docs/business-flows.md` §十六、`docs/test-report.md` §三十一、面向客户的 `docs/user-guide.md`（+ 网页版）、`AGENTS.md` 事实行 |
+| 未完成内容明确列出 | ✅ | 见下方「未实现项」 |
+
+**本增量明确的未实现项**（不得视为通过）：
+
+- **线体排产**：工单可指定厂区 / 车间 / 线体，但没有排产优化与产能冲突检查；
+- **裁剪任务 / 裁片批次**：未建模；
+- **工位派工**：工序不指定工位，没有派工与接单动作；
+- **在制品转移与返工工单**：返工以报工类型体现，没有独立的返工工单；
+- **扫码 / RFID 与硬件控制**：无协议不伪造，报工全部人工；
+- **工序级良率与 OEE**：需设备运行时长，本轮未算；
+- **工单成本与实际工时汇总**：报工记录实际工时，但不计算成本。
+
+**未执行的验证**：
+
+- **浏览器截图级校验未执行**（沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化被策略拦截）：
+  2 个新页面与「报工」弹窗只做了源码级与构建级验证；
+- **并发报工 / 并发领料的多连接压测未执行**（幂等与锁已用例覆盖，但未做真实多连接竞争）；
+- 与第七节口径一致：Playwright、高性能压测、备份恢复、容器环境启动验证均未执行。
+
 ## 六、逐条对照 19.3 完成标准
 
 | 标准 | 阶段 0/1 情况 |
@@ -248,13 +316,17 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
 | 硬件采集 / 模拟器 | **未执行** | 阶段 5 |
 | 备份恢复演练 | **未执行** | 阶段 7 |
 | 性能压测 | **未执行** | 阶段 7（需先确定部署资源） |
-| 寻源 / 报价 / 供应商评分 / 准入审批流程 | **未开始** | 阶段 2 剩余增量 |
+| 供应商五维量化评价（权重配置 / 评价单 / 缺数据口径 / 只读统计） | **已通过阶段验收** | 阶段 2 深化（本轮），详见 `docs/progress.md` §三十三；**寻源与报价仍未开始** |
+| 寻源 / 报价 / 准入审批流程 | **未开始** | 阶段 2 剩余增量 |
 | 采购：询价比价、到货差异、退货、应付与付款登记、采购分析报表、单据打印 | **未开始** | 阶段 2 采购模块剩余增量（主体链路已完成） |
 | 销售发货、退货与库存占用 | **已通过阶段验收** | 阶段 2 第四步，详见 §五之二 |
 | 销售计划、折扣、订单变更版本快照、分销商、基础预测、应收与收款登记、跨维度拆分占用 | **未开始** | 阶段 2 销售模块剩余增量 |
-| MRP 净算、缺料建议与采购建议转单 | **已通过阶段验收** | 阶段 3 第二步，详见 §五之四；**在制供给、提前期/批量规则、生产建议转 MES 工单未实现** |
-| 跨仓调拨与盘点、生产领料与工序报工、MES 工单 | **未开始** | 阶段 3 第三步（统一库存服务、采购模块、销售模块、MRP 已完成） |
-| 库存 / MRP / MES / QMS / EAM / EMS / EHS 等 | **未开始** | 阶段 2–6 |
+| MRP 净算、缺料建议与建议转单 | **已通过阶段验收** | 阶段 3 第二步，详见 §五之四；**提前期与批量规则、安全库存未实现**；**在制供给与生产建议转 MES 工单已随 MES 落地**（§五之六） |
+| 生产领料、工序报工、生产工单与完工入库 | **已通过阶段验收** | 阶段 3 第三步，详见 §五之六；**线体排产、裁剪任务、工位派工、在制品转移、扫码 / 硬件控制、工序良率 / OEE 未实现** |
+| 跨仓调拨与盘点 | **未开始** | 阶段 3 剩余增量（统一库存服务、采购、销售、MRP、MES 已完成） |
+| 质量管理（QMS）检验项目 / 检验单与判定 / 质量报警 / 质量问题知识库 | **已通过阶段验收** | 阶段 3 第四步首块，详见 §五之五；**检验标准版本快照、返工 / 报废处置工单、检测仪器直连、与采购收货放行的接线未实现** |
+| MES 剩余的线体排产 / 裁剪任务 / 工位派工 / 在制品转移 | **未开始** | 阶段 3 剩余增量（工单与报工已完成） |
+| EAM / EMS / EHS / 厂内物流 / 设备数采 / 客户服务深化 | **已通过阶段验收** | 阶段 4–6，详见 §五之三 |
 
 ## 八、验收结论
 
@@ -272,12 +344,31 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
   跨维度自动拆分占用、多批次部分退货的批次分摊未实现**，不得视为通过。
 - **阶段 3 第一步（BOM 与工艺路线版本快照）：通过（含未实现项声明）** —— 版本化工程数据、
   审批后冻结、派生新版本不覆盖已审核版本、作废留痕、快照输出可用，有权限、可审计，50 条新用例；
-  **MES 工单与报工、QMS 检验单、快照落库、BOM 成本卷算未实现**，不得视为通过。
+  **（本增量当期）MES 工单与报工、QMS 检验单、快照落库、BOM 成本卷算未实现**，不得视为通过；
+  其中**MES 工单与报工、快照落库已在阶段 3 第三步交付**（§五之六）。
 - **阶段 3 第二步（MRP）：通过（含未实现项声明）** —— 时间分段净算、多层 BOM 展开与损耗、
   循环 BOM 检查、缺料清单、采购 / 生产建议、供需追溯、计算快照、采购建议转**草稿**采购申请可用，
   有权限、可审计、对库存只读，32 条新用例 + 29 项真实 HTTP 链路检查；
-  **在制供给、提前期与批量规则、替代料展开、生产建议转工单未实现**（生产建议转单返回明确错误码，不伪造工单），不得视为通过。
-- **不声称**已完成全部平台。阶段 2 的销售计划与预测、供应商评价，以及阶段 3 的 MES、QMS 尚未开始。
+  **（本增量当期）在制供给、提前期与批量规则、替代料展开、生产建议转工单未实现**，不得视为通过；
+  其中**在制供给与生产建议转草稿工单已在阶段 3 第三步交付**（§五之六），提前期 / 批量规则与替代料展开仍未做。
+- **阶段 3 第四步（质量管理 QMS）首块：通过（含未实现项声明）** —— 检验项目、检验单与结果录入、
+  **定量项由服务层按标准上下限自动判定**、判定不合格**自动生成唯一质量报警**、报警未闭环时单据关不掉、
+  质量问题知识库（发布 / 归档、来源链路）、按明细实时聚合的质量动态监测可用，有权限、可审计，14 条新用例；
+  **检验标准版本快照、返工 / 退货 / 报废处置工单、检测仪器直连、与 `procurement.receipt.inspect`
+  及 `wms` 质量放行的接线未实现**，不得视为通过；
+  其中**按 `is_quality_gate` 决定质检点已随 MES 落地**（工序报满自动开 QMS 检验单，§五之六）。
+- **阶段 3 第三步（生产执行 MES）：通过（含未实现项声明）** —— 生产工单（下达冻结 BOM / 工艺快照、BOM 展开用料、工艺生成工序）、
+  领料与完工入库经统一库存服务、报工守恒与超产拦截、质检点自动开检验单并作为完工硬门、状态机与数据范围可用，
+  有权限、可审计，32 条新用例；**线体排产、裁剪任务 / 裁片批次、工位派工、在制品转移与返工工单、扫码 / RFID 与硬件控制、工序良率与 OEE、工单成本未实现**，不得视为通过。
+- **供应商五维量化评价（阶段 2 深化）：通过（含未实现项声明）** —— 权重配置（合计必须正好 100%、只增不改的版本派生）、
+  评价单（草稿 → 已生效 → 已归档，五维各一行，总分与等级只由服务层按权重快照计算）、
+  缺数据的两种口径（`mark_missing` 不给等级 / `redistribute` 合计精确 100%）与按明细实时聚合的评价统计可用，
+  有权限、可审计、有数据范围，**18 条新用例**；**评价不自动回写** `Supplier.grade`（刻意设计），
+  **供应商寻源与报价未实现**，不得视为通过。
+- **不声称**已完成全部平台。阶段 2 的销售计划与预测、供应商寻源与报价，
+  以及阶段 3 剩余部分（跨仓调拨与盘点、线体排产、裁剪任务与工位派工、在制品转移）尚未开始；
+  跨系统数据交换中间件、工业终端安全（防病毒与补丁管理）、
+  EMS 能源调度、EAM 的 OEE 统计、EHS 职业健康同样未开始。
 - **界面样式增量：通过（含未执行项声明）** —— 左侧导航一级目录与二级页面按层级区分，
   各视图重复手写的面板/区块标题/统计卡/代码块下沉为共享样式类（视图内重名定义 4 → 0），
   新增 `side-menu.spec.ts`（10 项）与 `styles.spec.ts`（31 项）契约测试；
@@ -293,7 +384,7 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
 3. 建议先在有 Docker 的环境验证 Compose，再进入阶段 2，避免基座问题被业务代码放大。
 4. **已完成**：收货可直接入待检库（`quality_status=quarantine`），只有经质量放行
    才能变为可动用的合格库存；待检/不合格库存出库被拒绝（任务书第十七章补充说明）。
-5. 供应商寻源/报价/评分需先确认权重模型与「无数据不记零分」的实现口径（任务书 10.4）。
+5. **已完成**：供应商五维评价的权重模型（质量 / 技术 / 响应 / 交付 / 成本，**合计必须正好 100%**）与「无数据不记零分」口径（`mark_missing` / `redistribute` 两种策略）已按任务书 10.4 落地并有用例覆盖（`docs/progress.md` §三十三）。**仍未做**：供应商寻源与报价。
 6. **已完成**：`dimension_key` 单列 UNIQUE 规范化键 + 并发测试（必测案例 6、7、8）。
    **采购单据与销售单据均已接入该服务**（收货过账 → 待检 / 检验放行 → 合格；销售发货出库、退货入库、检验放行）；
    下一步：
@@ -304,7 +395,9 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
    派生需求按低层码只净算一次（必测案例 12 已覆盖）。**仍未处理**：采购提前期与批量规则、
    安全库存、在制供给、替代料展开——这些依赖 MES 工单与供应商交期数据。
    **开工前需确认**：是否需要多工厂 / 多仓库维度的独立净算（当前按公司 + 可选单仓过滤）。
-9. **阶段 3 第三步（MES 工单）** 下达时保存 `build_bom_snapshot()` / `build_routing_snapshot()`
-   的结果；落库前需把 `docs/data-model.md` 的 BOM 章节与工单快照字段对齐，避免结构漂移。
-10. **阶段 3 第四步（QMS 检验单）** 用工艺路线的 `is_quality_gate` 决定哪些工序必须产生检验记录，
-    并与 `procurement.receipt.inspect` 的升级路径共用同一检验单实体。
+9. **已完成**：阶段 3 第三步（MES 工单）已在 `apps/mes` 落地，下达时保存
+   `build_bom_snapshot()` / `build_routing_snapshot()` 到工单的 JSON 快照字段（`bom_snapshot` / `routing_snapshot`，
+   不单独建快照表，见 ADR-08）；`docs/data-model.md` §十二已与工单快照字段对齐。
+10. **已完成（接线部分）**：MES 工单下达时把 `is_quality_gate` 工序标记为质检点，
+    报满自动开 QMS 检验单，并作为工单完工的硬门。
+    **仍待做**：与 `procurement.receipt.inspect` 的升级路径共用同一检验单实体。

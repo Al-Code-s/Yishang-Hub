@@ -17,13 +17,20 @@
 | identity | `/api/v1/identity/`（用户、角色、权限、菜单、登录会话、通知） |
 | factory | `/api/v1/factory/`（公司、部门、工厂、车间、线体、工位、员工、班次、班组） |
 | masterdata | `/api/v1/masterdata/`（物料、分类、款式、颜色、尺码、SKU、计量单位、标识） |
-| crm | `/api/v1/crm/customers/`、`/api/v1/crm/customer-contacts/` |
+| crm | `/api/v1/crm/customers/`、`/api/v1/crm/customer-contacts/`、`/api/v1/crm/complaints/`、`/api/v1/crm/product-reviews/` |
 | srm | `/api/v1/srm/suppliers/`、`/api/v1/srm/supplier-contacts/`、`/api/v1/srm/supplier-qualifications/` |
 | wms | `/api/v1/wms/`（仓库、库区、储位、**库存余额、库存流水、库存单据**） |
 | procurement | `/api/v1/procurement/`（**采购申请、采购订单、采购收货**） |
 | workflow | `/api/v1/workflow/`（审批模板、实例、待办） |
 | integration | `/api/v1/integration/`（Outbox 事件、单据关系） |
 | analytics | `/api/v1/analytics/`（看板聚合） |
+| equipment | `/api/v1/equipment/`（设备台账与类型、设备零部件、备品备件与配件、故障报修、保养、维修、点巡检、异常上报） |
+| ems | `/api/v1/ems/`（计量区域与仪表、价格与阈值、抄表、设备运行记录、报警、看板 / 报表 / 统计） |
+| iot | `/api/v1/iot/`（连接配置、数采设备、采集测点、采集读数、采集日志、**采集统计**；另有设备侧上报入口 `POST /api/v1/iot/ingest/`） |
+| ehs | `/api/v1/ehs/`（安全、环保、消防、设备设施安全） |
+| logistics | `/api/v1/logistics/`（自动化设备、物流任务、操作日志） |
+| qms | `/api/v1/qms/`（检验项目、检验单与检验结果、质量报警、质量问题知识库；另有只读统计 `GET /api/v1/qms/inspections/statistics/`） |
+| mes | `/api/v1/mes/orders/`（生产工单与动作）、`/api/v1/mes/reports/`（报工台账） |
 | 文档 | `/api/v1/schema/`（OpenAPI）、`/api/v1/docs/`（Swagger UI） |
 
 主数据资源统一提供 `list / retrieve / create / partial_update / set-active`，**不提供 `DELETE`**
@@ -49,6 +56,55 @@
   例：采购收货过账同时要求 `procurement.receipt.post` **与** `wms.document.create`、`wms.document.post`；
   来料检验放行同时要求 `procurement.receipt.inspect` **与** `wms.quality.release`。
   这样**持有采购权限不会绕过库存授权**，反之亦然。
+
+**只读统计接口（阶段 5 / CRM 深化 / 质量管理增补）**：
+
+- `GET /api/v1/iot/statistics/`（权限 `iot.reading.view`）：按「测点 × 时间桶」聚合采集读数；
+  参数 `granularity`（`hour` / `day`，默认 `day`）、`since`、`until`（**含当天**）、`company_id`、
+  `gateway_id`、`point_id`、`is_simulated`、`limit`；返回 `rows` / `buckets` / `totals` / `truncated` / `row_limit`。
+- `GET /api/v1/crm/complaints/statistics/`（权限 `crm.complaint.view`）、
+  `GET /api/v1/crm/product-reviews/statistics/`（权限 `crm.product_review.view`）：
+  参数 `since`、`until`（**含当天**）、`company_id`、`customer_id`。
+- `GET /api/v1/qms/inspections/statistics/`（权限 `qms.inspection.view`）：质量信息动态监测；
+  参数 `since`、`until`（**含当天**）、`company_id`、`inspection_type`；
+  返回单据量（草稿 / 已提交 / 已判定）、**合格率（分母只含已判定单据）**、判定分布、
+  不合格项目 TOP10、未关闭报警数与报警级别分布。
+- 这些接口都**只有 `GET`**（无写路由），且**全部按明细实时聚合、不落汇总表**：
+  页面上的数字永远能回到明细列表逐条核对。
+- 错误码：`granularity` 不在支持列表 → `GRANULARITY_NOT_SUPPORTED`（400）；
+  时间跨度超过该粒度上限 → `TIME_RANGE_TOO_WIDE`（400）；起始不早于结束 → `INVALID_TIME_RANGE`（400）。
+
+**质量管理（`qms`）约定**：
+
+- 检验项目 `inspection-items`、检验单 `inspections`、质量报警 `alerts`、知识库 `issues`
+  均为 `list / retrieve / create / partial_update` + `set-active`（报警与检验单不做删除）。
+- 状态一律走动作端点：检验单 `results/`（`GET` 查看 / `POST` 录入覆盖）、`submit/`、`judge/`、`close/`；
+  报警 `handle/`、`close/`、`create-issue/`；知识库 `publish/`、`archive/`。
+- **定量项目的合格与否只能由服务层按检验项目上下限判定**：请求里携带的 `is_qualified`
+  对定量项目**被忽略**，对定性项目才是必填结论。
+- `results/` 一个 action 同时服务查看与录入，而权限按 `self.action` 解析，
+  写路径在方法内部用 `require_codes(request.user, "qms.inspection.update")` 二次校验。
+
+**生产执行（`mes`）约定**：
+
+- 工单 `/api/v1/mes/orders/`：`list / retrieve / create / partial_update` + 动作端点，
+  **不提供 `DELETE`**；报工 `/api/v1/mes/reports/` 为**只读台账**（`list / retrieve`）。
+- 状态迁移一律走**动作端点**（不做普通 PATCH推状态）：
+  `release/`（下达，冻结 BOM / 工艺快照并生成工序与用料）、
+  `issue-materials/`（领料，经统一库存服务过账）、`report/`（报工）、
+  `complete/`（完工）、`receipt/`（完工入库）、`close/`（关闭）、`cancel/`（取消，必填 `reason`）。
+- 查询类子资源：`GET /api/v1/mes/orders/{id}/materials/`（工单用料）、
+  `GET /api/v1/mes/orders/{id}/steps/`（工单工序）、
+  `GET /api/v1/mes/orders/statistics/`（只读统计）。
+- **工单表头在非草稿状态下冻结**：已下达及之后的 `PATCH` 返回
+  **409 `STATE_CONFLICT`**（只能改草稿）。
+- **领料与完工入库支持 `Idempotency-Key`：**同一工单重复提交同一幂等键返回**首次结果**（不重复过账），
+  已领料 / 已入库的工单再次请求且无幂等键则报
+  `MATERIAL_ALREADY_ISSUED` / `RECEIPT_ALREADY_POSTED`（409）。
+- 报工台账只读，录入只能经工单的 `report/`：报工是**不可回改的原始记录**，
+  填错了补一条返工报工，而不是把历史数字改掉。
+- 数量与金额均为字符串输出的 Decimal；`progress_rate` 等百分比字段输出为
+  保留 2 位小数的字符串（如 `"0.00"`），不输出科学计数法。
 
 ## 二、认证与 CSRF
 

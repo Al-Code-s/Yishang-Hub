@@ -53,3 +53,10 @@ def rate_field(*args: Any, **kwargs: Any) -> models.DecimalField:
     kwargs.setdefault("max_digits", RATE_MAX_DIGITS)
     kwargs.setdefault("decimal_places", RATE_DECIMAL_PLACES)
     return models.DecimalField(*args, **kwargs)
+
+
+def reading_field(*args: Any, **kwargs: Any) -> models.DecimalField:
+    """能源仪表读数（表底值、用量、阈值）。精度见 METER_READING_*。"""
+    kwargs.setdefault("max_digits", METER_READING_MAX_DIGITS)
+    kwargs.setdefault("decimal_places", METER_READING_DECIMAL_PLACES)
+    return models.DecimalField(*args, **kwargs)

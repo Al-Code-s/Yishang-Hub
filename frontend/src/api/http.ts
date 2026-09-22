@@ -143,3 +143,14 @@ export async function put<T>(url: string, data?: unknown): Promise<T> {
 export async function del(url: string): Promise<void> {
   await http.delete(url)
 }
+
+/**
+ * 下载二进制响应（例如后端导出的 xlsx 报表）。
+ *
+ * 后端导出的是真实文件流，不是改后缀的 CSV，因此必须用 blob 接收，
+ * 再由调用方触发浏览器保存。错误仍走统一的 ApiError 处理。
+ */
+export async function download(url: string, config?: AxiosRequestConfig): Promise<Blob> {
+  const response = await http.get<Blob>(url, { ...config, responseType: 'blob' })
+  return response.data
+}

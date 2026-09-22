@@ -1941,3 +1941,377 @@ SMOKE_EXIT=0
 | 浏览器观感核对（空白工作台、面包屑、工作台时间线、审计中文列、内部协同中文业务对象） | **未执行**——本机未安装 Playwright，浏览器自动化被安全策略拒绝。请人工登录 `http://127.0.0.1:5173/` 逐条确认 |
 | Playwright 端到端 / Docker Compose / Celery / 真实硬件采集 | **未执行**（与前几节结论相同） |
 | 表单必填校验与错误文案的浏览器级校验 | **未执行（jsdom 无法覆盖）**，原因见 §23.5 |
+
+
+## 二十七、设备 / 能源 / 生产物流 / 安全环保四模块复验记录（本轮）
+
+> 复验时间：2026-09-21。本轮新增 4 个后端 App 与 4 个后端测试文件（49 个用例）。
+> 下面每一行都是**本轮实际执行的命令与真实输出**；未执行的项在 §27.3 明确列出。
+
+### 27.1 新增用例（本轮实际输出）
+
+| 命令 | 真实输出 |
+| --- | --- |
+| `pytest tests/test_equipment_api.py -q --reuse-db` | `12 passed in 7.49s` |
+| `pytest tests/test_ems_api.py -q --reuse-db` | `15 passed in 8.88s` |
+| `pytest tests/test_logistics_api.py -q --reuse-db` | `11 passed in 6.67s` |
+| `pytest tests/test_ehs_api.py -q --reuse-db` | `11 passed in 7.25s` |
+
+覆盖的关键行为（每条都由真实 HTTP 请求 + MySQL 约束验证，不使用 mock）：
+
+| 文件 | 覆盖行为 |
+| --- | --- |
+| `test_equipment_api.py` | 公司范围在列表 / 详情 / 写入三处生效且越权写入整体回滚；设备与备件按 `EQ` / `SP` 取号；保养计划生成到期任务幂等且推进 `next_date`；保养任务完成生成记录；报修 → 派工 → 完成自动关闭报修单；点巡检异常转报修；`status` 不可 PATCH；备件现存量只读且按公司收敛；只读账号不能写 |
+| `test_ems_api.py` | 取号（`EM`）；倍率与上次读数算用量（首次抄表用量记 0）；读数回退 `READING_ROLLBACK`；越限报警同仪表同类型当天只报一次；离线扫描生成报警并把仪表置为离线且重复扫描不重复报警；运行记录「开始 → 结束」算时长 / 单耗并触发单耗报警、同仪表已有未结束记录时 `RUN_ALREADY_OPEN`；报表未维护单价时 `priced=false`、维护后按单价折算，`export=xlsx` 返回真实 zip 头；抄表只读（PATCH → 405） |
+| `test_logistics_api.py` | 取号（`AD` / `LT`）；任务状态机跳步 → 409；故障设备下发 → `DEVICE_NOT_AVAILABLE`；同设备两个执行中任务 → `DEVICE_BUSY`；取消未填原因 → 400；设备状态动作写操作日志；日志接口只读（POST → 405）；只读账号不能执行任务 |
+| `test_ehs_api.py` | 取号（`SRG`/`TRN`/`HZD`/`FFC`/`CMP`）；隐患「整改 → 提交验收 → 验收不通过退回 → 再整改 → 验收通过关闭」；事故「调查 → 整改 → 关闭」，未调查直接整改 → 409；动火作业无监护人不得批准（`PERMIT_GUARDIAN_REQUIRED`）；许可驳回必须写理由；排污监测按实测值自动判达标（实测 135 > 限值 100 → 不达标；8 < 20 → 达标）且 `is_compliant` 不可改；日志只读 |
+
+### 27.2 本轮全量回归（真实输出）
+
+| 检查 | 真实输出 |
+| --- | --- |
+| `python manage.py check` | `System check identified no issues (0 silenced).` |
+| `python manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `python -m ruff check apps config tests` | `All checks passed!` |
+| `python -m pytest tests -q --reuse-db` | `381 passed in 201.53s (0:03:21)` |
+| `python -m pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed in 0.14s` |
+| `python manage.py bootstrap_system`（开发库重跑） | `权限点：新增 0，更新 310，注册表共 310 条。` / `菜单：新增 0，更新 125，注册表共 125 条。` / `编码规则：新增 0，共计 45 条。` / `系统初始化完成。` |
+| 前端 `npm run typecheck` | 退出码 `0`（`vue-tsc --build --force`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 241 passed (241)` |
+| 前端 `npm run build` | `✓ built in 16.91s` |
+| 前端 `pytest tests/test_docs_sync.py::test_published_guide_html_is_up_to_date` 等价校验 | `python scripts/build_user_guide.py --check` 退出码 `0`（网页版说明与 Markdown 一致） |
+
+### 27.3 未执行 / 未验证（如实列出）
+
+1. **浏览器观感**：沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化也被策略拦截，
+   因此四个新模块的页面只做了源码级（`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）与接口级验证，
+   **没有人工看过界面**。
+2. **真实硬件接入**：设备数采 / 采集网关 / 协议解析未实现，能源数据只走人工抄表接口，
+   没有用真实电表或网关做过对接验证。
+3. **能源监控聚合接口**（`GET /api/v1/ems/monitor/`）、能源首页 / 看板聚合接口没有单独的接口用例
+   （只覆盖了底层的计量设备范围与统计接口）。
+4. **`ems_offline_check` 定时任务**未做调度级验证（只验证了等价的服务函数路径 `scan-offline`），
+   也未在部署环境配置 cron / 计划任务。
+5. **跨公司越权写**在四个新模块上各有 1 个用例；**数据范围为「指定工厂 / 部门」**的场景
+   未针对新模块编写用例（沿用了阶段 1 的数据范围实现与既有用例）。
+
+## 二十八、客户投诉 / 产品评价 + 设备数采复验记录（本轮）
+
+> 复验时间：2026-09-21。本轮新增 1 个后端 App（`apps/iot`）、扩展 `apps/crm`，新增 2 个后端测试文件共 31 个用例。
+> 下面每一行都是**本轮实际执行的命令与真实输出**；未执行的项在 §28.3 明确列出。
+
+### 28.1 新增用例（本轮实际输出）
+
+| 命令 | 真实输出 |
+| --- | --- |
+| `pytest tests/test_crm_api.py -q --reuse-db` | `28 passed in 15.43s` |
+| `pytest tests/test_iot_api.py -q --reuse-db` | `20 passed in 5.88s` |
+| `pytest tests/test_crm_api.py tests/test_iot_api.py -q --reuse-db` | `48 passed in 20.31s` |
+
+覆盖的关键行为（每条都由真实 HTTP 请求 + MySQL 约束验证，不使用 mock）：
+
+| 文件 | 覆盖行为 |
+| --- | --- |
+| `test_crm_api.py`（新增 11 项） | 投诉按 `CMPL` 取号；「受理 → 处理 → 关闭」全生命周期并写审计日志；跳步 → 409；未填处理措施 → 400；`status` 不可 PATCH；跨公司客户 → 400；投诉列表按公司收敛；动作权限不足 → 403；评价按 `PRV` 取号与评分越界校验；评价「回复 → 关闭」生命周期；元数据暴露投诉 / 评价枚举 |
+| `test_iot_api.py`（新建 20 项） | 未登录访问被拒；无令牌上报 401；用员工会话上报被拒；令牌只存 SHA-256 摘要；读数入库并双重去重（重复 `message_id` 与同测点同设备时间都不重复入账）；模拟报文带 `is_simulated`；处理失败留痕；超批次 / 非法协议 → 400；按设备限流 → 429；越限每测点一条报警；离线扫描跳过模拟设备、最近上报的设备不算离线；令牌轮换使旧令牌失效；测点公司由设备推导（传 `company_id` 无效）；取号（`IOTCN`/`IOTGW`/`IOTPT`）；列表按公司收敛；无权限 → 403；设备监控聚合返回状态与最新读数；`iot_simulate` 命令产生的数据带「模拟」标识；元数据暴露数采枚举 |
+
+### 28.2 本轮全量回归（真实输出）
+
+| 检查 | 真实输出 |
+| --- | --- |
+| `python manage.py check` | `System check identified no issues (0 silenced).` |
+| `python manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `python -m ruff check apps config tests` | `All checks passed!` |
+| `python -m pytest tests -q --reuse-db` | `412 passed in 203.42s (0:03:23)` |
+| `python -m pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed in 0.13s` |
+| `python manage.py bootstrap_system`（开发库重跑） | `权限点：新增 0，更新 333，注册表共 333 条。` / `菜单：新增 0，更新 134，注册表共 134 条。` / `编码规则：新增 0，共计 50 条。` / `角色 iot_admin（设备数采管理员）：新增，权限 21 个。` / `系统初始化完成。` |
+| 前端 `npm run typecheck` | 退出码 `0`（`vue-tsc --build --force`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 249 passed (249)` |
+| 前端 `npm run build` | `✓ built in 12.31s` |
+| 文档同步 | `python scripts/build_user_guide.py --check` → `使用说明网页版是最新的。` |
+
+### 28.3 未执行 / 未验证（如实列出）
+
+1. **真实设备接入与协议适配**：本轮只验证了 **HTTP 上报入口**与**内置模拟器**，
+   MQTT / Modbus 没有实现（连接配置可登记，采集入口返回 `PROTOCOL_NOT_IMPLEMENTED`），
+   也没有用真实电表 / 网关 / PLC 做过对接验证。
+2. **采集数据汇总与归档**：分钟 / 小时 / 日汇总表、原始数据归档清理**未实现**，
+   监控页按原始读数实时聚合，因此本轮没有汇总层的用例。
+3. **定时任务未做调度级验证**：`manage.py iot_offline_check`、`manage.py ems_offline_check`
+   只在开发机上手工执行（用例验证的是等价的服务函数路径），未在部署环境配置 cron / 计划任务。
+4. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化被策略拦截，
+   5 个新页面（数采设备 / 采集测点 / 设备监控 / 采集读数 / 采集日志）只做了源码级
+   （`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）与接口级验证。
+5. **前端没有针对新页面的组件级用例**：前端测试仍以契约测试为主（菜单组件解析、样式共享类、
+   文案口径、表格表单通用行为），未对 `views/iot/*` 单独编写挂载用例。
+6. **数采未做并发压测**：没有验证同一设备高并发上报时的限流精度与唯一约束冲突路径
+   （依赖数据库唯一约束兜底，未做多连接并发用例）。
+7. **投诉与评价未做外部渠道集成**（电话 / 网站在线表单自动接入）、未做自动分派与统计报表，
+   因此没有对应用例。
+
+## 二十九、采集统计与客户服务统计复验记录（本轮）
+
+> 复验时间：2026-09-21。本轮**不新增模型 / 迁移 / 权限点 / 菜单**，新增 3 个只读统计接口
+> （数采采集统计、投诉统计、评价统计）、2 个 `selectors` 模块与 12 个后端用例，
+> 并修复 2 个实测缺陷。下面每一行都是**本轮实际执行的命令与真实输出**；
+> 未执行的项在 §29.3 明确列出。
+
+### 29.1 本轮执行的检查（真实输出）
+
+| 检查 | 真实输出 |
+| --- | --- |
+| `python manage.py check` | `System check identified no issues (0 silenced).` |
+| `python -m ruff check --no-cache apps config tests` | `All checks passed!` |
+| `python -m pytest tests/test_iot_api.py -q --reuse-db` | `26 passed` |
+| `python -m pytest tests/test_crm_api.py -q --reuse-db` | `34 passed` |
+| `python -m pytest tests -q --reuse-db` | `424 passed in 209.98s (0:03:29)` |
+| `python -m pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed` |
+| 前端类型检查（`vue-tsc`，等价执行） | 退出码 `0`（两个 project 均无输出） |
+| 前端用例（`vitest`，等价执行） | `Test Files 15 passed (15)` / `Tests 249 passed (249)` |
+| 前端构建（`vite build`，等价执行） | `✓ built in 12.87s` |
+| 文档同步 | `python scripts/build_user_guide.py --check` → `使用说明网页版是最新的。` |
+
+> `makemigrations --check --dry-run` **本轮未执行**：本轮没有新增 / 修改模型，
+> 预期结果仍为 `No changes detected`；沙箱内该命令需要写 `.tmp` 目录而被拒。
+> 已核对迁移文件数量：`backend/apps/*/migrations/[0-9]*_*.py` 仍为 **27** 个，与 `AGENTS.md` 事实行一致
+> （`tests/test_docs_sync.py::test_doc_sync_facts_match_code[migrations]` 通过）。
+
+### 29.2 新增用例（本轮实际输出）
+
+| 命令 | 真实输出 |
+| --- | --- |
+| `pytest tests/test_iot_api.py -q --reuse-db` | `26 passed`（原 20 + 新增 6） |
+| `pytest tests/test_crm_api.py -q --reuse-db` | `34 passed`（原 28 + 新增 6） |
+
+| 文件 | 新增用例 |
+| --- | --- |
+| `test_iot_api.py` | `test_statistics_requires_reading_permission`、`test_statistics_buckets_by_business_timezone`（同时验证「删掉明细后统计跟着变」，证明统计不落汇总表）、`test_statistics_filters_and_simulated_flag`、`test_statistics_rejects_bad_granularity_and_wide_range`、`test_statistics_is_company_scoped`、`test_device_monitor_picks_latest_reading_per_point` |
+| `test_crm_api.py` | `test_complaint_statistics_totals_and_distribution`、`test_complaint_statistics_without_ratings_returns_none`、`test_statistics_requires_view_permission`、`test_complaint_statistics_is_company_scoped`、`test_product_review_statistics_scores_and_good_rate`、`test_review_statistics_date_filter` |
+
+覆盖的关键口径（真实 HTTP 请求 + MySQL，不使用 mock）：
+
+- **分桶按业务时区**：北京时间同一天、UTC 跨天的读数被算进同一个「业务日」桶。
+- **统计不落汇总表**：删掉明细读数后，同一个统计请求的数字随之变化。
+- **空样本不粉饰**：窗口内没有已回访样本时，`avg_satisfaction` 为 `null` 且 `unrated_total` 正确；
+  不会用 0 分拉低平均值。
+- **`until` 含当天**：`until=今天` 时当天的数据**包含在结果里**（回归 §29.3 修复的缺陷）。
+- **越限只标记不报警**：统计接口只返回 `is_over_limit`，不产生报警记录（报警只在采集入库路径产生）。
+- **权限与范围**：无权限 403；跨公司数据不进入统计结果。
+
+### 29.3 本轮修复的三个问题（均已复验）
+
+| 缺陷 | 现象 | 修法 |
+| --- | --- | --- |
+| 日期型 `until` 被静默当成当天 00:00 | 统计接口传 `until=今天` 会排掉当天**全部**数据 | `parse_business_moment` 先按纯日期解析再回退到日期时间解析，`end_of_day=True` 才会生效 |
+| 设备监控接口 N+1 | 每个测点单独查一次最新读数 | 改为「每测点取最新 id」子查询一次取回，再按 `point_id` 映射 |
+| 新增用例未过 ruff | `ruff check apps config tests` 报 5 项（`tests/test_iot_api.py` 导入块未排序 `I001`、4 处 `timezone.utc` 应为 `datetime.UTC` `UP017`） | 改用 `from datetime import UTC, datetime, timedelta` 与 `tzinfo=UTC`；复跑 `ruff check --no-cache apps config tests` → `All checks passed!` |
+
+### 29.4 未执行 / 未验证（如实列出）
+
+1. **`makemigrations --check --dry-run` 未执行**（原因见 §29.1）；已用「迁移文件计数 + 文档同步用例」替代核对。
+2. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化被策略拦截。
+   本轮前端改动（统计卡片、分布表、「采集统计」区块、`EntityListPage` 的 `#summary` 插槽）
+   只做了源码级与构建级验证，**未做截图核对**。
+3. **前端没有针对统计区块的组件级用例**：前端测试仍是契约测试（菜单组件解析、样式共享类、文案口径），
+   统计区块的行为由后端接口用例覆盖。
+4. **统计接口未做性能压测**：按明细实时聚合在「测点 × 时间桶」量级上成本可控，
+   但单公司读数达到千万级时的响应时间**未测量**，也未做并发压测。
+5. **未做的功能**（不视为通过）：MQTT / Modbus 协议适配与真实设备联调、采集数据归档清理任务、
+   投诉外部渠道自动接入与自动分派、统计的定时快照与同环比。
+
+## 三十、质量管理（QMS）复验记录（本轮）
+
+> 复验时间：2026-09-22。本轮新增应用 `apps/qms`（**5 个模型 / 1 个迁移 / 17 个权限点 / 5 项菜单**）
+> 与 14 个后端用例，并修复 3 个实测缺陷（2 个新代码缺陷 + 1 个与时钟相关的旧用例缺陷）。
+> 下面每一行都是**本轮实际执行的命令与真实输出**；未执行的项在 §30.4 明确列出。
+
+### 30.1 本轮执行的检查（真实输出）
+
+| 检查 | 真实输出 |
+| --- | --- |
+| `python manage.py check` | `System check identified no issues (0 silenced).` |
+| `python manage.py migrate` | `Applying qms.0001_initial... OK` |
+| `python manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `python -m ruff check --no-cache apps config tests` | `All checks passed!` |
+| `python -m pytest tests/test_qms_api.py -q --reuse-db` | `14 passed` |
+| `python -m pytest tests -q --reuse-db` | `438 passed in 242.34s (0:04:02)` |
+| `python -m pytest tests/test_docs_sync.py -q --reuse-db` | 随全量通过（事实行 `permissions=350 menus=139 models=139 migrations=28 builtin_roles=18`） |
+| 前端类型检查 `npm run typecheck`（`vue-tsc --build --force`） | 退出码 `0`（无输出） |
+| 前端用例 `npm run test`（`vitest run`） | `Test Files 15 passed (15)` / `Tests 253 passed (253)` |
+| 前端构建 `npm run build` | `✓ built in 15.70s` |
+| 文档同步 `python scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+
+### 30.2 新增用例（本轮实际输出）
+
+`pytest tests/test_qms_api.py -q --reuse-db` → `14 passed`（该文件为本轮新建）。
+
+| 用例 | 锁定的行为 |
+| --- | --- |
+| `test_inspection_item_code_is_generated_and_company_scoped` | 项目编码留空走 `QIT` 取号；跨公司数据不进列表；跨公司**写入**被拒（403 `OUT_OF_DATA_SCOPE`） |
+| `test_quantitative_item_requires_at_least_one_limit` | 定量项目必须给出一侧界限；定性项目不要求数值口径 |
+| `test_quantitative_result_is_judged_by_server` | **客户端谎报「合格」被忽略**，实测值超上限判为不合格 |
+| `test_qualitative_result_requires_declared_judgement` | 定性项目不给结论 400；给出结论后落库 |
+| `test_submit_requires_results_and_status_cannot_be_patched` | 无结果不许提交；`status` 不能用 PATCH 推进；草稿直接判定 409 |
+| `test_judgement_cannot_contradict_results` | 有不合格项判「合格」409，且结论保持「待判定」 |
+| `test_failed_judgement_creates_single_alert_and_blocks_close` | 不合格自动建唯一报警；报警未闭环时单据关不掉；关闭报警必须写说明；报警关闭后单据可关闭 |
+| `test_concession_requires_remark` | 让步接收必须写判定说明；让步接收**不生成**报警 |
+| `test_alert_can_be_turned_into_knowledge_base_entry` | 报警转知识库生成草稿并保留 `source_alert` / `source_order` 链路 |
+| `test_issue_publish_and_archive` | 草稿 → 发布 → 归档；重复发布 409 |
+| `test_statistics_pass_rate_excludes_undecided_orders` | **合格率分母只含已判定单据**（草稿不计入）；`failed_items` 指向不合格项目 |
+| `test_company_scope_applies_to_alerts_and_issues` | 报警与知识库按公司收敛 |
+| `test_viewer_cannot_write` | 只读角色写入 403（含 `results/` 的 POST 路径），查看仍 200 |
+| `test_material_must_belong_to_same_company` | 受检物料必须与检验单同公司 |
+
+### 30.3 本轮修复的三个问题（均已复验）
+
+| 缺陷 | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 录入结果后返回旧数据 | `POST /qms/inspections/{id}/results/` 返回的 `results` 为空，页面看不到刚录入的行 | `get_object()` 的 `prefetch_related` 缓存未失效，新建的明细不在缓存里 | 写入后重新取对象再序列化 |
+| 只读角色能写入检验结果 | 只有查看权限的用户 POST `results/` 返回 200 | 权限按 `self.action` 解析，一个 action 只能声明一份编码，`required_permissions["record_results"]` 是死代码 | 写路径内部 `require_codes(user, "qms.inspection.update")` 二次校验，并由 `test_viewer_cannot_write` 锁定 |
+| 写接口 405 | `results/` 用 `PUT` 时返回 `METHOD_NOT_ALLOWED` | 平台视图把方法限定为 `get / post / patch`（`apps/core/viewsets.py`），与 `GET + PUT` 的设计冲突 | 改为 `GET + POST`（动作接口一律 POST），与全平台一致 |
+| 旧用例随运行时钟失败 | `test_iot_api.py::test_device_monitor_picks_latest_reading_per_point` 在北京时间 00:00~09:00 之间必然失败 | 用「本地日期字符串前缀」比对接口返回的 **UTC** 时间戳 | 改为比对**时刻**（`datetime.fromisoformat(...) == 期望时刻.astimezone(UTC)`），与运行时间无关 |
+
+### 30.4 未执行 / 未验证（如实列出）
+
+1. **浏览器观感未人工确认**：沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化被策略拦截。
+   本轮 4 个新页面与「录入结果」弹窗只做了源码级（`vue-tsc`、`views-compile.spec.ts`、`styles.spec.ts`）
+   与构建级验证，**未做截图核对**。
+2. **前端没有针对质量管理页面的组件级用例**：前端测试是契约测试，页面行为由后端接口用例覆盖。
+3. **真实检测设备 / 在线检测分析仪器未联调**：结果全部人工录入，没有仪器直连接口。
+4. **未做的功能**（不视为通过）：检验标准版本快照、返工 / 退货 / 报废处置工单、
+   与 `procurement.receipt.inspect` 及 `wms` 质量放行的接线、按 `is_quality_gate` 决定质检点（依赖 MES）、
+   质量统计的性能压测与定时快照。
+
+
+## 三十一、生产执行（MES）复验记录（本轮）
+
+> 本轮交付 `apps/mes`（生产工单 / 用料 / 工序 / 报工），
+> 并把 MRP 的在制供给与生产建议转单接入。下面全部为**本机真实执行输出**。
+
+### 31.1 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py migrate` | 新增 `mes.0001_initial`（已应用于本地开发库） |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_mes_api.py -q --reuse-db` | **`32 passed in 46.79s`** |
+| `pytest tests/test_mrp.py -q --reuse-db` | **`34 passed in 11.01s`** |
+| `pytest tests -q --reuse-db`（全量） | **`472 passed in 354.92s (0:05:54)`**（无失败） |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed`（事实行与网页版使用说明已同步） |
+| 前端 `npm run typecheck` | 通过（退出码 `0`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 255 passed (255)` |
+| 前端 `npm run build` | `✓ built in 16.95s` |
+| `python scripts/build_user_guide.py --check` | 使用说明网页版是最新的 |
+
+### 31.2 新增 / 修改的用例（本轮实际输出）
+
+**新建 `backend/tests/test_mes_api.py`，32 例（全部通过）**，覆盖：
+
+- 权限与数据范围：`test_endpoints_require_login`、`test_viewer_cannot_write`、`test_company_scope_hides_other_company_orders`；
+- 工单基础：`test_order_number_is_generated_from_code_rule`、`test_status_cannot_be_patched`、`test_header_cannot_be_patched_after_release`、`test_actions_reject_wrong_state`；
+- 下达前提与快照：`test_release_requires_effective_routing`、`test_release_requires_bom_or_manual_materials`、`test_release_requires_positive_quantity`、`test_release_freezes_snapshot_and_expands_bom`、`test_release_twice_is_rejected`；
+- 报工：`test_report_quantity_must_be_conserved`、`test_report_cannot_exceed_planned_quantity`、`test_report_advances_order_and_writes_report_row`、`test_completed_step_cannot_be_reported_again`、`test_report_step_of_other_order_is_rejected`、`test_report_ledger_is_read_only`、`test_report_endpoint_requires_order`；
+- 质检点门槛：`test_gate_report_creates_inspection_order`、`test_gate_report_requires_inspection_permission`、`test_complete_blocked_until_gate_passed`、`test_complete_requires_all_steps_finished`；
+- 库存接线：`test_issue_materials_posts_issue_document`、`test_issue_materials_twice_is_rejected`、`test_issue_materials_without_post_permission_is_rejected`、`test_receipt_creates_inbound_document_and_is_idempotent`、`test_receipt_twice_is_rejected_without_idempotency_key`、`test_receipt_requires_finished_status`；
+- 状态机与统计：`test_close_requires_completed_status`、`test_cancel_requires_reason_and_rejects_started_order`、`test_statistics_aggregates_live_details`。
+
+**修改 `backend/tests/test_mrp.py`**：
+
+- 原 `test_convert_production_suggestion_rejected`（断言 `PRODUCTION_ORDER_NOT_IMPLEMENTED`）改为
+  `test_convert_production_suggestion_creates_draft_order`（断言生成**草稿** MES 工单 + `DocumentLink`）；
+- 新增 `test_in_progress_supply_nets_open_production_orders`（已下达工单减少净需求）与
+  `test_draft_production_order_is_not_counted_as_supply`（草稿工单不计入供给）；
+- 用例内的编码规则补上 `MO`（下达工单时取号）。
+
+### 31.3 本轮修复的四个问题（均已复验）
+
+1. **`progress_rate` 输出 `0E+6`**：Serializer 直接输出 `Decimal`，零值被序列化成科学计数法。
+   改为 `_percent()`（Decimal×100 保留 2 位），现在输出 `"0.00"`。
+2. **非草稿工单表头未冻结**：`perform_update()` 新增状态校验，已下达及之后的 PATCH 报
+   **409 `STATE_CONFLICT`**（`test_header_cannot_be_patched_after_release`）。
+3. **MRP 在制供给不参与净算**（真实缺陷）：原实现把在制写进 `supplies`，
+   但 `_net_item` 只认 `ON_ORDER`，导致**在制供给从未参与净算**。
+   已改为 `inbound_by_bucket`（同纳 `ON_ORDER` 与 `IN_PROGRESS`），并用上面两条新用例锁定。
+4. **`mrp.convert_suggestion` 的 docstring 过期**：仍写着「生产建议不在此转单」，
+   已同步为「按类型分流」。
+
+### 31.4 未执行 / 未验证（如实列出）
+
+1. **浏览器截图级观感核对未执行**：沙箱内无法启动 `runserver` / `vite dev`，
+   浏览器自动化被安全策略拦截；新增两个页面与「报工」弹窗只做了
+   源码级（`vue-tsc` / `views-compile.spec.ts` / `styles.spec.ts`）与构建级（`vite build`）验证。
+2. **并发报工 / 并发领料的多连接竞争未执行**：幂等重放与
+   `select_for_update` 已由单连接用例覆盖，但未做真实多连接压测。
+3. **真实设备 / 扫码硬件联调未执行**：MES 本版无任何硬件控制，报工全部人工。
+4. 与全量复验口径一致：**Playwright 端到端、性能压测、备份恢复演练、
+   Docker Compose 构建与启动验证均未执行**（原因同 §二十七、§三十）。
+
+## 三十二、供应商五维量化评价（SRM）复验记录（本轮）
+
+> 本轮交付 `backend/apps/srm` 的**评价权重配置**与**供应商五维量化评价**
+> （质量 / 技术 / 响应 / 交付 / 成本）、缺数据的两种口径、以及只读评价统计。
+> 下面全部为**本机真实执行输出**。
+
+### 32.1 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_srm_api.py -q --reuse-db` | **`29 passed in 19.47s`**（文件原有 11 例，本轮新增 18 例） |
+| `pytest tests -q --reuse-db`（全量） | **`490 passed in 301.22s (0:05:01)`**（无失败） |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | `7 passed in 0.13s`（事实行与网页版使用说明均已同步） |
+| 前端 `npm run typecheck` | 通过（退出码 `0`） |
+| 前端 `npm run test` | `Test Files 15 passed (15)` / `Tests 257 passed (257)` |
+| 前端 `npm run build` | `✓ built in 14.55s` |
+| `python scripts/build_user_guide.py --check` | 使用说明网页版是最新的 |
+
+### 32.2 本轮新增的用例（18 例，全部通过）
+
+**权重配置（6 例）**
+
+- `test_weight_config_total_must_be_exactly_100`：五项合计必须**正好 100**，99.99 / 100.01 都被拒（`WEIGHT_TOTAL_INVALID`）；
+- `test_weight_range_is_enforced_by_database`：权重取值有数据库 `CHECK` 约束（`ck_srm_eval_weight_range`）；
+- `test_only_one_active_weight_version_per_company`：同公司同一时间只有一版启用；
+- `test_editing_weights_derives_a_new_version_and_keeps_the_old_one`：改权重**派生新版本**，旧版本原样保留；
+- `test_changing_weight_config_does_not_rewrite_history`：改权重**不回写**历史评价（已生效单据仍按当时的 `weight_snapshot` 解释）；
+- `test_viewer_without_weight_permission_cannot_read_or_write_weights`：只有查看权限的账号读写权重被拒。
+
+**评价单与打分（8 例）**
+
+- `test_evaluation_requires_an_active_weight_config`：没有启用权重配置时发起评价被拒（`EVALUATION_WEIGHT_REQUIRED`）；
+- `test_evaluation_no_is_generated_and_weights_are_snapshotted`：单号按编码规则生成、五个维度权重写入快照；
+- `test_total_score_is_computed_by_backend_and_client_value_is_ignored`：总分与等级只由服务层计算，客户端传 `total_score` 被忽略；
+- `test_lines_require_all_five_dimensions`：五个维度必须各一行（`DIMENSION_ROWS_INCOMPLETE`）；
+- `test_duplicate_dimension_and_out_of_range_score_are_rejected`：重复维度（`DUPLICATED_DIMENSION`）与越界得分（`INVALID_SCORE`）；
+- `test_missing_dimension_mark_missing_keeps_partial_total_and_no_grade`：「标注缺失」有效权重合计小于 100 → **不给等级**；
+- `test_missing_dimension_redistribute_renormalizes_effective_weights`：「重新分配」后有效权重合计**精确 100.00** → 给等级；
+- `test_invalid_period_range_is_rejected`：评价期间止早于期间起被拒（`INVALID_PERIOD_RANGE`）。
+
+**状态机、数据范围与统计（4 例）**
+
+- `test_evaluation_is_locked_after_publish`：生效后不能再改（`EVALUATION_LOCKED`）；
+- `test_draft_header_can_be_changed_and_policy_switch_recalculates`：草稿可改表头；切换缺数据口径会**重算**有效权重与总分；
+- `test_evaluation_is_company_scoped_and_needs_permissions`：跨公司不可见 / 不可写，缺少权限被拒；
+- `test_evaluation_statistics_separate_incomplete_from_complete`：统计把「口径不完整」与「口径完整」分开，平均分只算完整口径。
+
+### 32.3 本轮的两处刻意设计（如被质疑可对照）
+
+1. **评价生效不回写 `Supplier.grade`**：避免「一次评价隐式改写主数据」的跨实体副作用；
+   等级仍被采购例外授权等流程当作判断依据，是否同步到档案由**人工决定**（见 `docs/progress.md` §33.4）。
+2. **缺数据两种口径语义不同**：`mark_missing` 的总分口径不完整（有效权重合计小于 100）故**不给等级**；
+   只有 `redistribute`（合计精确 100%）才给等级。界面与文档都如实说明，**不把「没有数据」当成「数据为零」**。
+
+### 32.4 未执行 / 未验证（如实列出）
+
+1. **浏览器截图级观感核对未执行**：沙箱内无法启动 `runserver` / `vite dev`，浏览器自动化被安全策略拦截；
+   新增的两个页面（评价权重配置、供应商评价）与「录入评分」弹窗只做了源码级
+   （`vue-tsc` / `views-compile.spec.ts` / `styles.spec.ts`）与构建级（`vite build`）验证。
+2. **并发场景未做多连接压测**：「同公司单一启用版本」的权重派生与评价重算由
+   事务 + 唯一约束保证，已由单连接用例覆盖，但未做真实多连接竞争验证。
+3. **评分数据无外部数据源**：评价明细全部**人工录入**，没有检测仪器 / ERP 直连；本轮不声称任何自动取数能力。
+4. 与全量复验口径一致：**Playwright 端到端、性能压测、备份恢复演练、
+   Docker Compose 构建与启动验证均未执行**（原因同 §二十七、§三十、§三十一）。

@@ -3,9 +3,9 @@
 > **重要**：本文件中标记 **【未执行】** 的步骤在本轮开发环境中**没有实际运行过**。
 > 未执行的内容一律不写作通过（任务书 2.4）。真实执行结果见 `docs/test-report.md`。
 >
-> **使用者视角的操作手册（启动、账号、菜单、排错）见 `docs/user-guide.md`**；
-> 本文档侧重部署与发布。两者的启动命令与初始化参数必须保持一致——
-> 命令或环境变量变化时，除本文件外**必须同步 `docs/user-guide.md` §三**（规则见其 §十一）。
+> **面向客户的使用说明（登录、菜单、按模块操作、错误处理）见 `docs/user-guide.md`**：
+> 该文件只写使用者能看到的行为，**启动命令、环境变量、测试命令等开发内容写在本文件**。
+> 命令或环境变量变化时，除本文件外还需按 `AGENTS.md` §九 的规则同步文档与网页版说明。
 >
 > 使用说明的**网页版**由 `python scripts/build_user_guide.py` 从 `docs/user-guide.md` 生成，
 > 产物 `frontend/public/guide.html` 随前端静态资源一起发布（nginx 直接托管 `/guide.html`，
@@ -81,6 +81,75 @@ GET /healthz    存活检查
 GET /readyz     就绪检查（含数据库连通性）
 ```
 
+### 5. 日常启动与停止
+
+也可以用仓库自带的脚本（会自动做 `check` + 迁移，前端会自动装依赖）：
+
+```powershell
+cd E:\github\Yishang-Hub
+powershell -ExecutionPolicy Bypass -File scripts\dev_backend.ps1        # 默认 8000
+powershell -ExecutionPolicy Bypass -File scripts\dev_frontend.ps1       # 默认 5173
+# 换端口： scripts\dev_backend.ps1 -Port 8001 / scripts\dev_frontend.ps1 -Port 5174
+```
+
+- 日常启动只需上面第 2、3 步的最后两条（`runserver` 与 `npm run dev`），无需重复迁移与初始化。
+- 停止：在各自终端按 `Ctrl + C`。
+- 改了后端代码：开发服务器会自动重载；**改了模型**要重新
+  `manage.py makemigrations <app>` + `migrate`。
+- **不要用 `runserver` 对外提供生产服务**（生产用 Gunicorn + Nginx，见 §三、§四）。
+
+### 6. 初始化命令常用开关
+
+| 命令 | 说明 |
+| --- | --- |
+| `manage.py bootstrap_system --dry-run` | 只展示将执行的动作，不写库 |
+| `manage.py bootstrap_system --admin-username X --admin-password Y` | 指定管理员账号与口令 |
+| `manage.py bootstrap_system --skip-admin` | 不创建 / 更新管理员账号 |
+| `manage.py bootstrap_system --reset-admin-password` | 重置管理员口令（需提供口令来源，不随机覆盖） |
+| `manage.py seed_demo --skip-users` | 只造演示业务数据，不建演示账号 |
+| `manage.py seed_demo --yes` | 在非 development/test 环境确认写入（生产仍被硬拒） |
+
+两个命令都**幂等**：重复执行只同步固定字段，不重复建记录，也不重置已有账号口令。
+
+### 7. 访问地址一览（本地开发）
+
+| 地址 | 用途 |
+| --- | --- |
+| http://127.0.0.1:5173/ | 前端界面（日常使用入口） |
+| http://127.0.0.1:5173/login | 登录页；未登录访问任何页面都会跳到这里 |
+| http://127.0.0.1:5173/guide.html | **平台使用说明（网页版）**，也可在系统内点「使用说明」打开 |
+| http://127.0.0.1:8000/api/v1/ | 后端 API 根 |
+| http://127.0.0.1:8000/api/v1/docs/ | OpenAPI（Swagger UI）；**界面不提供入口，仅供开发者使用** |
+| http://127.0.0.1:8000/api/v1/schema/ | OpenAPI 原始 schema |
+| http://127.0.0.1:8000/healthz | 存活检查 |
+| http://127.0.0.1:8000/readyz | 就绪检查（数据库 + 缓存） |
+| http://127.0.0.1:8000/admin/ | Django Admin（运维兜底，**不是业务前端**） |
+
+### 8. 数据库与文件位置
+
+- **业务数据存在 MySQL 里**，不在项目目录内。项目目录下没有 `.sqlite3`，
+  `DB_*` 环境变量指向的就是数据实际所在地。
+- 本机 MySQL 默认数据目录在 `C:\ProgramData\MySQL\MySQL Server 8.0\Data\`
+  （系统目录，日常不要手动改动其中的文件）。
+
+| 库名 | 作用 |
+| --- | --- |
+| `yishang_platform` | **开发 / 运行库**，业务数据都在这里 |
+| `test_yishang_platform` | **测试库**，`pytest` 自动创建 / 复用（`--reuse-db`），跑测试会**重建**它 |
+| `information_schema` | MySQL 自带的**元数据视图**（表结构、权限等），只读，不是业务数据 |
+
+```powershell
+# 用应用账号连接（与后端同一个账号，权限更小，更接近真实情况）
+mysql -h 127.0.0.1 -P 3306 -u yishang_app -p yishang_platform
+```
+
+- 连接串等价表示：`mysql://yishang_app:<密码>@127.0.0.1:3306/yishang_platform?charset=utf8mb4`。
+- **不要用 root 连接应用**；生产环境数据库端口不对外发布（见 §四）。
+- 附件默认落在本地 `MEDIA_ROOT`（项目内 `backend/media/`），配置 S3 兼容对象存储时改为远端；
+  生产要求「上传文件与代码分离」。日志按 `LOG_LEVEL` 输出到控制台，生产要求日志轮转与
+  `request_id` 贯穿（见 §五）。
+- 备份与恢复步骤见 `docs/backup-restore.md`（当前**未做过真实恢复演练**）。
+
 ## 三、Docker Compose 部署 【未执行 ⚠️】
 
 ### 服务清单
@@ -130,6 +199,46 @@ curl -f http://localhost/healthz
 | `mysqlclient` 路径 | 本地用的是 PyMySQL，**生产驱动未验证** | 构建后在容器内跑全量 `pytest` |
 
 在上述项目实际通过前，**不得将 Compose 描述为"已验证可部署"**。
+
+## 三之三、能源离线报警定时任务（本轮新增）
+
+能源模块的「设备离线」报警依赖**抄表超时扫描**，平台**没有内置调度器**，需要在部署侧配置计划任务：
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe manage.py ems_offline_check            # 扫描全部公司
+.\.venv\Scripts\python.exe manage.py ems_offline_check --company-id 1
+```
+
+- 建议频率：**每 5~15 分钟一次**（阈值 `EnergyThreshold.offline_minutes` 决定多久算离线）。
+- 幂等：同一公司 / 仪表 / 类型在**同一天内**只报一次警，重跑不会刷屏。
+- 手动触发等价入口：`POST /api/v1/ems/alarms/scan-offline/`（需要 `ems.alarm.handle` 权限）。
+- 只扫描配置了 `offline_minutes` 的介质 / 仪表；没有配置阈值的仪表不参与检测（避免「全表报警」）。
+- **Windows 计划任务 / Linux cron / 容器定时**均可，命令本身不依赖 Celery。
+
+## 三之四、设备数采离线报警与令牌（本轮新增）
+
+数采侧同样**没有内置调度器**，设备离线报警需要在部署侧配置计划任务：
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe manage.py iot_offline_check                 # 扫描全部公司
+.\.venv\Scripts\python.exe manage.py iot_offline_check --company 1     # 只扫描指定公司
+```
+
+- 建议频率：**每 5~15 分钟一次**（判定阈值是每台数采设备上的 `offline_minutes`，默认 30 分钟）。
+- 幂等：同一公司 / 设备 / 类型在**同一天内**只报一次警；**模拟设备（`is_simulated=True`）不参与扫描**。
+- 手动造数与验证：`manage.py iot_simulate --seed-demo --company 1 --rounds 2 [--out-of-range]`
+  （数据全程标注「模拟」，`--dry-run` 只打印报文不入库）。
+
+**设备令牌的运维注意**：
+
+- 令牌明文**只在生成 / 轮换的响应里返回一次**，平台只保存 SHA-256 摘要，无法从数据库反查明文；
+  设备侧丢失令牌只能重新轮换（旧令牌立即失效）。
+- 设备上报入口是 `POST /api/v1/iot/ingest/`，只认 `X-Device-Token`（或 `Authorization: Device <token>`）头，
+  **不接受员工登录会话**；建议把采集网段与办公网段隔离，并只放通该接口。
+- 上线 MQTT / Modbus 之前必须先确认设备协议：连接配置可以登记这两种协议，但采集入口会返回
+  `PROTOCOL_NOT_IMPLEMENTED`（409），**不会静默吞掉数据**。
 
 ## 四、生产要求（任务书 16.2）
 

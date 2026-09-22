@@ -1,14 +1,15 @@
 """文档与代码同步校验（任务书 19.3 / 20.3）。
 
-使用说明 ``docs/user-guide.md`` 里内嵌一条机器可校验的事实行：
+开发约定 ``AGENTS.md``（§九）里内嵌一条机器可校验的事实行：
 
     <!-- yishang-doc-sync: permissions=173 menus=56 models=86 migrations=19 builtin_roles=13 -->
 
 本用例把该行与**代码里的权威来源**逐项比对。任何一项变化会让本用例失败，
-从而强制「代码更新后使用文档同步变动」，避免文档静默过期。
+从而强制「代码更新后文档同步变动」，避免文档静默过期。
 
 注意：这里只校验**数量层面**；菜单名称、操作步骤、错误码解释等描述性内容
-仍由人工按 `docs/user-guide.md` §11.3 的收尾清单维护。
+仍由人工按 `AGENTS.md` §五 的收尾清单维护。面向客户的使用说明
+``docs/user-guide.md`` 只写使用者可见的行为，不再承载开发侧事实行。
 """
 
 from __future__ import annotations
@@ -25,15 +26,15 @@ from apps.core.management.commands.bootstrap_system import BUILTIN_ROLES
 from apps.identity.permissions_registry import MENUS, PERMISSIONS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-GUIDE_PATH = REPO_ROOT / "docs" / "user-guide.md"
+SYNC_DOC_PATH = REPO_ROOT / "AGENTS.md"
 SYNC_LINE_RE = re.compile(r"<!--\s*yishang-doc-sync:\s*(?P<body>[^>]*?)\s*-->")
 
 
 def _read_declared_facts() -> dict[str, int]:
-    text = GUIDE_PATH.read_text(encoding="utf-8")
+    text = SYNC_DOC_PATH.read_text(encoding="utf-8")
     match = SYNC_LINE_RE.search(text)
     assert match is not None, (
-        f"{GUIDE_PATH} 缺少事实行：<!-- yishang-doc-sync: permissions=... menus=... "
+        f"{SYNC_DOC_PATH} 缺少事实行：<!-- yishang-doc-sync: permissions=... menus=... "
         "models=... migrations=... builtin_roles=... -->。不要删除该行，按实际值更新即可。"
     )
     facts: dict[str, int] = {}
@@ -52,7 +53,7 @@ def _actual_migration_count() -> int:
     return len([p for p in apps_dir.glob("*/migrations/[0-9]*_*.py") if p.is_file()])
 
 
-def test_user_guide_declares_all_sync_facts():
+def test_doc_sync_line_declares_all_facts():
     declared = _read_declared_facts()
     expected_keys = {"permissions", "menus", "models", "migrations", "builtin_roles"}
     assert set(declared) == expected_keys, (
@@ -94,11 +95,11 @@ def test_published_guide_html_is_up_to_date():
         ("builtin_roles", lambda: len(BUILTIN_ROLES)),
     ],
 )
-def test_user_guide_sync_facts_match_code(key, actual):
+def test_doc_sync_facts_match_code(key, actual):
     declared = _read_declared_facts()
     current = actual()
     assert declared[key] == current, (
-        f"docs/user-guide.md 的事实行已过期：{key}={declared[key]}，代码实际为 {current}。\n"
-        f"请更新 {GUIDE_PATH} 中的 <!-- yishang-doc-sync: ... --> 事实行，"
-        "并同步文档正文（§二 能力边界、§四 角色权限点数、§五 菜单清单等）。"
+        f"{SYNC_DOC_PATH.name} 的事实行已过期：{key}={declared[key]}，代码实际为 {current}。\n"
+        f"请更新 {SYNC_DOC_PATH} 中的 <!-- yishang-doc-sync: ... --> 事实行，"
+        "并同步受影响的文档（`docs/permission-matrix.md`、`docs/user-guide.md` 的菜单与能力描述等）。"
     )

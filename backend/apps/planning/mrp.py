@@ -8,7 +8,8 @@
    再按层级升序净算 —— 保证净算某物料时，它来自所有上层父件的需求都已到齐（标准 MRP 做法）。
 3. **净算**：逐物料、逐时间分段滚动：
    `结余 = 上段结余 + 本段供给 − 本段需求`；为负即产生**净需求**，并把结余置 0（逐批净算 lot-for-lot）。
-   现有可用库存计入期初（`on_hand − frozen − reserved`），采购在途按预计到货日期计入对应分段。
+   现有可用库存计入期初（`on_hand − frozen − reserved`），采购在途按预计到货日期计入对应分段，
+   MES 已下达 / 在制的生产工单未完工数量按计划完工日期计入对应分段（在制供给）。
 4. **展开**：**自制品**（有生效 BOM，或分类为成品/半成品）的净需求按 BOM 行
    `gross_quantity`（含损耗，后端已按 6 位小数舍入）展开为下层的**毛需求**；
    因此子件需求来自父件**净需求**而非毛需求，不会对已有库存重复展开。
@@ -18,8 +19,8 @@
 明确不做（首版，见 `docs/progress.md` 第十五节与 `docs/assumptions.md` §四之六）：
 
 * 提前期与批量规则 —— 逐批净算，建议交期 = 需求分段日期；
-* 独立需求 / 生产计划录入 —— MES 未实现，需求来源只有销售订单；
-* 在制供给 —— MES 未实现，恒为 0（`parameters.in_progress_supply = not_implemented`）；
+* 独立需求 / 生产计划录入 —— 需求来源只有销售订单（生产工单本身是供给，不是需求）；
+* 在制供给只取 **MES 已下达 / 生产中的工单**未完工数量；草稿工单不算承诺，不进入供给；
 * 替代料替代与安全库存缓冲 —— 替代料行不参与展开、不作供给。
 """
 
@@ -27,7 +28,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, time
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -38,7 +39,13 @@ from django.utils import timezone
 from apps.core.exceptions import StateConflict, ValidationFailed
 from apps.core.models import AuditAction
 from apps.core.permissions import require_codes
-from apps.core.services import build_changes, generate_code, publish_event, record_audit
+from apps.core.services import (
+    build_changes,
+    business_timezone,
+    generate_code,
+    publish_event,
+    record_audit,
+)
 from apps.integration.models import DocumentLink, DocumentRelation
 from apps.masterdata.models import Material, Sku
 from apps.planning import services
@@ -250,6 +257,61 @@ def _on_order_supplies(
     return result
 
 
+def _in_progress_supplies(
+    *,
+    company: Any,
+    horizon_start: date,
+    horizon_end: date,
+    bucket: str,
+    warehouse: Any = None,
+) -> dict[int, list[dict[str, Any]]]:
+    """在制供给：MES 已下达 / 生产中工单的**未完工数量**。
+
+    只认「已下达」与「生产中」两种状态：草稿工单还没有冻结 BOM 与工艺快照，
+    把它算成供给等于把不存在的能力当成可用库存（任务书 20.3 不用模拟结果冒充真实）。
+    指定仓库筛选时不产生在制供给——工单只承诺产出物料，不承诺产出入到哪个仓库。
+    """
+    from apps.mes.models import ProductionOrder, ProductionOrderStatus
+
+    queryset = (
+        ProductionOrder.objects.select_related("product_material")
+        .filter(
+            company=company,
+            is_active=True,
+            status__in=(ProductionOrderStatus.RELEASED, ProductionOrderStatus.IN_PROGRESS),
+            product_material__isnull=False,
+        )
+        .order_by("planned_end", "id")
+    )
+    result: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    if warehouse is not None:
+        return result
+    for order in queryset:
+        quantity = _q(order.quantity - order.completed_quantity)
+        if quantity <= ZERO:
+            continue
+        if order.planned_end is not None:
+            expected_date = order.planned_end.astimezone(business_timezone()).date()
+            if expected_date > horizon_end:
+                continue
+        else:
+            expected_date = horizon_start
+        result[order.product_material_id].append(
+            {
+                "source_type": MrpSupplySource.IN_PROGRESS,
+                "warehouse_id": None,
+                "quantity": quantity,
+                "available_date": expected_date,
+                "bucket_date": mrp_bucket_date(max(expected_date, horizon_start), bucket),
+                "reference_type": "mes.ProductionOrder",
+                "reference_id": str(order.pk),
+                "reference_no": order.order_no,
+                "remark": f"生产工单 {order.order_no} 未完工数量",
+            }
+        )
+    return result
+
+
 def _build_graph(
     *, company: Any, roots: list[dict[str, Any]]
 ) -> tuple[dict[int, Any], dict[int, list[Any]], dict[int, int], dict[int, Material]]:
@@ -313,21 +375,23 @@ def _net_item(
         (item["quantity"] for item in supplies if item["source_type"] == MrpSupplySource.ON_HAND),
         ZERO,
     )
-    on_order_by_bucket: dict[date, Decimal] = defaultdict(lambda: ZERO)
+    # 采购在途与在制供给都是「未来某段才到货」的供给，按预计到货 / 计划完工分段计入；
+    # 只有现有可用库存进期初。
+    inbound_by_bucket: dict[date, Decimal] = defaultdict(lambda: ZERO)
     for item in supplies:
-        if item["source_type"] == MrpSupplySource.ON_ORDER:
-            on_order_by_bucket[item["bucket_date"]] += item["quantity"]
+        if item["source_type"] in {MrpSupplySource.ON_ORDER, MrpSupplySource.IN_PROGRESS}:
+            inbound_by_bucket[item["bucket_date"]] += item["quantity"]
     demand_by_bucket: dict[date, Decimal] = defaultdict(lambda: ZERO)
     for row in demands:
         demand_by_bucket[row["bucket_date"]] += row["quantity"]
 
-    buckets = sorted(set(demand_by_bucket) | set(on_order_by_bucket))
+    buckets = sorted(set(demand_by_bucket) | set(inbound_by_bucket))
     available = _q(initial)
     shortages: list[dict[str, Any]] = []
     trace: list[dict[str, Any]] = []
     for bucket_date in buckets:
         opening = available
-        supply = _q(on_order_by_bucket.get(bucket_date, ZERO))
+        supply = _q(inbound_by_bucket.get(bucket_date, ZERO))
         demand = _q(demand_by_bucket.get(bucket_date, ZERO))
         available = opening + supply - demand
         net_requirement = ZERO
@@ -395,6 +459,14 @@ def _compute(
     ).items():
         supplies[material_id].extend(rows)
     for material_id, rows in _on_order_supplies(
+        company=company,
+        horizon_start=horizon_start,
+        horizon_end=horizon_end,
+        bucket=bucket,
+        warehouse=warehouse,
+    ).items():
+        supplies[material_id].extend(rows)
+    for material_id, rows in _in_progress_supplies(
         company=company,
         horizon_start=horizon_start,
         horizon_end=horizon_end,
@@ -535,7 +607,7 @@ def _compute(
         "demand_sources": [MrpDemandSource.SALES_ORDER],
         "include_substitutes": False,
         "lead_time_mode": "lot_for_lot",
-        "in_progress_supply": "not_implemented",
+        "in_progress_supply": "mes_open_orders",
         "frozen_and_reserved": "excluded_from_available",
     }
     return {
@@ -811,17 +883,18 @@ def cancel_suggestion(suggestion: MrpSuggestion, *, user: Any, reason: str) -> M
 def convert_suggestion(
     suggestion: MrpSuggestion, *, user: Any, needed_date: date | None = None, remark: str = ""
 ) -> MrpSuggestion:
-    """把**采购建议**转成草稿采购申请（任务书 10.6「建议审核转单」）。
+    """把**建议**转成草稿下游单据（任务书 10.6「建议审核转单」）。
 
     转单前重新检查建议有效性（不满足即拒绝，不做"先转了再说"）：
 
     1. 建议必须处于「待处理」，已转单/已取消直接拒绝 —— 这是「同一建议不得重复转单」的保障；
     2. 所属运行必须是该公司**最新一次已完成**的运行，否则说明已重算，建议已过期（`SUGGESTION_STALE`）；
     3. 物料必须仍启用；
-    4. 生产建议**不在此转单**：MES 工单属于阶段 3 第三步，未实现前直接报
-       `PRODUCTION_ORDER_NOT_IMPLEMENTED`，**不伪造工单**。
+    4. 按建议类型分流：采购建议转**草稿采购申请**，生产建议转**草稿 MES 生产工单**
+       （见 `_convert_production_suggestion`）——两者都只到草稿，不绕过各自的下达 / 审批动作。
 
-    转单只创建**草稿**采购申请（仍要走审批），因此 MRP 不会绕过审批直接产生采购承诺。
+    转单只创建**草稿**单据（采购申请仍要走审批，工单仍要人工下达），因此 MRP 不会绕过
+    审批或生产确认直接产生采购承诺 / 产能承诺。
     """
     require_codes(user, "planning.mrp.convert")
     suggestion = (
@@ -856,11 +929,9 @@ def convert_suggestion(
         )
     if not suggestion.material.is_active:
         raise StateConflict("建议物料已停用，不能转单。", code="MATERIAL_INACTIVE")
-    if suggestion.suggestion_type != MrpSuggestionType.PURCHASE:
-        raise StateConflict(
-            "生产建议需要生成 MES 工单，MES 属于阶段 3 第三步，当前尚未实现；"
-            "请先走线下评审或改用采购方式。",
-            code="PRODUCTION_ORDER_NOT_IMPLEMENTED",
+    if suggestion.suggestion_type == MrpSuggestionType.PRODUCTION:
+        return _convert_production_suggestion(
+            user, suggestion, needed_date=needed_date, remark=remark
         )
 
     from apps.procurement import services as procurement_services
@@ -882,22 +953,50 @@ def convert_suggestion(
         purpose=f"MRP {run.run_no} 采购建议转单"[:255],
         remark=remark or suggestion.reason[:255],
     )
+    return _mark_suggestion_converted(
+        suggestion,
+        user=user,
+        target_type="procurement.PurchaseRequisition",
+        target_id=str(requisition.pk),
+        target_no=requisition.requisition_no,
+        link_remark=f"MRP 运行 {run.run_no} 采购建议",
+        event_payload={"requisition_no": requisition.requisition_no},
+        remark=remark,
+    )
+
+
+def _mark_suggestion_converted(
+    suggestion: MrpSuggestion,
+    *,
+    user: Any,
+    target_type: str,
+    target_id: str,
+    target_no: str,
+    link_remark: str,
+    event_payload: dict[str, Any],
+    remark: str = "",
+) -> MrpSuggestion:
+    """转单收尾：写 DocumentLink、置状态、写审计与 Outbox（采购 / 生产两条路径共用）。"""
+    run = suggestion.run
     DocumentLink.objects.create(
         source_type="planning.MrpSuggestion",
         source_id=str(suggestion.pk),
         source_no=f"{run.run_no}#{suggestion.line_no}",
-        target_type="procurement.PurchaseRequisition",
-        target_id=str(requisition.pk),
-        target_no=requisition.requisition_no,
+        target_type=target_type,
+        target_id=target_id,
+        target_no=target_no,
         relation=DocumentRelation.GENERATED_FROM,
         quantity=suggestion.quantity,
-        remark=f"MRP 运行 {run.run_no} 采购建议",
+        remark=link_remark,
     )
-    before = {"status": suggestion.status, "converted_document_no": suggestion.converted_document_no}
+    before = {
+        "status": suggestion.status,
+        "converted_document_no": suggestion.converted_document_no,
+    }
     suggestion.status = MrpSuggestionStatus.CONVERTED
-    suggestion.converted_document_type = "procurement.PurchaseRequisition"
-    suggestion.converted_document_id = str(requisition.pk)
-    suggestion.converted_document_no = requisition.requisition_no
+    suggestion.converted_document_type = target_type
+    suggestion.converted_document_id = target_id
+    suggestion.converted_document_no = target_no
     suggestion.converted_at = timezone.now()
     suggestion.converted_by = user
     suggestion.updated_by = user
@@ -921,13 +1020,61 @@ def convert_suggestion(
         payload={
             "run_no": run.run_no,
             "suggestion_line_no": suggestion.line_no,
-            "requisition_no": requisition.requisition_no,
+            **event_payload,
             "material_code": suggestion.material.code,
             "quantity": str(suggestion.quantity),
         },
         dedup_key=f"mrp-suggestion-converted:{suggestion.pk}",
     )
     return suggestion
+
+
+def _convert_production_suggestion(
+    user: Any, suggestion: MrpSuggestion, *, needed_date: Any = None, remark: str = ""
+) -> MrpSuggestion:
+    """生产建议转单：生成**草稿 MES 生产工单**。
+
+    只生成草稿：下达时要冻结 BOM / 工艺快照并生成工序，这一步必须由生产角色在 MES
+    里显式执行，MRP 不替它做决定（任务书 9.5）。因此生产建议转单**不会**立即增加在制供给，
+    要等工单真正下达后才计入 MRP 的在制供给。
+    """
+    from apps.mes import services as mes_services
+
+    run = suggestion.run
+    if suggestion.style_id is None:
+        raise StateConflict(
+            "该生产建议没有关联款式，无法生成生产工单；请先维护物料的款式与 SKU 对应关系。",
+            code="STYLE_REQUIRED",
+        )
+    due = needed_date or suggestion.due_date
+    planned_end = None
+    if isinstance(due, datetime):
+        planned_end = due if timezone.is_aware(due) else due.replace(tzinfo=business_timezone())
+    elif due is not None:
+        planned_end = datetime.combine(due, time.min, tzinfo=business_timezone())
+    order = mes_services.create_order(
+        user,
+        company=run.company,
+        style=suggestion.style,
+        sku=suggestion.sku,
+        product_material=suggestion.material,
+        quantity=suggestion.quantity,
+        planned_end=planned_end,
+        # 值为 ProductionSourceType.MRP_SUGGESTION，这里用字面量避免计划模块反向依赖 MES 模型
+        source_type="mrp_suggestion",
+        source_no=f"{run.run_no}#{suggestion.line_no}",
+        remark=(remark or suggestion.reason)[:255] or f"MRP {run.run_no} 生产建议转单",
+    )
+    return _mark_suggestion_converted(
+        suggestion,
+        user=user,
+        target_type="mes.ProductionOrder",
+        target_id=str(order.pk),
+        target_no=order.order_no,
+        link_remark=f"MRP 运行 {run.run_no} 生产建议",
+        event_payload={"production_order_no": order.order_no},
+        remark=remark,
+    )
 
 
 __all__ = [

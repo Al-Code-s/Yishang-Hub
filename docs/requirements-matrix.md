@@ -152,7 +152,7 @@
 | 供需追溯 | 同上（需求行 `source_no` / `path`、建议 `detail.trace`） | 同上 | `source_type/source_id/source_no/source_line_no`、`detail.demand_sources` | 同上 | `test_run_api_creates_run_with_counts_and_detail_endpoints` | 已通过阶段验收 |
 | 计算快照（参数与汇总） | 同上（摘要卡片） | 同上 | `MrpRun.parameters` / `summary` / `started_at` / `finished_at` | 同上 | 同上 | 已通过阶段验收 |
 | 建议转单 → **草稿**采购申请（不绕过审批） | 同上（转采购申请按钮） | `POST /mrp-suggestions/{id}/convert/` | `MrpSuggestion.converted_document_*` + `integration.DocumentLink`（`generated_from`） | `planning.mrp.convert` + `procurement.requisition.create` | `test_convert_creates_draft_requisition_with_document_link`、`test_convert_requires_procurement_requisition_create` | 已通过阶段验收 |
-| 生产建议**不伪造工单**（MES 未实现即拒绝） | 同上（按钮给出明确提示） | 同上 | — | 同上 | `test_convert_production_suggestion_rejected` | 已通过阶段验收（边界明确） |
+| 生产建议转**草稿 MES 工单**（不自动下达） | `views/planning/MrpSuggestionList.vue`（转单按钮） | `POST /mrp-suggestions/{id}/convert/` | `MrpSuggestion.converted_document_*` + `DocumentLink` + `mes.ProductionOrder(draft)` | 同上 | `test_convert_production_suggestion_creates_draft_order` | 已通过阶段验收（MES 落地后升级） |
 | 重复转单 / 过期建议 / 取消 / 归档保护 | 同上（状态标签 + 取消按钮） | `POST /mrp-suggestions/{id}/cancel/`、`POST /mrp-runs/{id}/archive/` | `status`（`open/converted/cancelled`）、`cancel_reason`、`MrpRun.status=archived` | `planning.mrp.cancel` / `archive` | `test_convert_twice_rejected`、`test_convert_stale_suggestion_rejected`、`test_cancel_requires_reason_and_blocks_convert`、`test_archive_run_blocks_conversion_and_repeat_archive_rejected` | 已通过阶段验收 |
 | 数据范围（公司 / 仓库）与权限隔离 | — | 全部端点 | `scope_fields`（公司、以 `run__company_id` 作用于建议） | 四层权限 | `test_api_run_scoped_to_company_and_warehouse`、`test_anonymous_access_rejected`、`test_view_only_user_cannot_run_mrp`、`test_user_without_convert_permission_cannot_convert`、`test_mrp_permissions_do_not_grant_other_modules` | 已通过阶段验收 |
 | 审计与 Outbox（同事务） | — | — | `AuditLog`、`OutboxEvent`（`planning.mrp.completed` / `suggestion_converted`） | — | `test_audit_and_outbox_event_written_with_business_data`、`test_archive_api_requires_permission_and_is_audited` | 已通过阶段验收 |
@@ -328,6 +328,196 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 `ruff` / `manage.py check` / `vue-tsc` / `vite build` 全部通过；`makemigrations --check` 无变更；
 `scripts/smoke_check.ps1` 输出「全部检查通过。」。
 **未执行**：浏览器观感核对（本机未安装 Playwright，浏览器自动化被安全策略拒绝）。
+
+## 一之十七、个人中心入口调整 + 使用说明改为面向客户（本轮实际完成）
+
+> 起因：用户反馈 ①登录后个人中心下拉里不应出现「接口文档」；②`docs/user-guide.md` 是给客户看的，
+> 不该混入开发内容。结论：**无迁移、无接口变化**；使用说明改写为**纯客户使用手册**，
+> 开发内容迁移到 `docs/deployment.md` 与 `AGENTS.md`（未删除任何有效信息）。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 个人中心不出现「接口文档」 | `frontend/src/layouts/BasicLayout.vue` | 顶部个人中心下拉 | — | 下拉只保留「修改密码 / 使用说明 / 退出登录」；`openDocs()` 一并删除，不再从界面跳转 `/api/v1/docs/` | `frontend/tests/responsive.spec.ts`（源码级） | 部分完成（**浏览器观感未人工确认**） |
+| 使用说明只写客户内容 | `docs/user-guide.md` | `/guide.html`、系统内「使用说明」 | — | 只保留使用者可见行为（登录、菜单与权限、按模块操作、错误码）；启动命令、环境变量、测试命令、文档同步规则、未执行清单不写入该文件 | `pytest tests/test_docs_sync.py::test_published_guide_html_is_up_to_date` | 已通过阶段验收 |
+| 开发内容不丢失 | `docs/deployment.md` §二 5~8、`AGENTS.md` §九 | — | — | 启动脚本、初始化命令开关、访问地址、数据库与文件位置迁入部署文档；文档同步规则与网页版生成规则迁入 `AGENTS.md` | `manage.py check`、`pytest tests/test_docs_sync.py` | 已通过阶段验收 |
+| 事实行随文档迁移 | `backend/tests/test_docs_sync.py` | — | — | `yishang-doc-sync` 事实行改从 `AGENTS.md` 读取（`SYNC_DOC_PATH`）；网页版新鲜度校验逻辑不变 | `test_doc_sync_facts_match_code`（5 项）、`test_doc_sync_line_declares_all_facts` | 已通过阶段验收 |
+| 网页版说明面向客户 | `scripts/build_user_guide.py` | `/guide.html`、`docs/user-guide.html` | — | 日期标记改为「最后更新：YYYY-MM-DD」；标题、横幅、页脚不再出现仓库文档路径 | `test_published_guide_html_is_up_to_date` | 已通过阶段验收 |
+| 交叉引用不失效 | `docs/acceptance.md`、`README.md` | — | — | 「现在的数字」与「文档同步要求」改指 `AGENTS.md` §九；文档地图与访问地址表同步 | 人工核对（无自动用例） | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests/test_docs_sync.py -q --reuse-db` **7 项通过**；
+`ruff check --no-cache apps config tests ../scripts/build_user_guide.py` 通过；
+`manage.py check` 无问题；`makemigrations --check --dry-run` 无变更；
+前端 `vue-tsc` 退出码 `0`、`npm run test` **15 文件 / 181 项通过**、`vite build` 成功。
+**未执行**：浏览器观感核对（Browser use 策略拦截了 `file://` 与本地地址，只做了 HTML 静态校验）。
+**文档数量**：本轮未新增或删除文档，`docs/` 文件数与上一轮一致。
+
+
+## 一之十八、设备 / 能源 / 生产物流 / 安全环保四大模块（本轮实际完成）
+
+> 来源：用户 2026-09-21 给出的功能清单。本轮落地四块，共 4 个后端 App、41 个模型、5 个迁移、
+> 137 个权限点、69 项菜单、4 个内置角色、49 个后端用例。**未做的两项在表末明确标注**。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 设备信息管理 / 设备类型管理 | `apps/equipment` | `/equipment/equipments`、`/equipment/types`、`/api/v1/equipment/*` | `Equipment`、`EquipmentType` | 编号留空按 `EQ` 取号；类型可标记特种设备并带默认保养周期 | `test_equipment_api.test_equipment_and_spare_part_codes_are_generated_when_omitted` | 已通过阶段验收 |
+| 设备零部件管理 / 设备台账 | 同上 | `/equipment/parts`、`/equipment/ledger` | `EquipmentPart`、`Equipment` | 台账与列表同一数据源，按状态 / 位置 / 责任人筛选 | `test_equipment_list_and_detail_are_company_scoped` | 已通过阶段验收 |
+| 备品备件 / 配件管理 | 同上 | `/equipment/spare-parts`、`/equipment/accessories` | `SparePart` | 备件可关联物料与设备类型、安全库存、参考价、寿命；配件页复用备件台账 | `test_equipment_and_spare_part_codes_are_generated_when_omitted` | 已通过阶段验收 |
+| 库存台账（备件现存量与寿命） | `apps/equipment/views.py::SparePartStockView` | `/equipment/spare-part-stock`、`GET /api/v1/equipment/spare-part-stock/` | 只读汇总（数据来自 `wms` 库存余额） | **不新建库存表**；数据范围按公司收敛，`wms` 现存量 + 备件寿命一并展示 | `test_spare_part_stock_is_company_scoped_and_read_only` | 已通过阶段验收 |
+| 故障保修 | `apps/equipment` | `/equipment/fault-reports` | `FaultReport` | 报修单可派工生成维修任务；维修完成后报修单自动关闭；状态不可 PATCH | `test_fault_report_dispatch_and_repair_completion_closes_report` | 已通过阶段验收 |
+| 采购申请（备件，计划 / 紧急） | `apps/procurement`（复用） | `/procurement/requisitions` | `Requisition` | 备件采购复用既有采购申请流程，不另建单据类型 | `tests/test_procurement.py`（既有） | 已通过阶段验收 |
+| 设备保养：项目 / 计划 / 任务 / 日历 / 记录 | `apps/equipment/services.py` | `/equipment/maintenance-*` | `MaintenanceItem`、`MaintenancePlan`、`MaintenanceTask`、`MaintenanceRecord` | 计划按周期生成到期任务且**幂等**（重复调用不重复生成同一天任务）；任务完成在同一事务生成保养记录并推进下次保养日期 | `test_maintenance_plan_generates_due_tasks_idempotently` | 已通过阶段验收 |
+| 设备维修：维修任务 / 维修记录 | 同上 | `/equipment/repair-tasks`、`/equipment/repair-records` | `RepairTask`、`RepairRecord` | 任务只能「下发 → 开始 → 完成」；完成记录更换备件、费用与停机时长 | `test_fault_report_dispatch_and_repair_completion_closes_report`、`test_equipment_api` 状态机用例 | 已通过阶段验收 |
+| 点巡检：项目 / 任务 / 记录 | 同上 | `/equipment/inspection-*` | `InspectionItem`、`InspectionTask`、`InspectionRecord` | 记录可标记异常并**一键转报修**，形成「点检发现 → 报修 → 维修」闭环 | `test_inspection_abnormal_record_can_raise_fault` | 已通过阶段验收 |
+| 设备异常上报：异常类型 / 任务 / 记录 | 同上 | `/equipment/abnormal-*` | `AbnormalType`、`AbnormalTask`、`AbnormalRecord` | 异常按类型分级；任务分派 → 处置 → 关闭，状态只由服务层推进 | `test_abnormal_task_flow_creates_record`、`test_status_cannot_be_changed_by_patch` | 已通过阶段验收 |
+| 设备数采和监控 | `apps/iot` | `/iot/connections`、`/iot/gateways`、`/iot/points`、`/iot/monitor`、`/iot/readings`、`/iot/messages` | `IoTConnection`、`IoTGateway`、`IoTPoint`、`IoTMessage`、`IoTReading` | **已实现（首版：HTTP + 模拟器）**：设备独立令牌（库里只存摘要）+ 按设备限流与单批上限；报文按「设备 + 消息 ID」判重、读数按「测点 + 设备时间」唯一；失败留痕；越限 / 离线告警写入能源报警台账；MQTT / Modbus 待协议确认 | `test_iot_api`（20 项） | 已通过阶段验收 |
+| 能源首页 / 设备监控 | `apps/ems/views.py` | `/ems/home`、`/ems/monitor`、`GET /api/v1/ems/monitor/` | 只读聚合（`EnergyMeter` + 最近抄表 + 报警） | 只读聚合，不读汇总缓存；仪表状态由抄表超时扫描推断 | `test_meter_list_and_detail_are_company_scoped`；**监控聚合接口未单独覆盖** | 已通过阶段验收 |
+| 设备运行记录 | `apps/ems/services.py` | `/ems/run-records`、`.../start/`、`.../finish/`、`.../cancel/` | `EnergyRunRecord` | 同一仪表只允许一条未结束记录；结束自动算运行时长、能耗与单耗并按单耗阈值报警；取消必须写原因 | `test_run_record_finish_computes_unit_consumption_and_alarms` | 已通过阶段验收 |
+| 报警管理（越限 / 离线 / 单耗 / 能耗） | 同上 | `/ems/alarms`、`.../handle/`、`.../close/`、`.../scan-offline/` | `EnergyAlarm` | 报警由**真实路径**触发（抄表 / 运行结束 / 离线扫描），同仪表同类型同一天去重；关闭必须写处理说明 | `test_over_limit_alarm_is_raised_once_per_day`、`test_scan_offline_creates_alarm_and_marks_meter_offline` | 已通过阶段验收 |
+| 能源看板 / 能耗报表 / 能耗统计 | `apps/ems/selectors.py`、`views.py` | `/ems/kanban`、`/ems/report`、`/ems/statistics` | 只读聚合（`MeterReading`） | 报表支持日 / 月 / 年与尖峰平谷分时段，可按区域 / 部门 / 设备统计；导出走 openpyxl 真实 xlsx 并记审计日志 | `test_report_prices_consumption_and_exports_xlsx` | 已通过阶段验收 |
+| 用水 / 用电 / 用气 / 用液统计 | 同上 | `/ems/statistics/{water,electricity,gas,liquid}` | 同上 | 四条菜单共用同一聚合接口，只固定 `medium` 参数 | `test_statistics_covers_all_media` | 已通过阶段验收 |
+| 基础管理：水 / 电 / 气 / 液价、阈值、区域、设备 | `apps/ems` | `/ems/base/*` | `EnergyPrice`、`EnergyThreshold`、`EnergyArea`、`EnergyMeter` | 价格按介质 + 时段 + 生效区间解析（`resolve_price`）；阈值支持读数上下限、日用量、单耗、离线时长 | `test_meter_code_is_generated_when_omitted`、`test_over_limit_alarm_is_raised_once_per_day` | 已通过阶段验收 |
+| 生产物流：自动化设备 | `apps/logistics` | `/logistics/devices`、`.../set-status/` | `AutomationDevice` | 编号留空按 `AD` 取号；状态变更走动作接口并写操作日志 | `test_device_status_action_writes_operation_log` | 已通过阶段验收 |
+| 生产物流：任务管理 | 同上 | `/logistics/tasks`、`.../dispatch/`、`.../start/`、`.../finish/`、`.../cancel/` | `LogisticsTask` | 只能「待下发 → 已下发 → 执行中 → 已完成」；故障 / 保养 / 离线设备不可下发；同一设备不可有两个执行中任务；取消需原因 | `test_task_state_machine_rejects_skipping_steps`、`test_task_cannot_be_dispatched_to_faulty_device` | 已通过阶段验收 |
+| 生产物流：操作日志 | 同上 | `/logistics/logs` | `LogisticsOperationLog` | 只读；由服务层在业务事务内写入 | `test_operation_log_is_read_only` | 已通过阶段验收 |
+| 安全管理：制度 / 培训 / 隐患 / 应急 / 事故 | `apps/ehs` | `/ehs/safety/*` | `SafetyRegulation`、`SafetyTraining`、`HazardRecord`、`EmergencyPlan`、`AccidentRecord` | 隐患「整改 → 提交验收 → 验收」，不通过退回整改中；事故「调查 → 整改 → 关闭」；状态不可 PATCH | `test_hazard_rectify_verify_loop`、`test_accident_investigate_rectify_close` | 已通过阶段验收 |
+| 环保管理：排污 / 固废危废 / 合规 | 同上 | `/ehs/environment/*` | `EnvironmentMonitor`、`WasteRecord`、`ComplianceCheck` | 排污达标由服务层按「实测值 vs 限值」判定，`is_compliant` 只读 | `test_environment_monitor_compliance_is_service_judged` | 已通过阶段验收 |
+| 消防管理：设施 / 演练 / 动火作业 | 同上 | `/ehs/fire/*` | `FireFacility`、`FireDrill`、`WorkPermit` | 动火 / 防爆防静电 / 受限空间作业**必须指定监护人**才能批准；许可「批准 → 开工 → 完工 → 验收」，驳回需理由 | `test_hot_work_permit_requires_guardian_and_follows_state_machine`、`test_permit_reject_requires_reason` | 已通过阶段验收 |
+| 设备设施安全：特种设备 / 检维修 / 本质安全 / 防爆防静电 / 防火防爆 | 同上 | `/ehs/equipment-safety/*` | `SpecialEquipmentInspection`、`SafetyCheck`、`WorkPermit` | 检查台账引用设备但不写设备表；检维修作业复用作业许可状态机 | `test_compliance_check_number_is_generated_and_detail_readable`（取号与详情） | 已通过阶段验收 |
+| 安全环保操作日志 | 同上 | `/ehs/logs` | `EhsOperationLog` | 只读；每次状态流转写一条 | `test_operation_log_is_read_only` | 已通过阶段验收 |
+| 客户管理：客户投诉、产品评价 | `apps/crm` | `/crm/complaints`、`.../{accept,resolve,close}/`、`/crm/product-reviews`、`.../{reply,close}/` | `CustomerComplaint`、`ProductReview` | **已实现**：投诉「受理 → 处理 → 关闭」只能走动作接口，关闭必须写处理措施，可登记满意度（0 = 未评价）；评价评分 1~5，回复与关闭走动作接口；状态字段只读；**不含**外部渠道自动接入与投诉统计报表 | `test_crm_api`（28 项） | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests -q --reuse-db` **381 项通过**（新增 49 项：设备 12 / 能源 15 / 物流 11 / 安全环保 11）；
+`manage.py check` 无问题；`makemigrations --check --dry-run` 无变更；`ruff check apps config tests` 通过；
+前端 `vue-tsc` 退出码 `0`、`npm run test` **15 文件 / 241 项通过**、`vite build` 成功（16.91s）。
+**未执行**：浏览器观感核对、真实设备 / 采集网关接入验证（沙箱内无法启动服务与浏览器）。
+**文档数量**：本轮未新增或删除文档，`docs/` 文件数与上一轮一致。
+
+## 一之十九、客户投诉 / 产品评价 + 设备数采首版（本轮实际完成）
+
+> 来源：用户 2026-09-21 的功能清单（客户管理：客户投诉、产品评价；设备管理：设备数采和监控）。
+> 本轮补齐上一轮明确标注「未实现」的两项：新增 `apps/iot`（5 张表）并扩展 `apps/crm`（+2 张表），
+> 共 3 个迁移、24 个权限点、9 项菜单（2 项 CRM + 1 个 IoT 目录 + 6 个 IoT 页面）、1 个内置角色、31 个后端用例。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 客户投诉 | `apps/crm` | `/crm/complaints`、`.../accept/`、`.../resolve/`、`.../close/`、`.../statistics/`（只读统计） | `CustomerComplaint` | 编号留空按 `CMPL` 取号；「受理 → 处理 → 关闭」只能走动作接口（跳步 409）；关闭必须填处理措施（空措施 400）；满意度 0 = 未评价、1~5 = 评分；状态与时间戳只读；统计按明细实时聚合（不落汇总表），平均满意度只按已回访样本算、未回访条数单独返回 | `test_complaint_full_lifecycle_writes_audit`、`test_complaint_cannot_skip_lifecycle_steps`、`test_complaint_resolve_requires_measure`、`test_complaint_status_is_read_only`、`test_complaint_statistics_totals_and_distribution`、`test_complaint_statistics_without_ratings_returns_none`、`test_complaint_statistics_is_company_scoped` | 已通过阶段验收 |
+| 产品评价 | 同上 | `/crm/product-reviews`、`.../reply/`、`.../close/`、`.../statistics/`（只读统计） | `ProductReview` | 编号按 `PRV` 取号；评分 1~5（越界 400）；回复与关闭走动作接口；客户必须属于所选公司；统计给出平均评分、评分分布与好评率（4 分及以上为好评）、待回复条数，支持按日期区间筛选（`until` 含当天） | `test_review_no_is_generated_and_score_is_validated`、`test_review_lifecycle_reply_then_close`、`test_product_review_statistics_scores_and_good_rate`、`test_review_statistics_date_filter` | 已通过阶段验收 |
+| 设备数采：接入配置 | `apps/iot` | `/iot/connections` | `IoTConnection` | 编号按 `IOTCN` 取号；`credential_ref` 只登记凭证位置、不存明文；只有 HTTP 与模拟器有采集入口，其它协议调用入口返回 409 | `test_iot_codes_are_generated_when_omitted`、`test_ingest_rejects_batch_overflow_and_bad_protocol` | 已通过阶段验收 |
+| 设备数采：数采设备与令牌 | 同上 | `/iot/gateways`、`.../rotate-token/` | `IoTGateway` | 编号按 `IOTGW` 取号；令牌明文只在生成 / 轮换时返回一次，库里只存 SHA-256 摘要；在线状态与令牌字段只读 | `test_device_token_is_stored_as_hash_only`、`test_rotate_token_invalidates_previous_token` | 已通过阶段验收 |
+| 设备数采：测点 | 同上 | `/iot/points` | `IoTPoint` | 编号按 `IOTPT` 取号；公司**由所属设备推导**，客户端传 `company_id` 无效；量程与报警上下限做大小校验 | `test_point_company_is_derived_from_gateway` | 已通过阶段验收 |
+| 设备数采：HTTP 上报、限流与去重 | 同上 | `POST /api/v1/iot/ingest/` | `IoTMessage`、`IoTReading` | 只认 `X-Device-Token`（**不复用员工会话**）；超批次 / 非法协议 400、超限流 429；重复报文记 `duplicated`，同测点同设备时间的读数不重复入库 | `test_ingest_stores_readings_and_dedupes`、`test_ingest_is_rate_limited_per_gateway`、`test_ingest_rejects_employee_session`、`test_ingest_keeps_failure_log` | 已通过阶段验收 |
+| 设备数采：越限 / 离线告警 | `apps/iot/services.py` + `apps/ems` | `manage.py iot_offline_check`、`GET /api/v1/iot/monitor/` | `EnergyAlarm.source_ref` | 越限读数与离线设备**统一调用** `ems.raise_alarm` 写入能源报警台账；去重条件加入 `source_ref`；模拟设备不参与离线判定 | `test_over_limit_creates_one_alarm_per_point`、`test_offline_check_skips_simulated_gateways`、`test_recently_seen_gateway_is_not_offline` | 已通过阶段验收 |
+| 设备数采：监控与数据查看 | `apps/iot/views.py`、`apps/iot/selectors.py` | `/iot/monitor`、`/iot/readings`、`/iot/messages`、`/iot/statistics/`（只读统计） | 只读聚合 | 设备监控按设备汇总在线 / 离线 / 未知、近 24h 读数与失败报文、测点最新读数与超限标记（每测点一次子查询取最新读数，不做 N+1）；采集统计按「测点 × 时间桶」按**业务时区**聚合，粒度 `hour` / `day`，按小时最多 31 天、按天最多 1096 天，明细最多 2000 行并标记 `truncated`，超限只标记不报警；读数与报文集**只读** | `test_device_monitor_returns_status_and_latest_readings`、`test_iot_lists_are_company_scoped`、`test_iot_requires_permission`、`test_device_monitor_picks_latest_reading_per_point`、`test_statistics_buckets_by_business_timezone`、`test_statistics_filters_and_simulated_flag`、`test_statistics_rejects_bad_granularity_and_wide_range`、`test_statistics_is_company_scoped`、`test_statistics_requires_reading_permission` | 已通过阶段验收 |
+| 设备数采：模拟器 | `apps/iot/management/commands/iot_simulate.py` | 命令行 | 同上 | 走**真实采集链路**（`services.ingest_report`），数据全程 `is_simulated=True`；模拟设备不参与离线判定 | `test_simulator_command_marks_data_as_simulated`、`test_ingest_marks_simulated_payload` | 已通过阶段验收 |
+| 枚举与元数据 | `apps/core/views.py::MetaView` | `GET /api/v1/meta/` | — | 新增投诉 / 评价 5 个枚举与数采 7 个枚举，前端不硬编码中文标签 | `test_meta_exposes_complaint_and_review_enums`、`test_meta_exposes_iot_enums` | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests -q --reuse-db` **412 项通过**（新增 31 项：客户投诉与评价 11 / 设备数采 20）；
+`manage.py check` 无问题；`makemigrations --check --dry-run` 无变更；`ruff check apps config tests` 通过；
+前端 `vue-tsc` 退出码 `0`、`npm run test` **15 文件 / 249 项通过**、`vite build` 成功。
+**未执行**：浏览器观感核对（沙箱内无法启动服务与浏览器）、真实设备 / 采集网关联调、MQTT / Modbus 协议验证。
+**文档数量**：本轮未新增或删除文档，`docs/` 文件数与上一轮一致。
+
+## 一之二十、采集统计与客户服务统计（本轮实际完成）
+
+> 来源：上一轮 §29.8 未做清单中「数采采集数据的汇总」「投诉 / 评价统计报表」两项。
+> 本轮 **不新增模型 / 迁移 / 权限点 / 菜单**（事实行仍为 `permissions=333 menus=134 models=134 migrations=27 builtin_roles=18`），
+> 只在既有权限下新增 3 个只读统计接口，后端用例 412 → **424**。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 设备数采：采集统计 | `apps/iot/selectors.py::reading_statistics` + `apps/iot/views.py::IoTStatisticsView` | `GET /api/v1/iot/statistics/`；「设备监控 → 采集统计」 | 只读聚合 `IoTReading` | 权限 `iot.reading.view`；粒度 `hour` / `day`（默认 `day`）；默认窗口按小时 48h / 按天 30 天，上限 31 天 / 1096 天；明细 500 行（上限 2000，超出标 `truncated`）；趋势桶最多 200；按**业务时区**分桶（用偏移量而非 `CONVERT_TZ`）；**按明细实时聚合、不落汇总表**；超限只标记不报警 | `test_statistics_requires_reading_permission`、`test_statistics_buckets_by_business_timezone`、`test_statistics_filters_and_simulated_flag`、`test_statistics_rejects_bad_granularity_and_wide_range`、`test_statistics_is_company_scoped` | 已通过阶段验收 |
+| 客户投诉：统计 | `apps/crm/selectors.py::complaint_statistics` + `ComplaintViewSet.statistics` | `GET /api/v1/crm/complaints/statistics/`；「客户投诉」列表顶部 | 只读聚合 `CustomerComplaint` | 权限 `crm.complaint.view`；总量 / 未关闭 / 已关闭；处理状态、投诉类型、级别、来源分布；平均满意度**只按已回访样本算**，无样本返回 `null` 且 `unrated_total` 单独返回；支持 `since` / `until`（`until` 含当天）、`company_id`、`customer_id` | `test_complaint_statistics_totals_and_distribution`、`test_complaint_statistics_without_ratings_returns_none`、`test_statistics_requires_view_permission`、`test_complaint_statistics_is_company_scoped` | 已通过阶段验收 |
+| 产品评价：统计 | `apps/crm/selectors.py::product_review_statistics` + `ProductReviewViewSet.statistics` | `GET /api/v1/crm/product-reviews/statistics/`；「产品评价」列表顶部 | 只读聚合 `ProductReview` | 权限 `crm.product_review.view`；总量 / 待回复 / 已关闭 / 平均评分 / 好评率（**4 分及以上为好评**）与 1~5 分分布；日期按评价日期（`DateField`）比较，避免时区偏移改变「哪一天」 | `test_product_review_statistics_scores_and_good_rate`、`test_review_statistics_date_filter` | 已通过阶段验收 |
+| 查询串时间解析 | `apps/core/services.py::parse_business_moment` | 三个统计接口共用 | — | 纯日期按业务时区解析（`end_of_day=True` 取当天 23:59:59.999999），带时间的串直接解析；**先判纯日期再回退日期时间**，否则 Python 3.11+ 会把纯日期当当天 00:00 | `test_review_statistics_date_filter`、`test_statistics_buckets_by_business_timezone` | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests -q --reuse-db` **424 项通过**（新增 12 项：数采统计 6 / 客户服务统计 6）；
+`manage.py check` 无问题；`ruff check apps config tests` 通过；
+前端类型检查退出码 `0`、用例 **15 文件 / 249 项通过**、构建成功。
+**未执行**：`makemigrations --check --dry-run`（本轮无模型变化，已用迁移计数 + 文档同步用例替代核对）、
+统计接口性能压测、浏览器观感人工核对。
+
+## 一之二十一、质量管理（QMS，本轮实际完成）
+
+> 来源：任务书 §10.9 QMS 质量（阶段 3），以及「已有但功能不足」清单中对制造执行系统（MES）的补充项
+> 「质量在线检测与分析、产品质量知识库」。
+> 本轮新增 `apps/qms`（**5 个模型 / 1 个迁移 / 17 个权限点 / 5 项菜单**），
+> 事实行由 `permissions=333 menus=134 models=134 migrations=27` 变为
+> `permissions=350 menus=139 models=139 migrations=28`（`builtin_roles=18` 不变）。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 检验项目 | `apps/qms/models.py::QualityInspectionItem`、`selectors`/`serializers` | `/qms/inspection-items`；「质量管理 → 检验项目」 | `qms_qualityinspectionitem` | 编号按 `QIT` 取号；同一公司内编码唯一；定量项目**必须至少给出一侧界限**（否则无法自动判定），上下限包含端点且下限不得大于上限 | `test_inspection_item_code_is_generated_and_company_scoped`、`test_quantitative_item_requires_at_least_one_limit` | 已通过阶段验收 |
+| 来料 / 首件 / 过程 / 成品 / 出货检验 | `apps/qms/models.py::QualityInspectionType` | `/qms/inspections` | `qms_qualityinspectionorder` | 一种单据覆盖五类检验场景（`inspection_type`）；`source_no` 引用来源单据（采购收货单、生产工单）；物料与供应商必须与单据同公司 | `test_inspection_item_code_is_generated_and_company_scoped`、`test_material_must_belong_to_same_company` | 已通过阶段验收 |
+| 实测值与自动阈值判定 | `apps/qms/services.py::_row_judgement`、`judge_measured_value`、`record_results` | `POST /api/v1/qms/inspections/{id}/results/` | `qms_qualityinspectionresult` | **定量项目按项目上下限由服务层判定**，请求里携带的 `is_qualified` 被忽略（客户端改不动结论）；定性项目必须由检验员给出结论；同一单据同一项目 `update_or_create`（重复录入即覆盖）；判定之后不允许再改结果（409） | `test_quantitative_result_is_judged_by_server`、`test_qualitative_result_requires_declared_judgement` | 已通过阶段验收 |
+| 检验单状态机 | `apps/qms/services.py::submit_order`/`judge_order`/`close_order` | `/submit/`、`/judge/`、`/close/` | 同上 | 草稿 → 已提交 → 已判定 → 已关闭；**没有检验结果不能提交**；`status` / `judgement` 是只读字段，PATCH 推不动状态；跳步一律 409 | `test_submit_requires_results_and_status_cannot_be_patched` | 已通过阶段验收 |
+| 不合格处置：合格 / 不合格 / 让步接收 | `apps/qms/services.py::judge_order` | `/judge/` | `QualityJudgement` | 结论以**检验结果**为准：存在不合格项不能判「合格」，全合格不能判「不合格」（409）；判「让步接收」必须写清原因（400）；让步接收单列统计，不并入合格 | `test_judgement_cannot_contradict_results`、`test_concession_requires_remark` | 已通过阶段验收 |
+| 质量报警与闭环 | `apps/qms/models.py::QualityAlert`、`services._ensure_alert`/`handle_alert`/`close_alert` | `/qms/alerts`、`/handle/`、`/close/` | `qms_qualityalert` | 判定不合格**自动生成一条**报警，同一检验单重复判定不重复报警；级别按不合格项数量分级（1 项轻微 / 2 项严重 / ≥3 项致命）；待处理 → 处理中 → 已关闭；**关闭必须写处理说明**；报警未闭环时检验单关不掉（409） | `test_failed_judgement_creates_single_alert_and_blocks_close` | 已通过阶段验收 |
+| 质量知识库与追溯 | `apps/qms/models.py::QualityIssue`、`services.create_issue_from_alert`/`publish_issue`/`archive_issue` | `/qms/issues`、`/publish/`、`/archive/`、报警 `/create-issue/` | `qms_qualityissue` | 登记（现象必填）→ 发布 → 归档（过时条目归档而不是删除）；由报警转换来的条目保留 `source_alert` / `source_order` 链路；已发布的条目不能再发布（409） | `test_alert_can_be_turned_into_knowledge_base_entry`、`test_issue_publish_and_archive` | 已通过阶段验收 |
+| 质量信息动态监测 | `apps/qms/selectors.py::inspection_statistics` + `QualityInspectionOrderViewSet.statistics` | `GET /api/v1/qms/inspections/statistics/`；检验单列表顶部能力 | 只读聚合 | 权限 `qms.inspection.view`；**按明细实时聚合、不落汇总表**；**合格率分母只含已判定单据**（草稿 / 已提交未判定不计入），让步接收单列；不合格项目 TOP10 与未关闭报警数 | `test_statistics_pass_rate_excludes_undecided_orders` | 已通过阶段验收 |
+| 数据范围与权限 | `apps/qms/views.py`、`permissions_registry.py` | 四个台账接口 | 同上 | 四张台账按公司收敛（越界写入 403 `OUT_OF_DATA_SCOPE`）；写路径权限与查看权限分离（`results/` 的 POST 在方法内二次校验 `qms.inspection.update`） | `test_company_scope_applies_to_alerts_and_issues`、`test_viewer_cannot_write` | 已通过阶段验收 |
+| 编号规则与枚举下发 | `bootstrap_system.CODE_RULES`、`apps/core/views.py::MetaView` | `GET /api/v1/meta/` | — | 新增 `QIT` / `QC` / `QAL` / `KI` 四条编码规则；下发 9 个质量枚举，前端不硬编码中文标签 | `test_inspection_item_code_is_generated_and_company_scoped`（走 `QIT` 取号） | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests/test_qms_api.py -q --reuse-db` **14 项通过**；
+`pytest tests -q --reuse-db` 见 `docs/test-report.md` §三十。`manage.py check` 无问题；
+`makemigrations --check --dry-run` 输出 `No changes detected`；`ruff check apps config tests` 通过。
+**未执行**：真实检测设备 / 在线检测仪器联调（现只有人工录入）、浏览器观感人工核对。
+
+## 一之二十二、生产执行（MES，本轮实际完成）
+
+> 来源：任务书 §10.7 MES 制造执行（阶段 3），以及 §12.1「订单到交付」流程。
+> 本轮新增 `apps/mes`（**4 个模型 / 1 个迁移 / 10 个权限点 / 3 项菜单**），
+> 并把 MRP 的在制供给与生产建议转单真正接入；
+> 事实行由 `permissions=350 menus=139 models=139 migrations=28` 变为
+> `permissions=360 menus=142 models=143 migrations=29`（`builtin_roles=19` 不变）。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 生产工单（草稿 / 下达 / 生产中 / 已完工 / 已关闭 / 已取消） | `apps/mes/models.py::ProductionOrder`、`services.create_order`/`update_order` | `/mes/orders/`；「生产执行 → 生产工单」 | `mes_productionorder` | 工单号按 `MO` 取号；可手工建单、从销售订单或 MRP 生产建议来；草稿状态可改，**非草稿表头冻结**（PATCH 报 409 `STATE_CONFLICT`） | `test_order_number_is_generated_from_code_rule`、`test_header_cannot_be_patched_after_release` | 已通过阶段验收 |
+| 工单下达（冻结 BOM / 工艺快照、展开用料与工序） | `apps/mes/services.py::release_order` | `POST /mes/orders/{id}/release/` | `bom_snapshot` / `routing_snapshot`(JSON) + `mes_productionordermaterial` + `mes_productionorderstep` | 下达前必须有生效工艺路线（`ROUTING_REQUIRED` / `ROUTING_EMPTY`）与生效 BOM 或手工用料（`BOM_REQUIRED` / `BOM_EMPTY`）；数量必须 > 0；BOM 展开取含损耗用量；下达后工程数据出新版本**不影响已下达工单** | `test_release_requires_effective_routing`、`test_release_requires_bom_or_manual_materials`、`test_release_freezes_snapshot_and_expands_bom` | 已通过阶段验收 |
+| 领料（经统一库存服务过账） | `apps/mes/services.py::issue_materials` → `apps/wms/services/stock.py` | `POST /mes/orders/{id}/issue-materials/` | `issue_document`（`wms` 出库单）+ `issued_quantity` | 未下达不能领料；缺料报 `NOTHING_TO_ISSUE`；已领重复请求报 `MATERIAL_ALREADY_ISSUED`（409），带 `Idempotency-Key` 则返回首次结果；MES 不写库存余额 | `test_issue_materials_posts_issue_document`、`test_issue_materials_twice_is_rejected`、`test_issue_materials_without_post_permission_is_rejected` | 已通过阶段验收 |
+| 报工（数量 / 工时 / 不良） | `apps/mes/services.py::report_production` | `POST /mes/orders/{id}/report/`；`GET /mes/reports/`（只读台账） | `mes_productionreport` | 报工单号按 `RPT` 取号；合格 + 返工 + 报废 **必须等于**报工量（`QUANTITY_MISMATCH`）；同一工序累计不得超计划（`OVER_PRODUCTION`）；工序已完成不能再报；报工台账**只读不可回改** | `test_report_quantity_must_be_conserved`、`test_report_cannot_exceed_planned_quantity`、`test_completed_step_cannot_be_reported_again`、`test_report_ledger_is_read_only` | 已通过阶段验收 |
+| 完工（工序完成 + 质检点判定合格 / 让步接收） | `apps/mes/services.py::complete_order` | `POST /mes/orders/{id}/complete/` | `status=completed` + `actual_end` | 未完工工序报 `STEPS_NOT_FINISHED`；质检点检验单未判定/不合格报 `QUALITY_GATE_NOT_PASSED` | `test_complete_requires_all_steps_finished`、`test_complete_blocked_until_gate_passed` | 已通过阶段验收 |
+| 完工入库（经统一库存服务过账） | `apps/mes/services.py::receipt_finished_goods` | `POST /mes/orders/{id}/receipt/` | `receipt_document`（`wms` 入库单） | 必须已完工（`STEPS_NOT_FINISHED` / 状态拒绝）；入库数量取末道工序累计合格；重复入库报 `RECEIPT_ALREADY_POSTED`，带 `Idempotency-Key` 可幂等重放 | `test_receipt_creates_inbound_document_and_is_idempotent`、`test_receipt_twice_is_rejected_without_idempotency_key`、`test_receipt_requires_finished_status` | 已通过阶段验收 |
+| 关闭 / 取消 | `apps/mes/services.py::close_order`/`cancel_order` | `POST /mes/orders/{id}/close/`、`cancel/` | `closed_at` / `cancel_reason` | 关闭要求已完工；取消必填原因（`REASON_REQUIRED`）且**已开工的工单不能取消** | `test_close_requires_completed_status`、`test_cancel_requires_reason_and_rejects_started_order` | 已通过阶段验收 |
+| 质检点自动开 QMS 检验单 | `apps/mes/services.py::_ensure_gate_inspection` → `apps/qms/services.py::create_order` | 报工时内部触发 | `mes_productionorderstep.inspection_order` + `qms_qualityinspectionorder` | 质检点工序报满时自动开单；内部校验 `qms.inspection.create`，**缺权整笔回滚** | `test_gate_report_creates_inspection_order`、`test_gate_report_requires_inspection_permission` | 已通过阶段验收 |
+| 生产统计 | `apps/mes/selectors.py::production_statistics` | `GET /mes/orders/statistics/` | 只读聚合 | 按工单与报工**实时聚合、不落汇总表**；百分比输出为保留 2 位小数的字符串 | `test_statistics_aggregates_live_details` | 已通过阶段验收 |
+| MRP 在制供给 | `apps/planning/mrp.py::_in_progress_supplies` | 随 MRP 运算产出供给行 | `MrpSupplyLine(source_type=in_progress)` | 取**已下达 / 生产中**工单的未完工数量，并入净算的 inbound 桶；**草稿工单不计入** | `test_in_progress_supply_nets_open_production_orders`、`test_draft_production_order_is_not_counted_as_supply` | 已通过阶段验收 |
+| MRP 生产建议转单 | `apps/planning/mrp.py::_convert_production_suggestion` | `POST /mrp-suggestions/{id}/convert/` | `mes.ProductionOrder(draft)` + `DocumentLink` | 只生成**草稿**工单（`source_type=mrp_suggestion` + `source_no`），**不自动下达**；下达仍需生产角色确认 | `test_convert_production_suggestion_creates_draft_order` | 已通过阶段验收 |
+| 编码规则与枚举下发 | `bootstrap_system.CODE_RULES`、`apps/core/views.py::MetaView` | `GET /api/v1/meta/` | — | 新增 `MO`（生产工单号）/ `RPT`（报工单号）两条编码规则；下发 5 组 MES 枚举（状态 / 来源 / 用料来源 / 工序状态 / 报工类型），前端不硬编码中文标签 | `test_order_number_is_generated_from_code_rule` | 已通过阶段验收 |
+| 数据范围与权限 | `apps/mes/views.py`、`permissions_registry.py` | 两个台账接口 | 四张表按公司收敛 | 匿名 403；只读角色写入 403；跨公司写入 403 `OUT_OF_DATA_SCOPE` | `test_endpoints_require_login`、`test_viewer_cannot_write`、`test_company_scope_hides_other_company_orders` | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests/test_mes_api.py -q --reuse-db` **32 项通过**；
+`pytest tests/test_mrp.py -q --reuse-db` **34 项通过**；全量见 `docs/test-report.md` §三十一。
+`manage.py check` 无问题；`makemigrations --check --dry-run` 输出 `No changes detected`；`ruff check apps config tests` 通过。
+**未实现**：线体排产优化、裁剪任务 / 裁片批次、工位派工、在制品转移与返工工单、
+扫码 / RFID 与硬件控制（无协议不伪造）、工序良率与 OEE、工单成本。
+
+## 一之二十三、供应商五维量化评价（SRM，本轮实际完成）
+
+> 来源：任务书 §10.4 供应商管理（REQ-10.4-05 ~ 10.4-08），以及 `docs/assumptions.md` A-10~A-12 事先约定的口径。
+> 本轮在 `apps/srm` 内新增 **3 个模型 / 1 个迁移 / 8 个权限点 / 2 项菜单**，
+> 把此前「只有文档约定、不落任何评分数据、界面也不展示评分」的五维评价真正做实；
+> 事实行由 `permissions=360 menus=142 models=143 migrations=29` 变为
+> `permissions=368 menus=144 models=146 migrations=30`（`builtin_roles=19` 不变）。
+
+| 需求条目 | 实现位置 | 页面 / API | 数据实体 | 业务规则 | 测试案例 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 五维权重配置（质量 / 技术 / 响应 / 交付 / 成本） | `apps/srm/models.py::SupplierEvaluationWeight`、`services.create_weight_config` | `/srm/supplier-evaluation-weights/`；「供应商管理 → 评价权重配置」 | `srm_supplierevaluationweight` | 五项权重 0~100 且**合计必须正好 100**（`WEIGHT_TOTAL_INVALID`）；数据库 CHECK 约束兜底；同一公司版本号唯一；同一时刻只有一版 `is_active` | `test_weight_config_total_must_be_exactly_100`、`test_weight_range_is_enforced_by_database`、`test_only_one_active_weight_version_per_company` | 已通过阶段验收 |
+| 权重版本留痕（只增不改） | `services.derive_weight_config` | `PATCH /srm/supplier-evaluation-weights/{id}/` | 派生新版本 + 审计 | 修改权重**不覆盖**旧版本，而是派生新版本（`version_no` 自增，响应体是新那条）；未传的项沿用旧版本，`is_active` 未显式传则沿用旧状态 | `test_editing_weights_derives_a_new_version_and_keeps_the_old_one` | 已通过阶段验收 |
+| 评价单与维度明细 | `models.SupplierEvaluation` / `SupplierEvaluationLine`、`services.create_evaluation` / `set_evaluation_lines` | `/srm/supplier-evaluations/`；`GET/POST .../{id}/lines/` | `srm_supplierevaluation` + `srm_supplierevaluationline` | 单号按 `SEV` 取号；建单即冻结 `weight_snapshot`；**五个维度必须各给一行**（`DIMENSION_ROWS_INCOMPLETE`），维度重复 / 得分越界分别报 `DUPLICATED_DIMENSION` / `INVALID_SCORE` | `test_evaluation_no_is_generated_and_weights_are_snapshotted`、`test_lines_require_all_five_dimensions`、`test_duplicate_dimension_and_out_of_range_score_are_rejected` | 已通过阶段验收 |
+| 总分只由服务层计算 | `services.recalculate` | `lines` 动作写库时重算 | `total_score` / `effective_weight_total` / `grade` | 客户端传入的 `total_score` **一律忽略**；按权重快照算加权分；保存配置权重 / 有效权重 / 加权分三列，不允许只存最终分数 | `test_total_score_is_computed_by_backend_and_client_value_is_ignored` | 已通过阶段验收 |
+| 无数据不记零分：标注缺失 | `services.recalculate` + `MissingDimensionPolicy.MARK_MISSING` | 评价单 `missing_dimension_policy` | `missing_dimensions` / `is_missing` | 缺数据维度 `effective_weight=0`、`weighted_score=null`（**不是 0 分**）；总分口径不完整（上限低于 100），因此 `grade` 留空、**不贴等级** | `test_missing_dimension_mark_missing_keeps_partial_total_and_no_grade` | 已通过阶段验收 |
+| 无数据不记零分：重新分配有效权重 | `services._redistributed_weights` + `MissingDimensionPolicy.REDISTRIBUTE` | 同上 | `effective_weight` | 把缺数据维度的权重按比例摊给有数据的维度，**合计精确等于 100%**（四舍五入余量补在权重最大的维度上）；总分是完整百分制，可给等级 | `test_missing_dimension_redistribute_renormalizes_effective_weights` | 已通过阶段验收 |
+| 历史评分沿用权重快照 | `models.SupplierEvaluation.weight_snapshot` | 评价详情 `weight_snapshot` / `weight_config_version` | JSON 快照 | 派生新版权重后，**已生效评价的权重快照、明细权重与总分原样不变**；只有新评价用新版本 | `test_changing_weight_config_does_not_rewrite_history` | 已通过阶段验收 |
+| 评价单状态机 | `services.publish_evaluation` / `archive_evaluation` | `POST .../publish/`、`.../archive/` | `status` | 草稿 → 已生效 → 已归档；没有明细不能生效（`EVALUATION_LINES_REQUIRED`）；跳步 / 重复推进 409；**生效后明细与表头都不可改**（`EVALUATION_LOCKED`） | `test_evaluation_is_locked_after_publish`、`test_draft_header_can_be_changed_and_policy_switch_recalculates` | 已通过阶段验收 |
+| 评价统计 | `apps/srm/selectors.py::evaluation_statistics` | `GET /srm/supplier-evaluations/statistics/` | 只读聚合 | 按明细**实时聚合、不落汇总表**；平均分只统计口径完整的评价，缺数据条数（`ungraded_total`）与缺失维度行数（`line_missing_total`）单独返回；「没有数据」与「0 分」分开计数 | `test_evaluation_statistics_separate_incomplete_from_complete` | 已通过阶段验收 |
+| 数据范围与权限 | `apps/srm/views.py`、`identity/permissions_registry.py` | 两个新台账接口 | 三张表按公司收敛 | 明细不单独挂公司，范围经 `evaluation__company_id`；跨公司供应商 / 权重配置 / 归属写入分别 400 / 403；只读用户不可读写权重 | `test_evaluation_is_company_scoped_and_needs_permissions`、`test_viewer_without_weight_permission_cannot_read_or_write_weights` | 已通过阶段验收 |
+
+**本轮真实结果**：`pytest tests/test_srm_api.py -q --reuse-db` **29 项通过**（其中本轮新增 18 项），
+全量见 `docs/test-report.md` §三十二。`manage.py check` 无问题；
+`makemigrations --check --dry-run` 输出 `No changes detected`；`ruff check apps config tests` 通过。
+**未实现（继续如实保持）**：供应商寻源与候选供应商（REQ-10.4-01 的寻源部分）、
+准入审批接入 `workflow`（REQ-10.4-02）、可供物料与报价及有效期（REQ-10.4-03）。
 
 ## 二、技术方案（任务书 3.1）
 
@@ -577,7 +767,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-9.5-03 | 9.5 | 替代料审批 | `BomLine.line_type=substitute` + `substitute_for` | **已完成（阶段 3 第一步）** | 替代料行随所属 BOM 版本一起走 `workflow`，不新建审批体系 |
 | REQ-9.5-04 | 9.5 | 工艺路线、标准工时、设备要求、工序质检点 | `planning.Routing` / `RoutingStep`（`/api/v1/planning/routings/`） | **已完成（阶段 3 第一步）** | `standard_hours` / `equipment_requirement` / `is_quality_gate`；与设备主数据的外键关联待阶段 4 |
 | REQ-9.5-05 | 9.5 | 默认工艺 裁剪→缝制→整烫→检验→包装 | `planning.models.DEFAULT_ROUTING_STEPS` | **已完成（阶段 3 第一步）** | 不传工序即套用（「检验」带质检点）；显式空列表被拒（`ROUTING_STEP_REQUIRED`） |
-| REQ-9.5-06 | 9.5 | 工单下达保存版本快照 | `services.build_bom_snapshot()` / `build_routing_snapshot()` | 部分完成（阶段 3 第一步） | 快照输出已实现并经真实库验证（服务与接口逐字段相等）；**快照落库依赖 MES 工单**（阶段 3 后续），对应必测案例 13 |
+| REQ-9.5-06 | 9.5 | 工单下达保存版本快照 | `services.build_bom_snapshot()` / `build_routing_snapshot()` → `ProductionOrder.bom_snapshot` / `routing_snapshot` | **已完成（阶段 3 第三步）** | 下达瞬间把生效 BOM / 工艺路线冻结为工单的 JSON 快照并据此展开用料与工序；后续工程数据出新版本不影响已下达工单（必测案例 13，`test_release_freezes_snapshot_and_expands_bom`） |
 
 ## 九、业务模块（任务书 10）
 
@@ -649,10 +839,10 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-10.4-02 | 10.4 | 准入审批 | 部分完成：`Supplier.admission_status`（待准入/已准入/未通过/暂停合作/已终止）与界面已具备，**但未接入 `workflow` 审批流程**——当前只是档案字段，不代替审批记录，故不写作已完成 |
 | REQ-10.4-03 | 10.4 | 可供物料、报价及有效期 | 未开始：需先定义可供物料关联表（供应商 × 物料 × 报价 × 有效期），并与采购价联动，属阶段 2 后续增量 |
 | REQ-10.4-04 | 10.4 | 分级、停用 | **已完成**：分级 `Supplier.grade`（A/B/C/D，枚举由 `/api/v1/meta/` 下发）；停用走 `set-active`（权限点 `srm.supplier.deactivate`），无 DELETE 路由，已使用供应商不被物理删除；用例覆盖启停与越权拒绝。其中「停用供应商不能新建正常采购订单」待采购订单落地后校验 |
-| REQ-10.4-05 | 10.4 | 质量、技术、响应、交付、成本评价 | 未开始：本阶段**不写入任何评分数据**，界面也不展示评分，避免用默认值冒充评价结果 |
-| REQ-10.4-06 | 10.4 | 权重总和 100% | 设计约定已文档化（`docs/assumptions.md`）；权重配置模型随评分功能落地 |
-| REQ-10.4-07 | 10.4 | 保存评分依据 | 设计约定已文档化（`docs/assumptions.md`） |
-| REQ-10.4-08 | 10.4 | 无数据不自动记零分，应标注缺失或重新分配有效权重 | 设计约定已文档化（`docs/assumptions.md`） |
+| REQ-10.4-05 | 10.4 | 质量、技术、响应、交付、成本评价 | **已完成（本轮）**：`srm.SupplierEvaluation` + `SupplierEvaluationLine` 承载五维评分；**总分只能由服务层按权重快照计算**（客户端传的 `total_score` 被忽略）；明细保存原始观测值与计算过程（配置权重 / 有效权重 / 加权分三列），不允许只存最终分数。页面「供应商管理 → 供应商评价」；用例 `test_total_score_is_computed_by_backend_and_client_value_is_ignored`、`test_evaluation_no_is_generated_and_weights_are_snapshotted` |
+| REQ-10.4-06 | 10.4 | 权重总和 100% | **已完成（本轮）**：`srm.SupplierEvaluationWeight`（五类权重，0~100 且**合计必须正好 100**，否则 400 `WEIGHT_TOTAL_INVALID`；数据库 CHECK 约束兜底）。配置**只增不改**——修改即派生新版本（`version_no` 自增，旧版本原样保留），同一公司同一时刻只有一版启用。页面「供应商管理 → 评价权重配置」；用例 `test_weight_config_total_must_be_exactly_100`、`test_only_one_active_weight_version_per_company`、`test_editing_weights_derives_a_new_version_and_keeps_the_old_one` |
+| REQ-10.4-07 | 10.4 | 保存评分依据 | **已完成（本轮）**：评价单保存 `weight_snapshot`（评分当时的权重快照）；每条明细保存 `raw_observation`（原始观测值，如到货准时批次数）、`raw_score`、`weight`、`effective_weight`、`weighted_score`，打分人与时间落 `evaluated_by` / `evaluated_at` 并写审计。历史评价**不因后来改权重而变化**（`test_changing_weight_config_does_not_rewrite_history`） |
+| REQ-10.4-08 | 10.4 | 无数据不自动记零分，应标注缺失或重新分配有效权重 | **已完成（本轮）**：五个维度必须各给一行，没有数据的维度把 `raw_score` 留空 → `is_missing=True`、`effective_weight=0`、`weighted_score=null`（**不是 0 分**）。两种口径都实现并留痕：`mark_missing` 总分是不完整口径（上限低于 100）故**不给等级**；`redistribute` 把缺权重按比例摊给有数据的维度且**合计精确等于 100%**，可给等级。`missing_dimensions` / `effective_weight_total` 对外可见；用例 `test_missing_dimension_mark_missing_keeps_partial_total_and_no_grade`、`test_missing_dimension_redistribute_renormalizes_effective_weights` |
 | REQ-10.4-09 | 10.4 | 停用供应商不能新建正常采购订单，例外需授权 | **已完成（本轮）**：`procurement` 订单服务在创建 / 修改 / 提交时校验供应商未准入（`admission_status != admitted`）或已停用（`is_active = false`）即拒绝（`SUPPLIER_NOT_USABLE`）；持 `procurement.order.override_supplier` 且填写例外原因时可例外，订单落 `supplier_exception` / `supplier_exception_reason` 并写审计。用例 `test_suspended_supplier_cannot_be_used_without_reason`、`test_inactive_supplier_needs_override_permission`、`test_override_supplier_requires_reason_and_is_audited` |
 
 ### 10.5 采购管理（阶段 2）
@@ -671,37 +861,37 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 
 | 编号 | 来源 | 需求 | 状态 |
 | --- | --- | --- | --- |
-| REQ-10.6-01 | 10.6 | 输入项（销售需求、生产计划、BOM、可用库存、在途、在制、占用、安全库存、提前期、批量规则） | **部分完成（阶段 3 第二步）**：已接销售需求（`sales_order`）+ 生效 BOM（`get_effective_bom` + `gross_quantity`）+ 可用库存 + 采购在途 + 占用（从可用量中扣除）；**未接**生产计划、在制（`in_progress_supply=not_implemented`，待 MES）、安全库存、提前期、批量规则（`lead_time_mode=lot_for_lot`）——逐条登记在 `docs/assumptions.md` §四之六 |
+| REQ-10.6-01 | 10.6 | 输入项（销售需求、生产计划、BOM、可用库存、在途、在制、占用、安全库存、提前期、批量规则） | **部分完成（阶段 3 第三步后）**：已接销售需求（`sales_order`）+ 生效 BOM（`get_effective_bom` + `gross_quantity`）+ 可用库存 + 采购在途 + **MES 在制供给（已下达 / 生产中工单未完工量，`in_progress_supply=mes_open_orders`）** + 占用（从可用量中扣除）；**未接**生产计划（预测 / 计划层）、安全库存、提前期、批量规则（`lead_time_mode=lot_for_lot`）——逐条登记在 `docs/assumptions.md` §四之六 |
 | REQ-10.6-02 | 10.6 | 时间分段净需求、多层 BOM 展开、损耗 | **已完成**：`day` / `week` 分段（`week` 归一到周一）、低层码分层净算、多层展开、损耗取含损耗用量 `gross_quantity`；用例 `test_net_requirement_nets_on_hand_and_on_order`、`test_explosion_uses_parent_net_requirement`、`test_low_level_code_net_calculated_once` |
 | REQ-10.6-03 | 10.6 | 循环 BOM 检查 | **已完成**：`BOM_CYCLE_DETECTED`，并落一条 `failed` 运行记录（`test_cycle_bom_rejected_and_failed_run_recorded`） |
 | REQ-10.6-04 | 10.6 | 缺料清单、采购建议、生产建议 | **已完成**：`MrpSuggestion`（`purchase` / `production`）+ 缺料清单页面；无 BOM 成品记入 `unexploded_materials`（`test_suggestion_type_rules_and_unexploded_materials`） |
 | REQ-10.6-05 | 10.6 | 供需追溯、计算快照 | **已完成**：需求行保存来源（`source_type/source_id/source_no/source_line_no` + `path`）、建议保存 `detail.trace`、运行保存 `parameters` / `summary` 快照 |
-| REQ-10.6-06 | 10.6 | 建议审核转单 | **已完成（采购路径）**：`convert_suggestion()` 生成**草稿采购申请** + `DocumentLink`（`generated_from`），后续仍走采购审批；**生产建议转单未实现**，返回 `PRODUCTION_ORDER_NOT_IMPLEMENTED`（等 MES） |
+| REQ-10.6-06 | 10.6 | 建议审核转单 | **已完成（采购与生产两路径，阶段 3 第三步后）**：`convert_suggestion()` 按类型分流——采购建议生成**草稿采购申请**，生产建议生成**草稿 MES 生产工单**（`mrp_suggestion` + `source_no` + `DocumentLink`）；两者都不绕过各自的审批 / 下达动作 |
 | REQ-10.6-07 | 10.6 | 销售订单与派生需求不得重复计算 | **已完成**：同一物料在低层码分层中只净算一次、父件按净需求展开（`test_low_level_code_net_calculated_once`） |
 | REQ-10.6-08 | 10.6 | 已占用库存不得再作自由供给 | **已完成**：可用量 = `on_hand − frozen − reserved`，且只认合格质量状态（`test_usable_stock_excludes_frozen_reserved_and_unqualified`） |
 | REQ-10.6-09 | 10.6 | 转单前重检有效性；同一建议不得重复转单 | **已完成**：锁内重取 → 运行状态 → 未转单 → 运行仍是最新已完成（`SUGGESTION_STALE`）→ 物料启用 → 类型；`test_convert_twice_rejected`、`test_convert_stale_suggestion_rejected`、`test_convert_inactive_material_rejected` |
 | REQ-10.6-10 | 10.6 | 重算不自动覆盖已执行采购单/工单 | **已完成**：MRP 只读库存与在途，**不修改**任何已执行单据；重算只产生新运行，旧运行建议因 `SUGGESTION_STALE` / `MRP_RUN_NOT_ACTIVE` 不可再转单（`test_mrp_is_read_only_for_inventory`） |
 | REQ-10.6-11 | 10.6 | 第一版可解释排程，**不宣称自动最优排产** | **已完成**：`lot_for_lot` 可解释净算，参数与分段净算过程全部落库可见；**不包含**产能约束与最优排产，文档与 UI 均未作此宣称 |
 
-### 10.7 MES 制造执行（阶段 3）
+### 10.7 MES 制造执行（阶段 3，**本轮已实现首块**，见 §一之二十二）
 
 | 编号 | 来源 | 需求 | 状态 |
 | --- | --- | --- | --- |
-| REQ-10.7-01 | 10.7 | 计划与工单、线体排产 | 未开始 |
+| REQ-10.7-01 | 10.7 | 计划与工单、线体排产 | **部分完成（阶段 3 第三步）**：生产工单与状态机已实现（`apps/mes`），可指定工厂 / 车间 / 线体；**线体排产优化与产能冲突检查未做** |
 | REQ-10.7-02 | 10.7 | 裁剪任务、裁片批次 | 未开始 |
-| REQ-10.7-03 | 10.7 | 工序任务与派工 | 未开始（工位已含 `process_name`） |
-| REQ-10.7-04 | 10.7 | 领料、补料、退料 | 未开始（经统一库存服务） |
-| REQ-10.7-05 | 10.7 | 开工、暂停、恢复、完工 | 未开始 |
-| REQ-10.7-06 | 10.7 | 数量、工时、不良报工 | 未开始（报工须幂等） |
-| REQ-10.7-07 | 10.7 | 在制品转移、返工、报废 | 未开始 |
-| REQ-10.7-08 | 10.7 | 完工检验与入库申请 | 未开始 |
-| REQ-10.7-09 | 10.7 | 人员、物料、设备状态 | 未开始 |
-| REQ-10.7-10 | 10.7 | 扫码、RFID 映射 | 部分就绪（`Identifier` 分型已实现） |
+| REQ-10.7-03 | 10.7 | 工序任务与派工 | **部分完成**：工单工序由工艺路线快照生成（含标准工时 / 设备要求 / 质检点），可查看；**工位派工与接单未做** |
+| REQ-10.7-04 | 10.7 | 领料、补料、退料 | **部分完成**：领料已实现（`issue-materials/`，经统一库存服务出库）；**补料 / 退料未做** |
+| REQ-10.7-05 | 10.7 | 开工、暂停、恢复、完工 | **部分完成**：开工由首条报工推进，完工已实现（`complete/`）；**暂停 / 恢复未做** |
+| REQ-10.7-06 | 10.7 | 数量、工时、不良报工 | **已完成**：`report/` 记录合格 / 返工 / 报废数量与实际工时；数量守恒与超产由服务层校验 |
+| REQ-10.7-07 | 10.7 | 在制品转移、返工、报废 | **部分完成**：返工与报废以**报工类型 / 数量**留痕；**独立的在制品转移与返工工单未做** |
+| REQ-10.7-08 | 10.7 | 完工检验与入库申请 | **已完成**：质检点工序报满自动开 QMS 检验单、完工前强制判定合格 / 让步接收；完工入库经统一库存服务（`receipt/`） |
+| REQ-10.7-09 | 10.7 | 人员、物料、设备状态 | **部分完成**：报工记录操作人与生产设备，工单记录车间 / 线体；**设备实时状态与人员工时汇总未做** |
+| REQ-10.7-10 | 10.7 | 扫码、RFID 映射 | 部分就绪（`Identifier` 分型已实现；MES 未接扫码） |
 | REQ-10.7-11 | 10.7 | 吊挂载具和挂片流转 | 未开始（载具码已建模；**未获协议前不控制硬件**） |
-| REQ-10.7-12 | 10.7 | 报工幂等、限制超量报工 | 设计约定（必测案例 14） |
-| REQ-10.7-13 | 10.7 | 区分首次合格与返工合格，避免良率失真 | 设计约定已文档化 |
-| REQ-10.7-14 | 10.7 | 返工必须关联原不良记录 | 设计约定已文档化 |
-| REQ-10.7-15 | 10.7 | 投入/产出/在制/报废可核对 | 设计约定已文档化 |
+| REQ-10.7-12 | 10.7 | 报工幂等、限制超量报工 | **已完成**：领料 / 入库支持 `Idempotency-Key` 幂等重放；报工数量守恒（`QUANTITY_MISMATCH`）与超产拦截（`OVER_PRODUCTION`） |
+| REQ-10.7-13 | 10.7 | 区分首次合格与返工合格，避免良率失真 | **部分完成**：报工类型区分正常 / 首件 / 返工（`report_type`），返工数量单独记录；**工序级良率汇总报表未做** |
+| REQ-10.7-14 | 10.7 | 返工必须关联原不良记录 | **部分完成**：返工通过 `report_type=rework` + 报废数量留痕；**没有「返工报工必须引用原不良报工行」的强约束**（列为未做） |
+| REQ-10.7-15 | 10.7 | 投入/产出/在制/报废可核对 | **部分完成**：工单持有计划 / 完工 / 合格 / 报废数量与工序累计，可按工单核对；**工序级在制品数量未按流转建模** |
 | REQ-10.7-16 | 10.7 | 无协议时用人工扫码，不伪造硬件控制 | 已完成（本版无任何硬件控制） |
 
 ### 10.8 WMS 仓储（基础阶段 1 ✅ / 库存核心阶段 2 ✅）
@@ -710,7 +900,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | --- | --- | --- | --- | --- |
 | REQ-10.8-01 | 10.8 | 仓库、库区、储位 | `wms.Warehouse/Zone/Location` | 已完成 |
 | REQ-10.8-02 | 10.8 | 收货、采购入库、待检、放行 | `wms/services/stock.py`（receipt / release_quality） | 部分完成：收货、待检放行已实现并测试；采购单驱动的入库待采购模块（阶段 2 剩余） |
-| REQ-10.8-03 | 10.8 | 生产领料/退料、完工入库 | `wms/services/stock.py`（issue / receipt） | 部分完成：库存服务已具备出/入库能力；领料单与完工入库单属阶段 3 MES |
+| REQ-10.8-03 | 10.8 | 生产领料/退料、完工入库 | `wms/services/stock.py`（issue / receipt），由 `apps/mes/services.py::issue_materials`/`receipt_finished_goods` 调用 | **部分完成**：生产领料与完工入库已接入统一库存服务；**退料未做** |
 | REQ-10.8-04 | 10.8 | 销售出库、退货、采购退货 | `wms/services/stock.py`（issue） | 部分完成：出库能力与质量校验已实现并测试；销售/采购退货单据属阶段 2 剩余 |
 | REQ-10.8-05 | 10.8 | 备件领用、退回 | `wms/services/stock.py`（共享服务） | 部分完成：备件库存走同一服务；备件单据属阶段 4（不重复建库存体系） |
 | REQ-10.8-06 | 10.8 | 移库、调拨 | `wms/services/stock.py`（move） | 部分完成：同仓移库已实现（含并发守恒测试）；**跨仓调拨与在途状态未实现**，当前拒绝跨仓 |
@@ -732,23 +922,23 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-10.8-22 | 10.8 | 盘点需处理期间移动，首版范围冻结 | 仅设计约定 | 未实现 |
 | REQ-10.8-23 | 10.8 | 冲销不能忽略下游已消耗事实 | `_assert_reversible` | 已完成（下游已消耗时拒绝，已测） |
 
-### 10.9 QMS 质量（阶段 3）
+### 10.9 QMS 质量（阶段 3，**本轮已实现首块**，见 §一之二十一）
 
 | 编号 | 来源 | 需求 | 状态 |
 | --- | --- | --- | --- |
-| REQ-10.9-01 | 10.9 | 检验项目 | 未开始 |
-| REQ-10.9-02 | 10.9 | 标准及版本 | 未开始 |
-| REQ-10.9-03 | 10.9 | 来料、首件、过程、成品、出货检验 | 未开始 |
-| REQ-10.9-04 | 10.9 | 实测值与附件 | 未开始（`core.Attachment` 可复用） |
-| REQ-10.9-05 | 10.9 | 自动阈值判定、人工复核 | 未开始 |
-| REQ-10.9-06 | 10.9 | 不合格处置、返工、退货、报废、让步接收 | 未开始 |
-| REQ-10.9-07 | 10.9 | 纠正预防措施、质量知识库、追溯与分析 | 未开始 |
-| REQ-10.9-08 | 10.9 | 检验单保存标准快照 | 设计约定已文档化 |
-| REQ-10.9-09 | 10.9 | 区分抽样数量与批次数量 | 设计约定已文档化 |
-| REQ-10.9-10 | 10.9 | 检验结果修改留痕 | 设计约定已文档化（复用审计） |
+| REQ-10.9-01 | 10.9 | 检验项目 | **已完成**（`qms.inspection-items`，判定口径的唯一来源） |
+| REQ-10.9-02 | 10.9 | 标准及版本 | 部分完成：项目的标准要求 / 方法与上下限已实现；**面向物料的「检验标准版本快照」未做**（检验单保存 `source_no` 与受检对象，标准改动不会回写历史单据） |
+| REQ-10.9-03 | 10.9 | 来料、首件、过程、成品、出货检验 | **已完成**（`inspection_type` 覆盖五类；`source_no` 引用来源单据） |
+| REQ-10.9-04 | 10.9 | 实测值与附件 | 部分完成：实测值 / 实测描述已实现；**附件未接入**（`core.Attachment` 可复用，尚未在检验单上开放） |
+| REQ-10.9-05 | 10.9 | 自动阈值判定、人工复核 | **已完成**：定量项由服务层按上下限判定，定性项由检验员判定；判定人 / 判定时间留痕 |
+| REQ-10.9-06 | 10.9 | 不合格处置、返工、退货、报废、让步接收 | 部分完成：合格 / 不合格 / 让步接收与报警闭环已实现；**返工 / 退货 / 报废的处置工单未做** |
+| REQ-10.9-07 | 10.9 | 纠正预防措施、质量知识库、追溯与分析 | **已完成**：质量问题知识库（纠正 / 预防措施 + 来源链路）与质量信息动态监测已实现 |
+| REQ-10.9-08 | 10.9 | 检验单保存标准快照 | 部分完成：检验单保存受检对象与来源单据，**标准版本的完整快照未落库**（与 REQ-10.9-02 同一缺口） |
+| REQ-10.9-09 | 10.9 | 区分抽样数量与批次数量 | **已完成**（`quantity` 受检数量 / `sample_quantity` 抽样数量分列，且非负约束） |
+| REQ-10.9-10 | 10.9 | 检验结果修改留痕 | **已完成**（结果录入、提交、判定、关闭均写 `core` 审计，含结论与操作人） |
 | REQ-10.9-11 | 10.9 | 质量放行通过库存服务改变质量状态 | 接口已就绪并已测（`wms/services/stock.py::release_quality`、`wms.quality.release`）；QMS 检验单属阶段 3 |
-| REQ-10.9-12 | 10.9 | 不合格转合格必须有授权处置依据 | 设计约定已文档化 |
-| REQ-10.9-13 | 10.9 | 未配置真实检测接口时标明人工录入 | 设计约定已文档化 |
+| REQ-10.9-12 | 10.9 | 不合格转合格必须有授权处置依据 | **已完成**：让步接收必须填写判定说明，且不能与检验结果矛盾；判定使用独立权限 `qms.inspection.judge` |
+| REQ-10.9-13 | 10.9 | 未配置真实检测接口时标明人工录入 | **已完成**：全部结果由人工录入（无检测仪器接口），`docs/assumptions.md` 与 `docs/hardware-integration.md` 已标明 |
 
 ### 10.10 设备 EAM/CMMS（阶段 4）
 
@@ -848,15 +1038,15 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-11.1-02 | 11.1 | 智能水表 2 台、智能电表 2 台 | 同上；协议待确认（A-02） | 设计已完成 |
 | REQ-11.2-01 | 11.2 | 模型：连接配置→网关/设备→测点→原始消息→标准化读数→汇总/告警 | `docs/hardware-integration.md` 第二节 | 设计已完成 |
 | REQ-11.2-02 | 11.2 | 读数必带字段（设备时间/接收时间/单位/质量/来源/消息 ID/去重依据/处理状态） | 同上 | 设计已完成 |
-| REQ-11.3-01 | 11.3 | 独立可配置模拟器 | — | 未开始（阶段 5） |
-| REQ-11.3-02 | 11.3 | HTTP 采集入口 | — | 未开始（阶段 5） |
-| REQ-11.3-03 | 11.3 | 设备独立凭证 | — | 未开始（阶段 5） |
-| REQ-11.3-04 | 11.3 | 请求限流与批次大小限制 | — | 未开始（阶段 5） |
-| REQ-11.3-05 | 11.3 | 重复数据处理 | — | 未开始（阶段 5） |
-| REQ-11.3-06 | 11.3 | 读数展示与历史查询 | — | 未开始（阶段 5） |
-| REQ-11.3-07 | 11.3 | 离线告警、越限告警 | — | 未开始（阶段 5） |
-| REQ-11.3-08 | 11.3 | 模拟标识 | — | 未开始（阶段 5，但已要求"必须显著标识"） |
-| REQ-11.3-09 | 11.3 | 采集失败日志 | — | 未开始（阶段 5） |
+| REQ-11.3-01 | 11.3 | 独立可配置模拟器 | `apps/iot/management/commands/iot_simulate.py`（`--seed-demo` / `--gateway` / `--rounds` / `--interval` / `--out-of-range` / `--dry-run`），数据全程标注「模拟」 | 已完成 |
+| REQ-11.3-02 | 11.3 | HTTP 采集入口 | `POST /api/v1/iot/ingest/`（`apps/iot/views.py::DeviceIngestView`，只认 `X-Device-Token`） | 已完成 |
+| REQ-11.3-03 | 11.3 | 设备独立凭证 | 每台设备一次性下发令牌，库里只存 SHA-256 摘要；`.../rotate-token/` 轮换后旧令牌立即失效 | 已完成 |
+| REQ-11.3-04 | 11.3 | 请求限流与批次大小限制 | `services.enforce_rate_limit()`（按设备每分钟上限，超限 429）与连接的 `batch_limit`（超批 400） | 已完成 |
+| REQ-11.3-05 | 11.3 | 重复数据处理 | 报文按「设备 + 消息 ID」判重（记 `duplicated`），读数按「测点 + 设备时间」唯一约束去重 | 已完成 |
+| REQ-11.3-06 | 11.3 | 读数展示与历史查询 | 页面「设备监控 / 采集读数 / 采集日志」；`GET /api/v1/iot/readings/`、`/api/v1/iot/messages/` | 已完成 |
+| REQ-11.3-07 | 11.3 | 离线告警、越限告警 | 越限在读数入库时判定，离线由 `manage.py iot_offline_check` 扫描；两者统一写入能源报警台账 | 已完成 |
+| REQ-11.3-08 | 11.3 | 模拟标识 | `is_simulated` 从连接 → 设备 → 报文 → 读数逐级传递，界面显示「模拟」标签；模拟设备不参与离线判定 | 已完成 |
+| REQ-11.3-09 | 11.3 | 采集失败日志 | `iot_iotmessage` 每条上报都留一行（含失败与重复），`error_message` 说明原因，界面只读可查 | 已完成 |
 | REQ-11.3-10 | 11.3 | MQTT/Modbus 保留适配设计，按真实设备开发，**不预先宣称完成** | `docs/hardware-integration.md` 第三节 | 已声明边界 |
 | REQ-11.4-01 | 11.4 | 原始数据保存周期可配置 | — | 设计已完成 |
 | REQ-11.4-02 | 11.4 | 分钟/小时/日汇总 | `docs/energy-calculation.md` 第四节 | 设计已完成 |
@@ -869,11 +1059,11 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 
 | 编号 | 来源 | 闭环 | 基座实现位置 | 状态 |
 | --- | --- | --- | --- | --- |
-| REQ-12.1-01 | 12.1 | 订单到交付 | `apps/sales/services.py` + 统一库存服务 | **部分打通**：销售侧「销售订单 → 库存占用 → 发货出库 → 退货 → 检验判定」与采购侧「申请 → 订单 → 到货 → 检验放行 → 合格库存」均已可用；**MRP 已打通**（销售需求 → 净算 → 采购建议转单，见 §一之七），**MES 工单 / 报工 / 成品入库未实现**，整条链路未打通（阶段 3） |
+| REQ-12.1-01 | 12.1 | 订单到交付 | `apps/sales/services.py` + `apps/mes/services.py` + 统一库存服务 | **已打通（阶段 3 第三步后）**：销售侧「订单 → 占用 → 发货出库 → 退货 → 检验判定」、采购侧「申请 → 订单 → 到货 → 检验放行 → 合格库存」、MRP「销售需求 → 净算 → 建议转单」、MES「工单下达 → 领料 → 报工 → 质检点判定 → 完工 → 成品入库」均已可用；**仍缺**线体排产 / 工位派工 / 在制品转移等环节 |
 | REQ-12.1-02 | 12.1 | 可从订单查看所有关联单据与数量 | `GET /api/v1/sales/orders/{id}/chain/`（+ `integration.DocumentLink`） | **销售侧已实现**：一次返回订单、行交付进度（已发/已退/未发）、发货单、退货单与关联库存单据；跨模块统一关系表 `DocumentLink` 仍为基座就绪 |
-| REQ-12.2-01 | 12.2 | 设备维修闭环 | 备件库存复用 `wms`，设备主数据在阶段 4 | 未打通（阶段 4） |
-| REQ-12.3-01 | 12.3 | 能源告警闭环 | `docs/energy-calculation.md` 第五节 | 未打通（阶段 5） |
-| REQ-12.4-01 | 12.4 | 客诉改善闭环 | `Identifier` 分型 + `DocumentLink` | 未打通（阶段 2/6） |
+| REQ-12.2-01 | 12.2 | 设备维修闭环 | `apps/equipment`（报修 → 派工 → 维修 → 记录）+ 备件库存复用 `wms` | **已打通**（阶段 4，见 §一之十八；备件领用仍必须经统一库存服务，设备模块不直接扣库存） |
+| REQ-12.3-01 | 12.3 | 能源告警闭环 | `apps/ems/services.py`（越限 / 离线 / 单耗 / 能耗 → 处理 → 关闭）+ 数采越限与离线写入同一台账 | **已打通**（阶段 5，见 §一之十八、§一之十九；平台无内置调度器，扫描由 `ems_offline_check` / 接口触发） |
+| REQ-12.4-01 | 12.4 | 客诉改善闭环 | `apps/crm`（投诉登记 → 受理 → 处理 → 关闭 + 满意度）+ `Identifier` 分型 + `DocumentLink` | **已打通（首版）**：投诉可关联客户与来源单号，处理措施与满意度留痕；**未做**投诉自动分派、按批次 / 订单的一键追溯与投诉统计报表（见 §一之十九） |
 | REQ-12.5-01 | 12.5 | 安全整改闭环 | `core.Attachment` + `workflow` + 通知 | 未打通（阶段 6） |
 
 > 详细设计见 `docs/business-flows.md`。**阶段 0/1 只交付这些闭环的平台基座**（权限、审批、
@@ -937,7 +1127,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | 18 | Outbox 重放不重复产生结果 | ✅ 已执行 | `test_outbox_dispatch_creates_notification_once`、`test_dispatch_is_at_least_once_but_notification_not_duplicated`、`test_publish_event_deduplicates_by_dedup_key` |
 | 19 | 导入错误可定位到行 | 未执行 | 阶段 2 |
 | 20 | 敏感附件不能越权下载 | ✅ 已执行 | `test_attachment_download_requires_permission` |
-| 21 | 订单到交付链路通过 | 部分 | **采购子链路已通过**（申请 → 订单 → 收货 → 待检 → 放行）；**销售订单 → MRP → 采购建议已打通**（`test_mrp.py` + `docs/test-report.md` §16.5 真实链路）；**MES 生产领料 / 报工 / 成品入库段未打通**（阶段 3 第三步） |
+| 21 | 订单到交付链路通过 | 通过 | **全链路已打通**：采购（申请 → 订单 → 到货 → 待检 → 放行）、销售（订单 → 占用 → 发货 → 退货）、MRP（销售需求 → 净算 → 建议转单）、MES（工单 → 领料 → 报工 → 质检点 → 完工 → 入库）均已可用且幂等；文档与用例：`docs/business-flows.md` §12.1 / §十六、`tests/test_mes_api.py`。**线体排产、工位派工、在制品转移尚未实现**（不影响链路打通） |
 | 22 | 备份可以恢复 | 未执行 | 阶段 7 |
 
 > 另有超出的已执行用例：审计只写不改（`test_audit_log_is_write_once`）、审计随业务事务回滚
@@ -1020,10 +1210,10 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | 0 | 仓库检查、需求矩阵、架构、模型、环境 | **已完成**（Docker 未启动验证） |
 | 1 | 登录、权限、组织、主数据、基础审批、日志 | **已完成**（本地验证通过） |
 | 2 | 客户、供应商、采购、销售、WMS | **进行中**：客户与供应商主数据已完成（见 §一之二）；寻源/报价/评价、采购销售单据、库存余额未开始。补充要求：如需质检放行，**先实现最低可用的待检/放行状态** |
-| 3 | BOM、工艺、MRP、MES、QMS | **进行中**：BOM 与工艺路线版本快照已完成（见 §一之六）；**MRP 已完成**（见 §一之七）；MES、QMS 未开始。工单下达须保存该版本快照 |
-| 4 | 设备、备件、保养、点检、维修 | 未开始。备件主数据与库存由共享模块提供，**阶段 4 不重复创建库存体系** |
-| 5 | 采集、EMS、能源报表与告警 | 未开始 |
-| 6 | CRM 深化、EHS、物流、终端安全 | 未开始 |
+| 3 | BOM、工艺、MRP、MES、QMS | **已完成首轮**：BOM 与工艺路线版本快照（§一之六）、MRP（§一之七）、**生产执行 MES**（工单下达保存 BOM / 工艺快照、领料、报工、完工与完工入库，§一之二十二）、QMS 首块（§一之二十一）；**仍未完成**：线体排产、裁剪任务 / 裁片批次、工位派工、在制品转移、扫码 / RFID 控制硬件 |
+| 4 | 设备、备件、保养、点检、维修 | **已完成**（阶段 4，见 §一之十八）。备件主数据与库存由共享模块提供，**阶段 4 不重复创建库存体系**；OEE 统计未做 |
+| 5 | 采集、EMS、能源报表与告警 | **已完成首版**（阶段 5，含 HTTP 采集入口与内置模拟器、只读采集统计）；能源调度未做，MQTT / Modbus 待协议确认 |
+| 6 | CRM 深化、EHS、物流、终端安全 | 部分完成：EHS 与厂内物流已实现，CRM 深化（投诉 / 评价 / 统计）已完成；**工业终端安全（防病毒 / 补丁管理）未做** |
 | 7 | 综合报表、基础成本深化、性能、安全、运维 | 未开始 |
 
 **每阶段输出要求**（任务书 17 末）：已实现功能、数据迁移、页面与 API、权限、演示数据、

@@ -133,6 +133,20 @@
     "permission_code": "crm.customer_contact.view"
   },
   {
+    "code": "crm.complaint",
+    "path": "/crm/complaints",
+    "component": "views/crm/ComplaintList.vue",
+    "menu_type": "page",
+    "permission_code": "crm.complaint.view"
+  },
+  {
+    "code": "crm.product-review",
+    "path": "/crm/product-reviews",
+    "component": "views/crm/ProductReviewList.vue",
+    "menu_type": "page",
+    "permission_code": "crm.product_review.view"
+  },
+  {
     "code": "sales",
     "path": "/sales",
     "component": "Layout",
@@ -187,6 +201,20 @@
     "component": "views/srm/SupplierQualificationList.vue",
     "menu_type": "page",
     "permission_code": "srm.supplier_qualification.view"
+  },
+  {
+    "code": "srm.evaluation-weight",
+    "path": "/srm/evaluation-weights",
+    "component": "views/srm/SupplierEvaluationWeightList.vue",
+    "menu_type": "page",
+    "permission_code": "srm.evaluation_weight.view"
+  },
+  {
+    "code": "srm.supplier-evaluation",
+    "path": "/srm/supplier-evaluations",
+    "component": "views/srm/SupplierEvaluationList.vue",
+    "menu_type": "page",
+    "permission_code": "srm.evaluation.view"
   },
   {
     "code": "procurement",
@@ -252,6 +280,27 @@
     "permission_code": "planning.mrp.view"
   },
   {
+    "code": "mes",
+    "path": "/mes",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "mes.production-order",
+    "path": "/mes/production-orders",
+    "component": "views/mes/ProductionOrderList.vue",
+    "menu_type": "page",
+    "permission_code": "mes.order.view"
+  },
+  {
+    "code": "mes.production-report",
+    "path": "/mes/production-reports",
+    "component": "views/mes/ProductionReportList.vue",
+    "menu_type": "page",
+    "permission_code": "mes.report.view"
+  },
+  {
     "code": "wms",
     "path": "/wms",
     "component": "Layout",
@@ -287,11 +336,151 @@
     "permission_code": "wms.document.view"
   },
   {
+    "code": "qms",
+    "path": "/qms",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "qms.inspection-item",
+    "path": "/qms/inspection-items",
+    "component": "views/qms/InspectionItemList.vue",
+    "menu_type": "page",
+    "permission_code": "qms.inspection_item.view"
+  },
+  {
+    "code": "qms.inspection",
+    "path": "/qms/inspections",
+    "component": "views/qms/InspectionOrderList.vue",
+    "menu_type": "page",
+    "permission_code": "qms.inspection.view"
+  },
+  {
+    "code": "qms.alert",
+    "path": "/qms/alerts",
+    "component": "views/qms/QualityAlertList.vue",
+    "menu_type": "page",
+    "permission_code": "qms.alert.view"
+  },
+  {
+    "code": "qms.issue",
+    "path": "/qms/issues",
+    "component": "views/qms/QualityIssueList.vue",
+    "menu_type": "page",
+    "permission_code": "qms.issue.view"
+  },
+  {
+    "code": "equipment",
+    "path": "/equipment",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "equipment.equipment-type",
+    "path": "/equipment/types",
+    "component": "views/equipment/EquipmentTypeList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.type.view"
+  },
+  {
+    "code": "equipment.equipment",
+    "path": "/equipment/equipments",
+    "component": "views/equipment/EquipmentList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.equipment.view"
+  },
+  {
+    "code": "equipment.ledger",
+    "path": "/equipment/ledger",
+    "component": "views/equipment/EquipmentLedgerList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.equipment.view"
+  },
+  {
+    "code": "equipment.equipment-part",
+    "path": "/equipment/parts",
+    "component": "views/equipment/EquipmentPartList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.part.view"
+  },
+  {
+    "code": "equipment.spare-part",
+    "path": "/equipment/spare-parts",
+    "component": "views/equipment/SparePartList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.spare_part.view"
+  },
+  {
+    "code": "ems",
+    "path": "/ems",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "equipment.accessory",
+    "path": "/equipment/accessories",
+    "component": "views/equipment/SparePartList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.spare_part.view"
+  },
+  {
+    "code": "logistics",
+    "path": "/logistics",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "equipment.fault-report",
+    "path": "/equipment/fault-reports",
+    "component": "views/equipment/FaultReportList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.fault_report.view"
+  },
+  {
+    "code": "ehs",
+    "path": "/ehs",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "equipment.spare-part-stock",
+    "path": "/equipment/spare-part-stock",
+    "component": "views/equipment/SparePartStockList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.spare_part_stock.view"
+  },
+  {
+    "code": "iot",
+    "path": "/iot",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "equipment.requisition",
+    "path": "/equipment/requisitions",
+    "component": "views/procurement/RequisitionList.vue",
+    "menu_type": "page",
+    "permission_code": "procurement.requisition.view"
+  },
+  {
     "code": "workflow",
     "path": "/workflow",
     "component": "Layout",
     "menu_type": "directory",
     "permission_code": ""
+  },
+  {
+    "code": "equipment.maintenance-item",
+    "path": "/equipment/maintenance-items",
+    "component": "views/equipment/MaintenanceItemList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.maintenance_item.view"
   },
   {
     "code": "workflow.todo",
@@ -301,11 +490,25 @@
     "permission_code": "workflow.instance.view"
   },
   {
+    "code": "equipment.maintenance-plan",
+    "path": "/equipment/maintenance-plans",
+    "component": "views/equipment/MaintenancePlanList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.maintenance_plan.view"
+  },
+  {
     "code": "workflow.my-requests",
     "path": "/workflow/my-requests",
     "component": "views/workflow/MyRequestList.vue",
     "menu_type": "page",
     "permission_code": "workflow.instance.view"
+  },
+  {
+    "code": "equipment.maintenance-task",
+    "path": "/equipment/maintenance-tasks",
+    "component": "views/equipment/MaintenanceTaskList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.maintenance_task.view"
   },
   {
     "code": "workflow.template",
@@ -315,6 +518,20 @@
     "permission_code": "workflow.template.view"
   },
   {
+    "code": "equipment.maintenance-calendar",
+    "path": "/equipment/maintenance-calendar",
+    "component": "views/equipment/MaintenanceCalendar.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.maintenance_task.view"
+  },
+  {
+    "code": "equipment.maintenance-record",
+    "path": "/equipment/maintenance-records",
+    "component": "views/equipment/MaintenanceRecordList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.maintenance_record.view"
+  },
+  {
     "code": "integration",
     "path": "/integration",
     "component": "Layout",
@@ -322,11 +539,67 @@
     "permission_code": ""
   },
   {
+    "code": "equipment.repair-task",
+    "path": "/equipment/repair-tasks",
+    "component": "views/equipment/RepairTaskList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.repair_task.view"
+  },
+  {
     "code": "integration.outbox",
     "path": "/integration/outbox",
     "component": "views/integration/OutboxList.vue",
     "menu_type": "page",
     "permission_code": "integration.outbox.view"
+  },
+  {
+    "code": "equipment.repair-record",
+    "path": "/equipment/repair-records",
+    "component": "views/equipment/RepairRecordList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.repair_record.view"
+  },
+  {
+    "code": "equipment.inspection-item",
+    "path": "/equipment/inspection-items",
+    "component": "views/equipment/InspectionItemList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.inspection_item.view"
+  },
+  {
+    "code": "equipment.inspection-task",
+    "path": "/equipment/inspection-tasks",
+    "component": "views/equipment/InspectionTaskList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.inspection_task.view"
+  },
+  {
+    "code": "equipment.inspection-record",
+    "path": "/equipment/inspection-records",
+    "component": "views/equipment/InspectionRecordList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.inspection_record.view"
+  },
+  {
+    "code": "equipment.abnormal-type",
+    "path": "/equipment/abnormal-types",
+    "component": "views/equipment/AbnormalTypeList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.abnormal_type.view"
+  },
+  {
+    "code": "equipment.abnormal-task",
+    "path": "/equipment/abnormal-tasks",
+    "component": "views/equipment/AbnormalTaskList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.abnormal_task.view"
+  },
+  {
+    "code": "equipment.abnormal-record",
+    "path": "/equipment/abnormal-records",
+    "component": "views/equipment/AbnormalRecordList.vue",
+    "menu_type": "page",
+    "permission_code": "equipment.abnormal_record.view"
   },
   {
     "code": "system",
@@ -390,5 +663,348 @@
     "component": "views/system/ProgressView.vue",
     "menu_type": "page",
     "permission_code": "core.progress.view"
+  },
+  {
+    "code": "ems.home",
+    "path": "/ems/home",
+    "component": "views/ems/EnergyHome.vue",
+    "menu_type": "page",
+    "permission_code": "ems.home.view"
+  },
+  {
+    "code": "ems.monitor",
+    "path": "/ems/monitor",
+    "component": "views/ems/EnergyMonitor.vue",
+    "menu_type": "page",
+    "permission_code": "ems.monitor.view"
+  },
+  {
+    "code": "ems.run-record",
+    "path": "/ems/run-records",
+    "component": "views/ems/EnergyRunRecordList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.run_record.view"
+  },
+  {
+    "code": "ems.alarm",
+    "path": "/ems/alarms",
+    "component": "views/ems/EnergyAlarmList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.alarm.view"
+  },
+  {
+    "code": "ems.kanban",
+    "path": "/ems/kanban",
+    "component": "views/ems/EnergyKanban.vue",
+    "menu_type": "page",
+    "permission_code": "ems.statistics.view"
+  },
+  {
+    "code": "ems.report",
+    "path": "/ems/report",
+    "component": "views/ems/EnergyReport.vue",
+    "menu_type": "page",
+    "permission_code": "ems.report.view"
+  },
+  {
+    "code": "ems.statistics",
+    "path": "/ems/statistics",
+    "component": "views/ems/EnergyStatistics.vue",
+    "menu_type": "page",
+    "permission_code": "ems.statistics.view"
+  },
+  {
+    "code": "ems.statistics-water",
+    "path": "/ems/statistics/water",
+    "component": "views/ems/WaterStatistics.vue",
+    "menu_type": "page",
+    "permission_code": "ems.statistics.view"
+  },
+  {
+    "code": "ems.statistics-electricity",
+    "path": "/ems/statistics/electricity",
+    "component": "views/ems/ElectricityStatistics.vue",
+    "menu_type": "page",
+    "permission_code": "ems.statistics.view"
+  },
+  {
+    "code": "ems.statistics-gas",
+    "path": "/ems/statistics/gas",
+    "component": "views/ems/GasStatistics.vue",
+    "menu_type": "page",
+    "permission_code": "ems.statistics.view"
+  },
+  {
+    "code": "ems.statistics-liquid",
+    "path": "/ems/statistics/liquid",
+    "component": "views/ems/LiquidStatistics.vue",
+    "menu_type": "page",
+    "permission_code": "ems.statistics.view"
+  },
+  {
+    "code": "logistics.device",
+    "path": "/logistics/devices",
+    "component": "views/logistics/AutomationDeviceList.vue",
+    "menu_type": "page",
+    "permission_code": "logistics.device.view"
+  },
+  {
+    "code": "logistics.task",
+    "path": "/logistics/tasks",
+    "component": "views/logistics/LogisticsTaskList.vue",
+    "menu_type": "page",
+    "permission_code": "logistics.task.view"
+  },
+  {
+    "code": "logistics.log",
+    "path": "/logistics/logs",
+    "component": "views/logistics/LogisticsOperationLogList.vue",
+    "menu_type": "page",
+    "permission_code": "logistics.log.view"
+  },
+  {
+    "code": "ems.base",
+    "path": "/ems/base",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "ems.price-water",
+    "path": "/ems/base/water-prices",
+    "component": "views/ems/WaterPriceList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.price.view"
+  },
+  {
+    "code": "ehs.safety",
+    "path": "/ehs/safety",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "ems.price-electricity",
+    "path": "/ems/base/electricity-prices",
+    "component": "views/ems/ElectricityPriceList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.price.view"
+  },
+  {
+    "code": "ehs.environment",
+    "path": "/ehs/environment",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "ems.price-gas",
+    "path": "/ems/base/gas-prices",
+    "component": "views/ems/GasPriceList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.price.view"
+  },
+  {
+    "code": "ehs.fire",
+    "path": "/ehs/fire",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "ems.price-liquid",
+    "path": "/ems/base/liquid-prices",
+    "component": "views/ems/LiquidPriceList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.price.view"
+  },
+  {
+    "code": "ehs.equipment-safety",
+    "path": "/ehs/equipment-safety",
+    "component": "Layout",
+    "menu_type": "directory",
+    "permission_code": ""
+  },
+  {
+    "code": "ems.threshold",
+    "path": "/ems/base/thresholds",
+    "component": "views/ems/EnergyThresholdList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.threshold.view"
+  },
+  {
+    "code": "ehs.log",
+    "path": "/ehs/logs",
+    "component": "views/ehs/EhsOperationLogList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.log.view"
+  },
+  {
+    "code": "ems.area",
+    "path": "/ems/base/areas",
+    "component": "views/ems/EnergyAreaList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.area.view"
+  },
+  {
+    "code": "ems.meter",
+    "path": "/ems/base/meters",
+    "component": "views/ems/EnergyMeterList.vue",
+    "menu_type": "page",
+    "permission_code": "ems.meter.view"
+  },
+  {
+    "code": "iot.connection",
+    "path": "/iot/connections",
+    "component": "views/iot/ConnectionList.vue",
+    "menu_type": "page",
+    "permission_code": "iot.connection.view"
+  },
+  {
+    "code": "iot.gateway",
+    "path": "/iot/gateways",
+    "component": "views/iot/GatewayList.vue",
+    "menu_type": "page",
+    "permission_code": "iot.gateway.view"
+  },
+  {
+    "code": "iot.point",
+    "path": "/iot/points",
+    "component": "views/iot/PointList.vue",
+    "menu_type": "page",
+    "permission_code": "iot.point.view"
+  },
+  {
+    "code": "iot.monitor",
+    "path": "/iot/monitor",
+    "component": "views/iot/DeviceMonitor.vue",
+    "menu_type": "page",
+    "permission_code": "iot.monitor.view"
+  },
+  {
+    "code": "iot.reading",
+    "path": "/iot/readings",
+    "component": "views/iot/ReadingList.vue",
+    "menu_type": "page",
+    "permission_code": "iot.reading.view"
+  },
+  {
+    "code": "iot.message",
+    "path": "/iot/messages",
+    "component": "views/iot/MessageList.vue",
+    "menu_type": "page",
+    "permission_code": "iot.message.view"
+  },
+  {
+    "code": "ehs.regulation",
+    "path": "/ehs/safety/regulations",
+    "component": "views/ehs/SafetyRegulationList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.regulation.view"
+  },
+  {
+    "code": "ehs.training",
+    "path": "/ehs/safety/trainings",
+    "component": "views/ehs/SafetyTrainingList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.training.view"
+  },
+  {
+    "code": "ehs.hazard",
+    "path": "/ehs/safety/hazards",
+    "component": "views/ehs/HazardList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.hazard.view"
+  },
+  {
+    "code": "ehs.emergency-plan",
+    "path": "/ehs/safety/emergency-plans",
+    "component": "views/ehs/EmergencyPlanList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.emergency_plan.view"
+  },
+  {
+    "code": "ehs.accident",
+    "path": "/ehs/safety/accidents",
+    "component": "views/ehs/AccidentList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.accident.view"
+  },
+  {
+    "code": "ehs.env-monitor",
+    "path": "/ehs/environment/monitors",
+    "component": "views/ehs/EnvironmentMonitorList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.env_monitor.view"
+  },
+  {
+    "code": "ehs.waste",
+    "path": "/ehs/environment/wastes",
+    "component": "views/ehs/WasteRecordList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.waste.view"
+  },
+  {
+    "code": "ehs.compliance",
+    "path": "/ehs/environment/compliance-checks",
+    "component": "views/ehs/ComplianceCheckList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.compliance.view"
+  },
+  {
+    "code": "ehs.fire-facility",
+    "path": "/ehs/fire/facilities",
+    "component": "views/ehs/FireFacilityList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.fire_facility.view"
+  },
+  {
+    "code": "ehs.fire-drill",
+    "path": "/ehs/fire/drills",
+    "component": "views/ehs/FireDrillList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.fire_drill.view"
+  },
+  {
+    "code": "ehs.hot-work",
+    "path": "/ehs/fire/hot-works",
+    "component": "views/ehs/HotWorkPermitList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.permit.view"
+  },
+  {
+    "code": "ehs.special-equipment",
+    "path": "/ehs/equipment-safety/special-equipment",
+    "component": "views/ehs/SpecialEquipmentList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.special_equipment.view"
+  },
+  {
+    "code": "ehs.maintenance-permit",
+    "path": "/ehs/equipment-safety/maintenance-permits",
+    "component": "views/ehs/MaintenancePermitList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.permit.view"
+  },
+  {
+    "code": "ehs.intrinsic-check",
+    "path": "/ehs/equipment-safety/intrinsic-checks",
+    "component": "views/ehs/IntrinsicSafetyCheckList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.safety_check.view"
+  },
+  {
+    "code": "ehs.explosion-proof-check",
+    "path": "/ehs/equipment-safety/explosion-proof-checks",
+    "component": "views/ehs/ExplosionProofCheckList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.safety_check.view"
+  },
+  {
+    "code": "ehs.fire-proof-check",
+    "path": "/ehs/equipment-safety/fire-proof-checks",
+    "component": "views/ehs/FireProofCheckList.vue",
+    "menu_type": "page",
+    "permission_code": "ehs.safety_check.view"
   }
 ]

@@ -10,8 +10,9 @@
 * 循环 BOM 直接拒绝（`BOM_CYCLE_DETECTED`）并留下一条 `failed` 运行；
 * 建议类型：有生效 BOM 或分类为成品/半成品 → 生产建议；其余 → 采购建议；
   成品无生效 BOM 时进入 `unexploded_materials` 而不是静默生成可转单建议；
-* 转单：只把**采购建议**转成草稿采购申请（仍走审批）并写 `DocumentLink`；
-  重复转单、过期建议（已有更新运行）、生产建议（MES 未实现）、物料停用均被拒绝；
+* 转单：采购建议转成草稿采购申请、生产建议转成草稿 MES 生产工单（都仍走后续审批 /
+  下达），两者都写 `DocumentLink`；重复转单、过期建议、物料停用均被拒绝；
+* 在制供给取 MES 已下达 / 生产中的未完工数量（草稿不计），指定仓库时不产生在制供给；
 * 转单需要 `procurement.requisition.create`（真实约束，不绕过采购服务）；
 * 权限与数据范围：匿名 403、缺 `planning.mrp.run` 不能运行、只读不能转单、跨公司隔离；
   `planning.mrp.*` 与 BOM 权限互不授予；
@@ -26,7 +27,7 @@ MRP 自身的全部读写都走 `apps.planning.mrp` 公开服务。
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -34,10 +35,12 @@ from rest_framework.test import APIClient
 
 from apps.core.exceptions import StateConflict, ValidationFailed
 from apps.core.models import AuditLog, CodeRule, OutboxEvent, ResetPeriod
+from apps.core.services import business_timezone
 from apps.crm.models import Customer
 from apps.identity.models import DataScopeType
 from apps.integration.models import DocumentLink
 from apps.masterdata.models import Color, Material, MaterialCategory, Size, Sku, Style, UoM
+from apps.mes.models import ProductionOrder, ProductionOrderStatus
 from apps.planning import mrp as mrp_engine
 from apps.planning.models import (
     Bom,
@@ -50,6 +53,7 @@ from apps.planning.models import (
     MrpSuggestion,
     MrpSuggestionStatus,
     MrpSuggestionType,
+    MrpSupplyLine,
     MrpSupplySource,
 )
 from apps.procurement.models import (
@@ -97,6 +101,7 @@ def mrp_code_rules(db):
     for code, name, pattern in (
         ("MRP", "MRP 运行编号", "MRP{YYYYMMDD}{SEQ:4}"),
         ("PR", "采购申请号", "PR{YYYYMMDD}{SEQ:4}"),
+        ("MO", "生产工单号", "MO{YYYYMMDD}{SEQ:4}"),
     ):
         CodeRule.objects.update_or_create(
             code=code,
@@ -674,19 +679,77 @@ def test_convert_stale_suggestion_rejected(env):
     assert PurchaseRequisition.objects.count() == 0
 
 
-def test_convert_production_suggestion_rejected(env):
-    """生产建议需要 MES 工单（阶段 3 第三步）：当前明确拒绝，不伪造工单。"""
+def test_convert_production_suggestion_creates_draft_order(env):
+    """生产建议 -> 草稿 MES 生产工单 + 单据关联（下达仍由生产角色在 MES 显式执行）。"""
     make_bom(env, lines=[{"material": env["fabric"], "quantity": "1"}])
     make_sales_order(env, material=env["finished"], sku=env["sku"], quantity="5")
     run_obj = run(env)
     suggestion = run_obj.suggestions.get(material=env["finished"])
     assert suggestion.suggestion_type == MrpSuggestionType.PRODUCTION
 
-    with pytest.raises(StateConflict) as excinfo:
-        mrp_engine.convert_suggestion(suggestion, user=env["svc_user"])
-    assert excinfo.value.code == "PRODUCTION_ORDER_NOT_IMPLEMENTED"
+    mrp_engine.convert_suggestion(suggestion, user=env["svc_user"])
+
     suggestion.refresh_from_db()
-    assert suggestion.status == MrpSuggestionStatus.OPEN
+    assert suggestion.status == MrpSuggestionStatus.CONVERTED
+    assert suggestion.converted_document_type == "mes.ProductionOrder"
+    order = ProductionOrder.objects.get(pk=int(suggestion.converted_document_id))
+    assert order.status == ProductionOrderStatus.DRAFT
+    assert order.order_no.startswith("MO")
+    assert order.source_type == "mrp_suggestion"
+    assert order.source_no == f"{run_obj.run_no}#{suggestion.line_no}"
+    assert order.quantity == Decimal("5.000000")
+    assert order.planned_end is not None
+
+    link = DocumentLink.objects.get(
+        source_type="planning.MrpSuggestion", source_id=str(suggestion.pk)
+    )
+    assert link.target_type == "mes.ProductionOrder"
+    assert link.target_no == order.order_no
+
+    event = OutboxEvent.objects.get(dedup_key=f"mrp-suggestion-converted:{suggestion.pk}")
+    assert event.payload["production_order_no"] == order.order_no
+
+
+def _release_in_progress_order(env, *, quantity="5", order_no="MO-INPROG-1", status=None):
+    return ProductionOrder.objects.create(
+        company=env["company"],
+        order_no=order_no,
+        style=env["style"],
+        product_material=env["finished"],
+        quantity=Decimal(quantity),
+        status=status or ProductionOrderStatus.RELEASED,
+        planned_end=datetime.combine(TODAY, time.min, tzinfo=business_timezone()),
+    )
+
+
+def test_in_progress_supply_nets_open_production_orders(env):
+    """已下达 / 生产中的 MES 工单未完工数量计入在制供给，需求被满足后不再产生建议。"""
+    make_bom(env, lines=[{"material": env["fabric"], "quantity": "1"}])
+    make_sales_order(env, material=env["finished"], sku=env["sku"], quantity="5")
+    _release_in_progress_order(env)
+
+    run_obj = run(env)
+
+    assert run_obj.parameters["in_progress_supply"] == "mes_open_orders"
+    supply = MrpSupplyLine.objects.get(run=run_obj, source_type=MrpSupplySource.IN_PROGRESS)
+    assert supply.quantity == Decimal("5.000000")
+    assert supply.reference_no == "MO-INPROG-1"
+    assert MrpSuggestion.objects.filter(run=run_obj, material=env["finished"]).count() == 0
+
+
+def test_draft_production_order_is_not_counted_as_supply(env):
+    """草稿工单没有冻结 BOM / 工艺快照，不算供给（不能拿还没下达的产能充当库存）。"""
+    make_bom(env, lines=[{"material": env["fabric"], "quantity": "1"}])
+    make_sales_order(env, material=env["finished"], sku=env["sku"], quantity="5")
+    _release_in_progress_order(env, status=ProductionOrderStatus.DRAFT)
+
+    run_obj = run(env)
+
+    assert (
+        MrpSupplyLine.objects.filter(run=run_obj, source_type=MrpSupplySource.IN_PROGRESS).count()
+        == 0
+    )
+    assert suggestions_of(run_obj)["MRP-FIN"].quantity == Decimal("5.000000")
 
 
 def test_convert_inactive_material_rejected(env):
