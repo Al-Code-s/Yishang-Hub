@@ -121,6 +121,10 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke_check.ps1
 - **`scripts/*.ps1` 必须保存为带 BOM 的 UTF-8**（`utf-8-sig`）。
   Windows PowerShell 5.1 会按 ANSI/GBK 解析无 BOM 的脚本，中文注释与中文字符串会导致
   `TerminatorExpectedAtEndOfString` 之类的语法错误（本仓库实际踩过这个坑）。
+- **换行与文件属性统一由 `.gitattributes` 决定**：仓库内按 LF 存储，`*.sh` / `Dockerfile*` / `deploy/*` / `compose.yaml` / 锁文件固定 **LF**，`*.ps1` / `*.bat` / `*.cmd` 固定 **CRLF**。
+  Windows 上 `core.autocrlf=true` 会把文本按 CRLF 检出，**不要手工整文件转换换行**（会造成「整个文件都被改了」的假差异）；
+  新增脚本类文件后先跑 `git check-attr text eol -- <路径>` 确认属性命中。
+  路径级忽略规则见 `.gitignore`（Windows 与 macOS 的系统文件、编辑器临时文件、构建产物均已覆盖）。
 - **`.tmp/` 下是本地临时脚本与开发密码**，不要提交，也不要删除他人的临时文件。
 
 ## 八、阶段边界

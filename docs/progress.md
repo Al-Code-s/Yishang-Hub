@@ -3715,3 +3715,39 @@ SKU / BOM / 后端校验 / 服务端判定」这类实现词汇。业务用户�
 **回归。** `manage.py check` 无问题、`makemigrations --check --dry-run` 无变更、`ruff` 全过、
 `pytest tests/test_docs_sync.py` 7 passed、前端 `vue-tsc` 通过 / `vitest` 258 passed / `vite build` 通过。
 **未执行**：`docker compose build` 与 `mysql:8.0` 容器镜像的实际启动验证（本机 Docker 守护进程不可达）。
+## 三十九、跨平台开发：`.gitignore` 与 `.gitattributes`
+
+**背景。** 开发会在 Windows 与 macOS 两台机器上进行。本机 `core.autocrlf=true`，
+而仓库之前**没有 `.gitattributes`**：同一个文件在 Windows 检出是 CRLF、macOS 是 LF，
+两边各改一行就会互相看到「整个文件都被改了」的假差异；
+`deploy/docker/entrypoint.sh` 这类进入 Linux 容器的脚本更会在 Windows 检出后带 CRLF，
+容器内直接报 `bad interpreter: /bin/sh^M`。
+
+**改动。**
+
+- 新增 `.gitattributes`：`* text=auto` + 明确文本类型；`*.sh` / `Dockerfile*` /
+  `deploy/docker/*` / `compose.yaml` / `deploy/nginx/nginx.conf` / `deploy/mysql/my.cnf` /
+  两个锁文件固定 **LF**；`*.ps1` / `*.psm1` / `*.bat` / `*.cmd` 固定 **CRLF**；
+  图片、字体、压缩包、表格等按 `binary` 处理，不做换行转换。
+  `scripts/*.ps1` 的 **UTF-8 BOM 属于内容字节，不受换行转换影响**（AGENTS.md §七 的约束仍然成立）。
+- 重写 `.gitignore`（保留原有全部规则并补全）：Python 增加 `.tox/` / `.hypothesis/` /
+  `.coverage.*`；前端增加 `*.tsbuildinfo` / `.eslintcache` / `.stylelintcache` / 各类
+  `*-debug.log*`；编辑器增加 `.history/` / `*.swp` / `*.swo` / `*~` / `*.orig` / `*.rej`；
+  Windows 增加 `ehthumbs.db` / `ehthumbs_vista.db` / `Desktop.ini` / `$RECYCLE.BIN/` /
+  `*.lnk` / `*.stackdump`；macOS 增加 `._*` / `.AppleDouble/` / `.LSOverride` /
+  `.Spotlight-V100/` / `.Trashes/` / `.fseventsd/` / `.DocumentRevisions-V100/` /
+  `.VolumeIcon.icns` / `.com.apple.timemachine.donotpresent`。
+- 同时更新 `AGENTS.md` §七 的「已知陷阱」，把换行与文件属性的口径写进开发约定。
+
+**验证（实执行）。**
+
+| 检查 | 结果 |
+| --- | --- |
+| `git status --short` | 仅 `.gitignore`（改）与 `.gitattributes`（新增），**已跟踪文件无一被属性变更弄脏** |
+| `git check-attr text eol -- deploy/docker/entrypoint.sh` | `text: set` / `eol: lf` |
+| `git check-attr text eol -- scripts/dev_backend.ps1` | `text: set` / `eol: crlf` |
+| `git check-ignore -v`（`.DS_Store` / `._*` / `Thumbs.db` / `Desktop.ini` / `$RECYCLE.BIN/` / `node_modules` / `*.tsbuildinfo` / `.eslintcache` / `__pycache__` / `.tmp` / `*.swp` / `*.orig`） | 全部命中预期规则 |
+| 反向确认 `.env.example`、`scripts/*.ps1`、`deploy/docker/entrypoint.sh`、`frontend/public/guide.html`、`docs/user-guide.html` | **未被忽略**（这两个 HTML 是随发布交付的产物，必须继续入库） |
+
+**未执行：** 未在 macOS 上做真实检出验证（本机只有 Windows），
+因此「macOS 检出后换行符合预期」是按 `.gitattributes` 语义推断，**未实测**。

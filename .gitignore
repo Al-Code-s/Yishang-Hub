@@ -17,8 +17,11 @@ venv*/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 coverage.xml
+.tox/
+.hypothesis/
 backend/media/
 backend/staticfiles/
 backend/.env
@@ -29,6 +32,13 @@ frontend/dist/
 frontend/.vite/
 frontend/coverage/
 *.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
 
 # ---- 本地临时与构建产物 ----
 .tmp/
@@ -37,8 +47,37 @@ logs/
 dist/
 build/
 
-# ---- 编辑器 / 系统 ----
+# ---- 编辑器 / IDE ----
 .idea/
 .vscode/
-.DS_Store
+.history/
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# ---- Windows ----
+# 资源管理器缩略图缓存、快捷方式、系统目录
 Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# ---- macOS ----
+# Finder 元数据、Index 索引、时间机器与卷信息
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble/
+.LSOverride
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+.DocumentRevisions-V100/
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent

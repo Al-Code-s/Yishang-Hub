@@ -1,0 +1,79 @@
+# 换行与文件类型：Windows / macOS 双平台开发的统一口径
+#
+# 为什么需要这个文件：
+#   * Windows 上常见 `core.autocrlf=true`（本仓库即是），检出会把文本变 CRLF；
+#     macOS 默认 LF。没有本文件时，两边各改一行就会互相看到「整个文件都被改了」的假差异；
+#   * `text=auto` 让仓库内统一按 LF 存储，检出时的换行由下面的规则决定；
+#   * 容器与 Shell 脚本必须是 LF，否则在 Linux 容器里会报
+#     `bad interpreter: /bin/sh^M`（`deploy/docker/entrypoint.sh` 属于这类）。
+#
+# 注意：`scripts/*.ps1` 必须保持「UTF-8 带 BOM」（见 AGENTS.md §七）。
+#       BOM 是文件内容的一部分，不受换行转换影响；这里只规定换行为 CRLF。
+
+* text=auto
+
+# ---- 明确文本类型（避免二进制探测误判）----
+*.py     text
+*.pyi    text
+*.js     text
+*.mjs    text
+*.cjs    text
+*.ts     text
+*.vue    text
+*.css    text
+*.scss   text
+*.html   text
+*.md     text
+*.txt    text
+*.json   text
+*.yml    text
+*.yaml   text
+*.toml   text
+*.ini    text
+*.cfg    text
+*.sql    text
+*.cnf    text
+*.conf   text
+*.svg    text
+.gitignore      text
+.gitattributes  text
+
+# ---- 换行固定为 LF：脚本、容器与部署文件 ----
+*.sh    text eol=lf
+*.bash  text eol=lf
+Dockerfile      text eol=lf
+Dockerfile.*    text eol=lf
+deploy/docker/* text eol=lf
+compose.yaml    text eol=lf
+deploy/nginx/nginx.conf text eol=lf
+deploy/mysql/my.cnf     text eol=lf
+frontend/package-lock.json text eol=lf
+backend/uv.lock            text eol=lf
+
+# ---- 换行固定为 CRLF：Windows 脚本 ----
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# ---- 二进制：禁止任何换行转换 ----
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.bmp   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.xlsx  binary
+*.xls   binary
+*.zip   binary
+*.gz    binary
+*.7z    binary
+*.exe   binary
+*.dll   binary
+*.pyd   binary
