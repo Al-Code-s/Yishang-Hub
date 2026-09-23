@@ -216,6 +216,12 @@ def consumption_rows(
 
 
 def _period_rows(user: Any, *, dimension: str, **filters: Any) -> list[dict[str, Any]]:
+    """按时间维度聚合，**每个 (时间, 介质, 单位) 一行**。
+
+    不能只按时间合并：同一段时间里水 / 电 / 气 / 液并存，合并成一行后
+    「介质」「单位」两列只能标其中一种，用量却是各介质之和 —— 数字本身没错，
+    口径却是错的。拆开后「全部介质」视图里每一行都是真实口径。
+    """
     trunc = PERIOD_DIMENSIONS[dimension]
     queryset = reading_queryset(user, **filters)
     rows = (
@@ -226,19 +232,22 @@ def _period_rows(user: Any, *, dimension: str, **filters: Any) -> list[dict[str,
     )
     merged: dict[Any, dict[str, Any]] = {}
     for row in rows:
-        key = row["bucket"]
-        label = key.strftime("%Y-%m-%d") if dimension == "day" else (
-            key.strftime("%Y-%m") if dimension == "month" else key.strftime("%Y")
+        bucket_at = row["bucket"]
+        medium = row["meter__medium"]
+        unit = row["meter__unit"] or ""
+        bucket_key = (bucket_at, medium, unit)
+        label = bucket_at.strftime("%Y-%m-%d") if dimension == "day" else (
+            bucket_at.strftime("%Y-%m") if dimension == "month" else bucket_at.strftime("%Y")
         )
         bucket = merged.setdefault(
-            key,
+            bucket_key,
             {
                 "key": label,
                 "code": label,
                 "label": label,
-                "unit": "",
-                "medium": row["meter__medium"],
-                "medium_label": MEDIUM_LABELS.get(row["meter__medium"], row["meter__medium"]),
+                "unit": unit,
+                "medium": medium,
+                "medium_label": MEDIUM_LABELS.get(medium, medium),
                 "consumption": Decimal("0"),
                 "cost": Decimal("0"),
                 "priced": True,
@@ -247,7 +256,7 @@ def _period_rows(user: Any, *, dimension: str, **filters: Any) -> list[dict[str,
         )
         usage = row["consumption"] or Decimal("0")
         bucket["consumption"] += usage
-        on_date = key.date() if isinstance(key, datetime) else key
+        on_date = bucket_at.date() if isinstance(bucket_at, datetime) else bucket_at
         if resolve_price(row["company_id"], row["meter__medium"], on_date=on_date,
                          tariff_period=row["tariff_period"]) is None:
             bucket["priced"] = False
@@ -266,8 +275,8 @@ def _period_rows(user: Any, *, dimension: str, **filters: Any) -> list[dict[str,
             }
         )
     result = []
-    for key in sorted(merged):
-        bucket = merged[key]
+    for bucket_key in sorted(merged):
+        bucket = merged[bucket_key]
         bucket["consumption"] = str(bucket["consumption"])
         bucket["cost"] = str(bucket["cost"])
         result.append(bucket)

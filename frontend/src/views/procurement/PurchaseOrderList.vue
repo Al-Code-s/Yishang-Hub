@@ -118,7 +118,12 @@
           <template #default="{ row: line }">{{ line.material_code }} {{ line.material_name }}</template>
         </el-table-column>
         <el-table-column prop="quantity" label="订单量" width="100" :formatter="numberFormatter" />
-        <el-table-column prop="received_quantity" label="已收" width="100" />
+        <el-table-column
+          prop="received_quantity"
+          label="已收"
+          width="100"
+          :formatter="numberFormatter"
+        />
         <el-table-column prop="remaining_quantity" label="未收" width="100" :formatter="numberFormatter" />
         <el-table-column prop="price" label="未税单价" width="100" :formatter="numberFormatter" />
         <el-table-column prop="amount" label="金额" width="110" :formatter="numberFormatter" />

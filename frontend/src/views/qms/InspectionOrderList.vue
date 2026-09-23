@@ -230,6 +230,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption } from '@/types/models'
+import { formatDecimal } from '@/utils/decimal'
 
 interface ResultRow {
   item_id: number | null
@@ -398,7 +399,11 @@ function limitsText(row: ResultRow): string {
     return '无数值口径'
   }
   const unit = brief.unit ? ` ${brief.unit}` : ''
-  return `${brief.lower_limit ?? '-'} ~ ${brief.upper_limit ?? '-'}${unit}`
+  const lower =
+    brief.lower_limit === null ? '-' : formatDecimal(brief.lower_limit)
+  const upper =
+    brief.upper_limit === null ? '-' : formatDecimal(brief.upper_limit)
+  return `${lower} ~ ${upper}${unit}`
 }
 
 function addRow(): void {

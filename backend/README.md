@@ -38,7 +38,8 @@ $env:PYTHONIOENCODING='utf-8'
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py bootstrap_system   # 权限点/菜单/角色/管理员（幂等）
-.\.venv\Scripts\python.exe manage.py seed_demo          # 演示数据（拒绝在生产环境执行）
+.\.venv\Scripts\python.exe manage.py seed_demo          # 演示数据：兼容入口，等价于 seed_demo_xjys
+.\.venv\Scripts\python.exe manage.py seed_demo_xjys     # 演示数据：新疆意尚智造（XJYS，2026-01 起，幂等）
 ```
 
 ## 环境变量

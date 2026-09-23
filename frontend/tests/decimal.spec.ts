@@ -124,6 +124,12 @@ describe('数值显示口径（2 位小数）', () => {
   it('显示口径不影响提交给后端的精度', () => {
     expect(toApiString(formatNumber('12.5'))).toBe('12.500000')
   })
+
+  it('能源用量与费用的接口原值按 2 位小数展示', () => {
+    // 实测接口返回：用量 "35497.730000"、费用 "21724.6108"。
+    expect(formatDecimal('35497.730000')).toBe('35,497.73')
+    expect(formatAmount('21724.6108')).toBe('21,724.61')
+  })
 })
 
 describe('编辑表单回填（toEditableText）', () => {

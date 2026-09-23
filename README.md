@@ -97,13 +97,15 @@ Windows 本地开发请设 `DB_DRIVER=pymysql`（无 C 编译工具链）；Dock
 cd backend
 .\.venv\Scripts\python.exe manage.py migrate
 .\.venv\Scripts\python.exe manage.py bootstrap_system   # 权限点/菜单/角色/管理员
-.\.venv\Scripts\python.exe manage.py seed_demo          # 仅开发环境演示数据
+.\.venv\Scripts\python.exe manage.py seed_demo          # 兼容入口，等价于 seed_demo_xjys
+.\.venv\Scripts\python.exe manage.py seed_demo_xjys     # 仅开发环境演示数据（新疆意尚智造 XJYS，2026-01 起）
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
 
 初始化命令的密码来自环境变量（`YISHANG_ADMIN_PASSWORD` / `YISHANG_DEMO_PASSWORD`）；
 **未设置时会生成随机密码并打印一次**，代码中不硬编码任何公开默认密码。
-`seed_demo` 在 `production` 环境会被直接拒绝。
+`seed_demo` / `seed_demo_xjys` 在 `production` 环境都会被直接拒绝。
+平台只保留「新疆意尚智造科技有限公司」一家公司：`seed_demo` 已合并为 `seed_demo_xjys` 的兼容入口（两者等价），并要求先执行过 `bootstrap_system`（权限点缺失时会明确报错）。
 
 也可使用脚本：`powershell -ExecutionPolicy Bypass -File scripts\dev_backend.ps1`
 

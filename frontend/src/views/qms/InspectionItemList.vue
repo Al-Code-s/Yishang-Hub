@@ -40,13 +40,20 @@ import type { ProTableColumn } from '@/components/ProTable.vue'
 import { qualityInspectionItemApi } from '@/api/endpoints'
 import { companyOptions } from '@/composables/optionLoaders'
 import { useMetaStore } from '@/stores/meta'
+import { formatDecimal } from '@/utils/decimal'
 
 const api = qualityInspectionItemApi as never
 const meta = useMetaStore()
 
 function limitsText(row: Record<string, unknown>): string {
-  const lower = row.lower_limit
-  const upper = row.upper_limit
+  const lower =
+    row.lower_limit === null || row.lower_limit === undefined
+      ? null
+      : formatDecimal(row.lower_limit as string)
+  const upper =
+    row.upper_limit === null || row.upper_limit === undefined
+      ? null
+      : formatDecimal(row.upper_limit as string)
   if (lower === null && upper === null) {
     return ''
   }

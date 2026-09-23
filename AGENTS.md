@@ -174,4 +174,4 @@ cd backend
 | `menus` | 菜单项总数（含目录） | `apps/identity/permissions_registry.MENUS` |
 | `models` | 受管数据模型总数 | Django `apps.get_models()`（排除自动生成模型） |
 | `migrations` | 迁移文件总数 | `backend/apps/*/migrations/0*.py` |
-| `builtin_roles` | 内置角色数（**不含** `seed_demo` 建的演示角色） | `bootstrap_system.BUILTIN_ROLES` |
+| `builtin_roles` | 内置角色数（**不含** `seed_demo_xjys` 建的演示角色） | `bootstrap_system.BUILTIN_ROLES` |

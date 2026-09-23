@@ -27,13 +27,14 @@ import type { ProTableColumn } from '@/components/ProTable.vue'
 import { inspectionItemApi } from '@/api/endpoints'
 import { uomOptions } from '@/composables/optionLoaders'
 import { useMetaStore } from '@/stores/meta'
+import { formatDecimal } from '@/utils/decimal'
 
 const meta = useMetaStore()
 const api = inspectionItemApi as never
 
 function limitText(row: Record<string, unknown>): string {
-  const lower = row.lower_limit === null || row.lower_limit === undefined ? '不限' : String(row.lower_limit)
-  const upper = row.upper_limit === null || row.upper_limit === undefined ? '不限' : String(row.upper_limit)
+  const lower = row.lower_limit === null || row.lower_limit === undefined ? '不限' : formatDecimal(row.lower_limit as string)
+  const upper = row.upper_limit === null || row.upper_limit === undefined ? '不限' : formatDecimal(row.upper_limit as string)
   const uom = row.uom_name ? ` ${String(row.uom_name)}` : ''
   return `${lower} ~ ${upper}${uom}`
 }

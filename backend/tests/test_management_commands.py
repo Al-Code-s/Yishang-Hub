@@ -78,6 +78,7 @@ def test_seed_demo_requires_confirmation_outside_dev(settings):
 
 
 def test_seed_demo_is_idempotent(settings):
+    """``seed_demo`` 是 ``seed_demo_xjys`` 的兼容入口：只写一家公司，且幂等。"""
     from apps.factory.models import Company
     from apps.masterdata.models import Material, Sku, Style
     from apps.wms.models import Location, Warehouse
@@ -95,10 +96,12 @@ def test_seed_demo_is_idempotent(settings):
         "styles": Style.objects.count(),
         "skus": Sku.objects.count(),
     }
-    assert counts["companies"] >= 1
+    # 平台只保留一家公司（新疆意尚智造科技有限公司）
+    assert counts["companies"] == 1
+    assert Company.objects.get().code == "XJYS"
     assert counts["skus"] >= 30
     # 演示数据与真实数据必须可区分
-    assert Material.objects.filter(remark="演示数据").exists()
+    assert Material.objects.filter(remark__contains="演示数据").exists()
 
     call_command("seed_demo", verbosity=0)
     assert counts == {
@@ -152,3 +155,79 @@ def test_bootstrap_system_binds_super_admin_role_to_admin_account():
     # 幂等：重复执行只补齐，不产生重复绑定
     call_command("bootstrap_system", "--admin-password", "Boot!Str0ng2026", verbosity=0)
     assert UserRole.objects.filter(user=admin, role=role).count() == 1
+
+# ---------------------------------------------------------------------------
+# 新疆意尚智造演示数据（seed_demo_xjys）
+# ---------------------------------------------------------------------------
+
+
+def test_seed_demo_xjys_refuses_production(settings):
+    settings.DJANGO_ENV = "production"
+    with pytest.raises(CommandError, match="禁止在生产环境执行"):
+        call_command("seed_demo_xjys", verbosity=0)
+
+
+def test_seed_demo_xjys_requires_confirmation_outside_dev(settings):
+    settings.DJANGO_ENV = "staging"
+    with pytest.raises(CommandError, match="--yes"):
+        call_command("seed_demo_xjys", verbosity=0)
+
+
+def test_seed_demo_xjys_fills_every_module_and_is_idempotent(settings):
+    """新疆公司的演示数据必须覆盖各业务模块，且重复执行不新增记录。"""
+    from datetime import date
+
+    from apps.crm.models import CustomerComplaint, ProductReview
+    from apps.ehs.models import HazardRecord, SafetyTraining, WorkPermit
+    from apps.ems.models import EnergyMeter, MeterReading
+    from apps.equipment.models import Equipment, InspectionRecord, MaintenanceTask
+    from apps.factory.models import Company
+    from apps.iot.models import IoTReading
+    from apps.logistics.models import AutomationDevice, LogisticsTask
+    from apps.mes.models import ProductionOrder
+    from apps.qms.models import QualityInspectionOrder
+    from apps.sales.models import SalesOrder
+    from apps.srm.models import SupplierEvaluation
+    from apps.wms.models import InventoryBalance, InventoryDocument
+
+    settings.DJANGO_ENV = "test"
+    settings.YISHANG = {**settings.YISHANG, "DEMO_PASSWORD": "Demo!Passw0rd2026"}
+    call_command("bootstrap_system", "--skip-admin", verbosity=0)
+    call_command("seed_demo_xjys", verbosity=0)
+
+    company = Company.objects.get(code="XJYS")
+    models = (
+        Equipment,
+        MaintenanceTask,
+        InspectionRecord,
+        EnergyMeter,
+        MeterReading,
+        IoTReading,
+        InventoryDocument,
+        InventoryBalance,
+        SalesOrder,
+        ProductionOrder,
+        QualityInspectionOrder,
+        SupplierEvaluation,
+        CustomerComplaint,
+        ProductReview,
+        SafetyTraining,
+        HazardRecord,
+        WorkPermit,
+        AutomationDevice,
+        LogisticsTask,
+    )
+    counts = {model._meta.label: model.objects.filter(company=company).count() for model in models}
+    for label, number in counts.items():
+        assert number > 0, f"{label} 没有演示数据"
+
+    # 演示数据必须可区分，且业务日期不早于 2026-01-01
+    assert Equipment.objects.filter(company=company, remark__contains="演示数据").exists()
+    assert not MaintenanceTask.objects.filter(
+        company=company, plan_date__lt=date(2026, 1, 1)
+    ).exists()
+
+    call_command("seed_demo_xjys", verbosity=0)
+    assert counts == {
+        model._meta.label: model.objects.filter(company=company).count() for model in models
+    }

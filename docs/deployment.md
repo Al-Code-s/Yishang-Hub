@@ -52,13 +52,19 @@ DB_PASSWORD=<应用账号密码，不要用 root>
 cd backend
 .\.venv\Scripts\python.exe manage.py migrate
 .\.venv\Scripts\python.exe manage.py bootstrap_system   # 权限点/菜单/角色/管理员
-.\.venv\Scripts\python.exe manage.py seed_demo          # 仅开发环境，演示数据
+.\.venv\Scripts\python.exe manage.py seed_demo          # 兼容入口，等价于 seed_demo_xjys
+.\.venv\Scripts\python.exe manage.py seed_demo_xjys     # 仅开发环境，演示数据（新疆意尚智造 XJYS，2026-01 起）
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
 
 > 初始化命令的密码来源：`bootstrap_system` 读取 `YISHANG_ADMIN_PASSWORD`，
 > `seed_demo` 读取 `YISHANG_DEMO_PASSWORD`。**未设置时会生成随机密码并打印一次**，
 > 不硬编码任何公开默认密码。生产环境必须通过安全初始化流程设置。
+>
+> 平台只服务「新疆意尚智造科技有限公司」一家公司；`seed_demo` 是 `seed_demo_xjys`
+> 的兼容入口（两者等价，旧演示公司已合并删除），
+> 覆盖设备、能源、数采、库存、采购、销售、MES、MRP、质量、供应商评价、客户投诉/评价、
+> 安全环保与厂内物流，所有业务日期落在 2026-01-01 至执行当天；重复执行只补齐缺失记录。
 
 ### 3. 前端
 
@@ -106,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File scripts\dev_frontend.ps1       # 默认
 | `manage.py bootstrap_system --admin-username X --admin-password Y` | 指定管理员账号与口令 |
 | `manage.py bootstrap_system --skip-admin` | 不创建 / 更新管理员账号 |
 | `manage.py bootstrap_system --reset-admin-password` | 重置管理员口令（需提供口令来源，不随机覆盖） |
-| `manage.py seed_demo --skip-users` | 只造演示业务数据，不建演示账号 |
+| `manage.py seed_demo` | 兼容入口，等价于 `seed_demo_xjys` |
 | `manage.py seed_demo --yes` | 在非 development/test 环境确认写入（生产仍被硬拒） |
 
 两个命令都**幂等**：重复执行只同步固定字段，不重复建记录，也不重置已有账号口令。

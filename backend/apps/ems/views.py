@@ -531,6 +531,11 @@ def _xlsx_response(rows: list[dict[str, Any]], *, title: str) -> HttpResponse:
                 "已维护单价" if row.get("priced") else "未维护单价",
             ]
         )
+    # 显示口径与界面一致：数值列最多 2 位小数。
+    # 单元格仍保留完整精度，这里只设置 Excel 的显示格式，避免导出后出现 4~6 位小数。
+    for row_index in range(2, sheet.max_row + 1):
+        sheet.cell(row=row_index, column=5).number_format = "0.00"  # 用量
+        sheet.cell(row=row_index, column=7).number_format = "0.00"  # 费用
     for column, width in zip("ABCDEFGH", (18, 20, 24, 10, 16, 10, 16, 14), strict=False):
         sheet.column_dimensions[column].width = width
 

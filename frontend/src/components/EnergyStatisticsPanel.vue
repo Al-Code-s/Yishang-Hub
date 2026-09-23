@@ -112,6 +112,11 @@ import { useMetaStore } from '@/stores/meta'
 import { formatAmount, formatDecimal } from '@/utils/decimal'
 import type { EnergyConsumptionRow, EnergyStatisticsPayload } from '@/types/models'
 
+/** 图表提示里的数值口径与列表一致：保留 2 位小数（ECharts 默认会打印原始精度）。 */
+function chartValue(value: unknown): string {
+  return formatDecimal(value as number)
+}
+
 /**
  * 能耗统计面板：按维度（计量点/区域/部门/设备/日/月/年）聚合用量与费用。
  *
@@ -162,7 +167,7 @@ function currentParams(): Record<string, unknown> {
 
 /** 图表坐标必须是 number，仅用于绘图；业务口径仍以 Decimal 字符串为准。 */
 const shareOption = computed(() => ({
-  tooltip: { trigger: 'item' },
+  tooltip: { trigger: 'item', valueFormatter: chartValue },
   legend: { bottom: 0, type: 'scroll' },
   series: [
     {
@@ -175,7 +180,7 @@ const shareOption = computed(() => ({
 }))
 
 const barOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
+  tooltip: { trigger: 'axis', valueFormatter: chartValue },
   legend: { bottom: 0 },
   grid: { left: 60, right: 24, top: 24, bottom: 56 },
   xAxis: {
@@ -190,21 +195,50 @@ const barOption = computed(() => ({
   ],
 }))
 
-const trendOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
-  grid: { left: 60, right: 24, top: 24, bottom: 40 },
-  xAxis: { type: 'category', data: rows.value.map((row) => row.label) },
-  yAxis: { type: 'value' },
-  series: [
-    {
-      name: '用量',
+/**
+ * 时间维度的趋势图：**每个介质一条线**。
+ *
+ * 「全部介质」时后端按 (时间, 介质, 单位) 分行，不能把这些行直接铺在 x 轴上
+ * （同一个时间会重复出现多次），更不能把单位不同的用量（kWh / m³ / t）
+ * 加成一条线 —— 那样画出来的曲线没有业务含义。介质名后带上单位，便于分别读数。
+ */
+const trendOption = computed(() => {
+  const labels: string[] = []
+  const series = new Map<string, { name: string; unit: string; values: (number | null)[] }>()
+  for (const row of rows.value) {
+    let index = labels.indexOf(row.label)
+    if (index === -1) {
+      index = labels.length
+      labels.push(row.label)
+      for (const item of series.values()) {
+        item.values.push(null)
+      }
+    }
+    const medium = row.medium_label || row.medium || '用量'
+    let entry = series.get(medium)
+    if (!entry) {
+      entry = { name: medium, unit: row.unit || '', values: labels.map(() => null) }
+      series.set(medium, entry)
+    }
+    entry.values[index] = Number(row.consumption)
+  }
+  const hasMany = series.size > 1
+  return {
+    tooltip: { trigger: 'axis', valueFormatter: chartValue },
+    legend: hasMany ? { bottom: 0, type: 'scroll' } : undefined,
+    grid: { left: 60, right: 24, top: 24, bottom: hasMany ? 56 : 40 },
+    xAxis: { type: 'category', data: labels },
+    yAxis: { type: 'value' },
+    series: [...series.values()].map((item) => ({
+      name: item.unit ? `${item.name}（${item.unit}）` : item.name,
       type: 'line',
       smooth: true,
-      areaStyle: {},
-      data: rows.value.map((row) => Number(row.consumption)),
-    },
-  ],
-}))
+      areaStyle: hasMany ? undefined : {},
+      connectNulls: true,
+      data: item.values,
+    })),
+  }
+})
 
 async function load(): Promise<void> {
   loading.value = true

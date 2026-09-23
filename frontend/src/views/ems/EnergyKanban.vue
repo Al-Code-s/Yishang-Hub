@@ -92,6 +92,11 @@ import { useMetaStore } from '@/stores/meta'
 import { formatAmount, formatDecimal } from '@/utils/decimal'
 import type { EnergyConsumptionRow } from '@/types/models'
 
+/** 图表提示里的数值口径与列表一致：保留 2 位小数（ECharts 默认会打印原始精度）。 */
+function chartValue(value: unknown): string {
+  return formatDecimal(value as number)
+}
+
 const meta = useMetaStore()
 
 const dimensionOptions = [
@@ -132,7 +137,7 @@ function rangeParams(): Record<string, unknown> {
 
 /** 图表坐标必须是 number，仅用于绘图；业务口径仍以 Decimal 字符串为准。 */
 const shareOption = computed(() => ({
-  tooltip: { trigger: 'item' },
+  tooltip: { trigger: 'item', valueFormatter: chartValue },
   legend: { bottom: 0, type: 'scroll' },
   series: [
     {
@@ -145,7 +150,7 @@ const shareOption = computed(() => ({
 }))
 
 const barOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
+  tooltip: { trigger: 'axis', valueFormatter: chartValue },
   legend: { bottom: 0 },
   grid: { left: 60, right: 24, top: 24, bottom: 56 },
   xAxis: {
@@ -161,7 +166,7 @@ const barOption = computed(() => ({
 }))
 
 const trendOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
+  tooltip: { trigger: 'axis', valueFormatter: chartValue },
   grid: { left: 60, right: 24, top: 24, bottom: 40 },
   xAxis: { type: 'category', data: trend.value.map((row) => row.label) },
   yAxis: { type: 'value' },

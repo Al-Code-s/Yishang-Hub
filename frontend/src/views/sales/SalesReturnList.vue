@@ -204,7 +204,12 @@
       <el-table :data="form.lines as never[]" border size="small">
         <el-table-column prop="material_code" label="物料编码" width="130" />
         <el-table-column prop="material_name" label="物料名称" min-width="150" />
-        <el-table-column prop="returnable_quantity" label="可退货" width="100" />
+        <el-table-column
+          prop="returnable_quantity"
+          label="可退货"
+          width="100"
+          :formatter="numberFormatter"
+        />
         <el-table-column label="本次退货" width="140">
           <template #default="{ row: line }">
             <el-input v-model="line.quantity" size="small" />

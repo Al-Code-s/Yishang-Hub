@@ -21,7 +21,7 @@
       </el-tag>
     </template>
     <template #column-quantity="{ row }">
-      {{ row.quantity }} {{ row.unit }}
+      {{ formatDecimal(row.quantity) }} {{ row.unit }}
     </template>
     <template #column-progress_rate="{ row }">
       {{ row.progress_rate }}%
@@ -91,7 +91,8 @@
         <el-table-column prop="status_display" label="状态" width="90" />
         <el-table-column label="报工 / 合格" width="130">
           <template #default="scope">
-            {{ scope.row.reported_quantity }} / {{ scope.row.qualified_quantity }}
+            {{ formatDecimal(scope.row.reported_quantity) }} /
+            {{ formatDecimal(scope.row.qualified_quantity) }}
           </template>
         </el-table-column>
         <el-table-column label="质检点" width="90">
@@ -107,7 +108,8 @@
         <el-table-column prop="material_name" label="物料名称" min-width="120" />
         <el-table-column label="应领 / 已领" width="150">
           <template #default="scope">
-            {{ scope.row.required_quantity }} / {{ scope.row.issued_quantity }}
+            {{ formatDecimal(scope.row.required_quantity) }} /
+            {{ formatDecimal(scope.row.issued_quantity) }}
           </template>
         </el-table-column>
         <el-table-column prop="unit" label="单位" width="70" />
@@ -176,6 +178,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
 import type { EnumOption } from '@/types/models'
+import { formatDecimal } from '@/utils/decimal'
 
 const auth = useAuthStore()
 const meta = useMetaStore()

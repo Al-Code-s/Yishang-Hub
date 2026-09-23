@@ -69,8 +69,18 @@
             <el-table-column prop="name" label="测点名称" min-width="150" />
             <el-table-column prop="quantity" label="物理量" width="100" />
             <el-table-column prop="unit" label="单位" width="80" />
-            <el-table-column prop="lower_limit" label="报警下限" width="110" />
-            <el-table-column prop="upper_limit" label="报警上限" width="110" />
+            <el-table-column
+              prop="lower_limit"
+              label="报警下限"
+              width="110"
+              :formatter="numberFormatter"
+            />
+            <el-table-column
+              prop="upper_limit"
+              label="报警上限"
+              width="110"
+              :formatter="numberFormatter"
+            />
             <el-table-column label="最新读数" width="130">
               <template #default="scope">
                 {{ scope.row.latest_value === null ? '-' : formatDecimal(scope.row.latest_value) }}
@@ -260,7 +270,7 @@ import { iotMonitorApi, iotStatisticsApi } from '@/api/iot'
 import { companyOptions } from '@/composables/optionLoaders'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
-import { formatDecimal } from '@/utils/decimal'
+import { formatDecimal, numberFormatter } from '@/utils/decimal'
 import { formatDateTime } from '@/utils/format'
 import type {
   EnumOption,

@@ -96,11 +96,36 @@
         <el-divider content-position="left">分段净算过程</el-divider>
         <el-table :data="(detailRow.detail?.trace ?? []) as never[]" border size="small">
           <el-table-column prop="bucket_date" label="分段" width="120" />
-          <el-table-column prop="opening" label="期初可用" width="120" />
-          <el-table-column prop="supply" label="本段供给" width="120" />
-          <el-table-column prop="demand" label="本段需求" width="120" />
-          <el-table-column prop="net_requirement" label="本段净需求" width="130" />
-          <el-table-column prop="closing" label="期末可用" width="120" />
+          <el-table-column
+            prop="opening"
+            label="期初可用"
+            width="120"
+            :formatter="numberFormatter"
+          />
+          <el-table-column
+            prop="supply"
+            label="本段供给"
+            width="120"
+            :formatter="numberFormatter"
+          />
+          <el-table-column
+            prop="demand"
+            label="本段需求"
+            width="120"
+            :formatter="numberFormatter"
+          />
+          <el-table-column
+            prop="net_requirement"
+            label="本段净需求"
+            width="130"
+            :formatter="numberFormatter"
+          />
+          <el-table-column
+            prop="closing"
+            label="期末可用"
+            width="120"
+            :formatter="numberFormatter"
+          />
         </el-table>
         <el-alert
           class="ys-detail-hint"
@@ -126,7 +151,7 @@ import { mrpSuggestionApi } from '@/api/endpoints'
 import { mrpSuggestionActionApi } from '@/api/modules'
 import { useAuthStore } from '@/stores/auth'
 import { useMetaStore } from '@/stores/meta'
-import { formatNumber } from '@/utils/decimal'
+import { formatNumber, numberFormatter } from '@/utils/decimal'
 import type { MrpSuggestion } from '@/types/models'
 
 function toMessage(error: unknown, fallback: string): string {

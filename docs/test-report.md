@@ -2315,3 +2315,178 @@ SMOKE_EXIT=0
 3. **评分数据无外部数据源**：评价明细全部**人工录入**，没有检测仪器 / ERP 直连；本轮不声称任何自动取数能力。
 4. 与全量复验口径一致：**Playwright 端到端、性能压测、备份恢复演练、
    Docker Compose 构建与启动验证均未执行**（原因同 §二十七、§三十、§三十一）。
+
+
+## 三十三、新疆意尚智造演示数据（`seed_demo_xjys`）与实际执行记录
+
+| 项目 | 结果 |
+| --- | --- |
+| 执行环境 | Windows 本地开发库（`DJANGO_ENV=development`） |
+| 命令首次执行 | 覆盖各模块并逐项打印新建数量；数据区间 `2026-01-01 ~ 2026-09-22` |
+| 命令二次执行 | `新疆意尚智造演示数据：新建 0 条。`（幂等实测） |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **`493 passed in 300.28s`** |
+
+本轮新增用例（`tests/test_management_commands.py`）：
+
+| 用例 | 覆盖点 | 结果 |
+| --- | --- | --- |
+| `test_seed_demo_xjys_refuses_production` | `DJANGO_ENV=production` 时直接拒绝执行 | 通过 |
+| `test_seed_demo_xjys_requires_confirmation_outside_dev` | 非 development/test 环境缺少 `--yes` 时报错 | 通过 |
+| `test_seed_demo_xjys_fills_every_module_and_is_idempotent` | 19 类业务表在 `XJYS` 公司下均有数据、演示数据可区分、保养任务计划日期不早于 2026-01-01、二次执行数量不变 | 通过 |
+
+### 33.1 本轮实测暴露并修复的缺陷（修复后复测通过）
+
+1. **权限缓存陈旧导致服务层误判无权限**：命令在事务内 `bump_permission_version()`，
+   回滚后版本号不前进，`identity:user_perms:<pk>:<version>` 命中旧值，
+   `mes.order.create` 等编码被判为「没有权限」。修复：写演示账号后清除该用户权限缓存。
+2. **质检点工序对象未回读**：`report_production` 内部重新取工序行并挂质检单，
+   调用方旧对象的 `inspection_order_id` 为空 → 完工时报
+   `质检点尚未判定合格，不能完工：成衣检验（待判定）`。修复：报工后 `refresh_from_db`。
+3. **环保合规检查状态机**：演示数据先建成「已关闭」再调用 `close_compliance_check`，
+   被 `COMPLIANCE_STATUS_INVALID` 拒绝。修复：先落「已整改」再由服务层关闭。
+
+### 33.2 未执行 / 未验证（如实列出）
+
+1. **浏览器与界面观感未人工核对**：沙箱内不能启动后端 / 前端与浏览器自动化，
+   本轮只做数据库层与自动化测试层验证，**不声称任何页面的显示效果已确认**。
+2. **未与真实设备联调**：数采条目仍为构造数据（HTTP 上报入口 + 内置模拟器）。
+3. 与全量复验口径一致：**Playwright 端到端、性能压测、备份恢复演练、
+   Docker Compose 构建与启动验证均未执行**。
+
+## 三十四、界面数值显示口径修复（新增 vitest 回归用例）
+
+| 项目 | 结果 |
+| --- | --- |
+| 执行环境 | Windows 本地开发环境 |
+| `npm run typecheck`（vue-tsc --build --force） | 通过（无输出） |
+| `npm run test`（vitest run） | **`258 passed`**（上轮 257，新增 1 条显示口径用例） |
+| `npm run build` | 通过：`✓ built in 18.28s` |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **`493 passed in 305.75s`** |
+
+新增用例（`frontend/tests/decimal.spec.ts`）：
+
+| 用例 | 断言 | 结果 |
+| --- | --- | --- |
+| 能源用量与费用的接口原值按 2 位小数展示 | `formatDecimal("35497.730000") === "35,497.73"`、`formatAmount("21724.6108") === "21,724.61"` | 通过 |
+
+接口返回值与导出文件实测（`django.test.Client` + `override_settings(ALLOWED_HOSTS=["*"])`，账号 `xj_admin`）：
+
+| 接口 / 产物 | 观测值 | 结论 |
+| --- | --- | --- |
+| `GET /api/v1/ems/report/?period=month&export=xlsx` | 费用单元格值 `356574.3758`，`number_format="0.00"` | 显示口径 2 位，精度保留 |
+| `GET /api/v1/equipment/inspection-items/` | `lower_limit="0.000000"`、`"4.500000"`、`"70.000000"` | 原为界面缺陷，已修 |
+| `GET /api/v1/qms/inspection-items/` | `"170.000000"`、`"180.000000"`、`"190.000000"` | 同上，已修 |
+| `GET /api/v1/crm/complaints/statistics/` | `avg_satisfaction="4.67"` | 已是 2 位，无需修改 |
+| `GET /api/v1/crm/product-reviews/statistics/` | `avg_score="3.83"`、`good_rate="66.67"` | 已是 2 位，无需修改 |
+| `GET /api/v1/srm/supplier-evaluations/statistics/` | `avg_total_score="84.10"`、`missing_rate="8.00"` | 已是 2 位，无需修改 |
+
+### 34.1 未执行 / 未验证
+
+1. **浏览器内人工核对未执行**：只跑了 `typecheck` / `vitest` / `build` 与接口、导出文件的实测，
+   没有在浏览器里逐页面核对渲染结果。
+2. Playwright 端到端、性能压测、备份恢复、Docker Compose 部署验证仍与 §三十三 一致，未执行。
+
+## 三十五、能耗报表时间维度按介质分行（回归用例）
+
+| 项目 | 结果 |
+| --- | --- |
+| 执行环境 | Windows 本地开发环境 |
+| `pytest tests/test_ems_api.py -q --reuse-db` | **`16 passed`**（该文件上一轮为 15） |
+| `pytest tests -q --reuse-db` | **`494 passed in 324.79s`** |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `npm run typecheck`（vue-tsc） | 通过（无输出） |
+| `npm run test`（vitest） | **`258 passed`** |
+| `npm run build` | 通过：`✓ built in 17.87s` |
+
+新增用例：
+
+| 用例 | 断言 | 结果 |
+| --- | --- | --- |
+| `test_period_rows_split_by_medium` | 同一天「电 80 kWh」与「水 3 m³」各自成行且单位正确；月维度同样按介质分行 | 通过 |
+
+**反向验证**（确认用例真能抓到缺陷）：把 `_period_rows` 的合并键临时改回「仅时间桶」后，
+该用例失败（`assert {('electricity', '')} == {('electricity', 'kWh'), ('water', 'm3')}`），
+恢复改动后通过。
+
+接口实测（`django.test.Client` + `override_settings(ALLOWED_HOSTS=["*"])`，账号 `xj_admin`）：
+
+| 请求 | 观测值 | 结论 |
+| --- | --- | --- |
+| `GET /api/v1/ems/report/?period=month` | 36 行（9 个月 × 4 介质），单位 kWh / m3 / t / t | 已按介质分行 |
+| `GET /api/v1/ems/report/?period=month&medium=electricity` | 9 行，2026-01 = `182351.770000` | 与「全部介质」中电的那一行一致 |
+
+### 35.1 未执行 / 未验证
+
+1. **浏览器内人工核对未执行**：多介质趋势图的渲染效果没有在浏览器里看过。
+2. 多介质趋势图共用一条 y 轴的可读性未人工评估。
+3. Playwright 端到端、性能压测、备份恢复、Docker Compose 部署验证仍与 §三十三 一致，未执行。
+
+## 三十六、单公司合并：旧演示公司下线（数据清理 + `seed_demo` 合并）与实际执行记录
+
+对应 `docs/progress.md` §三十七。
+
+### 36.1 数据清理（开发库，2026-09-22）
+
+| 项 | 结果 |
+| --- | --- |
+| 清理前 `factory.Company` | 2 行：`XJYS`（2110 行 / 78 张表）、旧演示公司 `YS`（396 行 / 28 张表） |
+| 角色 / 账号改挂 | 角色 16 个、账号 11 个 `company_id` → `XJYS`；10 个账号 `department_id` 按部门编码改挂到 `XJYS` 同名部门 |
+| 删除行数 | 808 行、覆盖 54 张表（依赖逆序逐对象删除，化解 `PROTECT` 自引用） |
+| 清理后 `factory.Company` | 1 行：`XJYS` / 新疆意尚智造科技有限公司 |
+| `XJYS` 业务行数 | 2137 → 2137（零丢失） |
+| 跨公司引用 | 清理前全库扫描只有 10 条「账号 → 旧公司部门」，已改挂；其余方向为 0 |
+| 非法枚举值 | 清理过程中扫出 5 处，已在**数据与种子代码**中改正（`SalesOrder.priority` 的 `low`/`high`、`Equipment.status` 的 `fault`、`Warehouse.warehouse_type` 的 `accessory`/`spare_part`），复扫为空 |
+| 备份 | `mysqldump` 全库备份至 `.tmp/backup/`（本地临时文件，未提交） |
+
+实际删除前先做了整体回滚的 dry run：删除集合全部落在旧公司闭包内、`XJYS` 数据零丢失，再执行。
+
+### 36.2 命令合并（`seed_demo` → `seed_demo_xjys` 兼容入口）
+
+| 用例 | 断言 | 结果 |
+| --- | --- | --- |
+| `test_seed_demo_refuses_production` | 生产环境直接拒绝 | 通过 |
+| `test_seed_demo_requires_confirmation_outside_dev` | 非开发环境缺 `--yes` 报错 | 通过 |
+| `test_seed_demo_is_idempotent` | 公司数 == 1 且 `code == "XJYS"`、SKU ≥ 30、演示标记可区分、二次执行数量不变 | 通过（断言本轮收紧） |
+| `test_seed_demo_does_not_reset_existing_demo_passwords` | 重跑不覆盖已有演示账号口令 | 通过 |
+| `test_seed_demo_writes_only_valid_enum_values` | 执行 `seed_demo` 后全库无非法枚举值 | 通过（修复 5 处非法值后） |
+
+开发库实跑 `manage.py seed_demo`（兼容入口转 `seed_demo_xjys`）：
+`新疆意尚智造演示数据：新建 0 条。` 与 `公司：新疆意尚智造科技有限公司（XJYS）`。
+
+### 36.3 接口回归（开发库真实数据，`xj_admin` 登录）
+
+| 接口 | 结果 |
+| --- | --- |
+| `POST /api/v1/identity/auth/login/` | 200 |
+| `GET /api/v1/factory/companies/` | 200，唯一公司 `XJYS 新疆意尚智造科技有限公司` |
+| `GET /api/v1/identity/menus/mine/` | 200，19 项 |
+| `GET /api/v1/analytics/dashboard/` | 200 |
+| `GET /api/v1/equipment/equipments/` | 200，20 条 |
+| `GET /api/v1/ems/meters/` | 200，14 条 |
+
+账号可用性：改挂后的 10 个演示账号（`md_admin` / `fac_admin` / `wh_admin` / `dept_mgr` / `gm` /
+`finance` / `qc01` / `sales01` / `prc_admin` / `qc_inspect`）与 4 个 `xj_*` 账号均可正常登录，数据范围指向唯一公司。
+
+### 36.4 本轮命令执行结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **494 passed**（323.85s，与基线一致） |
+| `scripts/build_user_guide.py` 与 `--check` | 已重新生成 `docs/user-guide.html`、`frontend/public/guide.html`；`使用说明网页版是最新的。` |
+
+**未执行：** 前端 `npm run typecheck` / `npm run test` / `npm run build`——本轮未改动前端源码，
+只重新生成了静态产物 `frontend/public/guide.html`。
+
+**已知副作用（已告知）：** 旧公司名下的 130 条 `core.AuditLog`（旧租户的操作审计）随清理一并删除；
+登录审计 `identity.LoginAttempt` 不受影响（`admin` 保留 30 条记录）。

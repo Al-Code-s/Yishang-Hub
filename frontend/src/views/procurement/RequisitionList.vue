@@ -107,7 +107,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="quantity" label="申请数量" width="110" :formatter="numberFormatter" />
-        <el-table-column prop="ordered_quantity" label="已转数量" width="110" />
+        <el-table-column
+          prop="ordered_quantity"
+          label="已转数量"
+          width="110"
+          :formatter="numberFormatter"
+        />
         <el-table-column prop="needed_date" label="需求日期" width="110" />
       </el-table>
       <el-alert

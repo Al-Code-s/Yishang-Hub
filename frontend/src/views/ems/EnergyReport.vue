@@ -111,6 +111,11 @@ import { useMetaStore } from '@/stores/meta'
 import { formatAmount, formatDecimal } from '@/utils/decimal'
 import type { EnergyConsumptionRow, EnergyReportPayload } from '@/types/models'
 
+/** 图表提示里的数值口径与列表一致：保留 2 位小数（ECharts 默认会打印原始精度）。 */
+function chartValue(value: unknown): string {
+  return formatDecimal(value as number)
+}
+
 const meta = useMetaStore()
 
 const periodOptions = [
@@ -147,7 +152,7 @@ function currentParams(): Record<string, unknown> {
 
 /** 图表坐标必须是 number，仅用于绘图；业务口径仍以 Decimal 字符串为准。 */
 const peakValleyOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
+  tooltip: { trigger: 'axis', valueFormatter: chartValue },
   grid: { left: 60, right: 24, top: 24, bottom: 40 },
   xAxis: { type: 'category', data: peakValley.value.map((item) => item.label) },
   yAxis: { type: 'value' },

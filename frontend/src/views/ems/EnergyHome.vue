@@ -69,9 +69,13 @@
       <el-table-column prop="code" label="编码" width="160" />
       <el-table-column prop="label" label="计量点" min-width="180" />
       <el-table-column prop="medium_label" label="介质" width="90" />
-      <el-table-column prop="consumption" label="用量" min-width="130" />
+      <el-table-column label="用量" min-width="130">
+        <template #default="{ row }">{{ formatDecimal(row.consumption) }}</template>
+      </el-table-column>
       <el-table-column prop="unit" label="单位" width="90" />
-      <el-table-column prop="cost" label="费用" min-width="130" />
+      <el-table-column label="费用" min-width="130">
+        <template #default="{ row }">{{ formatAmount(row.cost) }}</template>
+      </el-table-column>
       <el-table-column label="单价" width="110">
         <template #default="{ row }">
           <el-tag v-if="row.priced" type="success" size="small" effect="light">已维护</el-tag>
@@ -96,6 +100,11 @@ import { formatAmount, formatDecimal } from '@/utils/decimal'
 import { formatDateTime } from '@/utils/format'
 import type { EnergyHomeSummary } from '@/types/models'
 
+/** 图表提示里的数值口径与列表一致：保留 2 位小数（ECharts 默认会打印原始精度）。 */
+function chartValue(value: unknown): string {
+  return formatDecimal(value as number)
+}
+
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -118,7 +127,7 @@ const mediumRows = computed(() =>
   Object.entries(summary.value?.month.by_medium ?? {}).map(([medium, item]) => ({
     medium,
     label: item.label,
-    consumption: item.consumption,
+    consumption: formatDecimal(item.consumption),
     cost: formatAmount(item.cost),
     alarm: alarms.value.by_type[medium] ?? 0,
   })),
@@ -126,7 +135,7 @@ const mediumRows = computed(() =>
 
 /** 图表坐标必须是 number，仅用于绘图；业务口径仍以 Decimal 字符串为准。 */
 const trendOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
+  tooltip: { trigger: 'axis', valueFormatter: chartValue },
   grid: { left: 60, right: 24, top: 24, bottom: 36 },
   xAxis: {
     type: 'category',

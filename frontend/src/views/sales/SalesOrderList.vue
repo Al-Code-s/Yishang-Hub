@@ -127,8 +127,18 @@
           </template>
         </el-table-column>
         <el-table-column prop="quantity" label="订单数量" width="110" :formatter="numberFormatter" />
-        <el-table-column prop="shipped_quantity" label="已发货" width="100" />
-        <el-table-column prop="returned_quantity" label="已退货" width="100" />
+        <el-table-column
+          prop="shipped_quantity"
+          label="已发货"
+          width="100"
+          :formatter="numberFormatter"
+        />
+        <el-table-column
+          prop="returned_quantity"
+          label="已退货"
+          width="100"
+          :formatter="numberFormatter"
+        />
         <el-table-column prop="remaining_quantity" label="未发货" width="100" :formatter="numberFormatter" />
       </el-table>
 

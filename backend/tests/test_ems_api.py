@@ -12,6 +12,7 @@
 * 报表可导出真正的 xlsx（openpyxl 生成，不是改后缀的 CSV）。
 
 全部走 HTTP 接口与真实 MySQL 约束，不使用 mock。
+* 能耗报表 / 能耗统计的时间维度按 (时间, 介质, 单位) 分行，「全部介质」不合并成一行；
 """
 
 from __future__ import annotations
@@ -416,3 +417,44 @@ def test_viewer_cannot_record_reading(ems_viewer, electricity_meter):
     response = create_reading(ems_viewer, electricity_meter, "10")
     assert response.status_code == 403, response.content
     assert MeterReading.objects.count() == 0
+
+
+def test_period_rows_split_by_medium(ems_admin, ems_code_rules, company, electricity_meter):
+    """时间维度按 (时间, 介质, 单位) 分行，不把水 / 电 / 气 / 液合并成一行。
+
+    回归用例：「全部介质」时原先把同一段时间的不同介质并成一行，
+    介质列只标其中一种、单位列是空串，用量却是各介质之和 ——
+    数字看着正常，口径却是错的。
+    """
+    water = EnergyMeter.objects.create(
+        company=company, code="EM-W001", name="水表", medium="water", unit="m3"
+    )
+    assert create_reading(ems_admin, electricity_meter, "100").status_code == 201
+    assert create_reading(ems_admin, electricity_meter, "180").status_code == 201
+    assert create_reading(ems_admin, water, "5").status_code == 201
+    assert create_reading(ems_admin, water, "8").status_code == 201
+
+    today = business_today().isoformat()
+    daily = ems_admin.get(REPORT_URL, {"period": "day", "start": today})
+    assert daily.status_code == 200, daily.content
+    rows = daily.json()["rows"]
+    # 同一天两条：电 80 kWh 与 水 3 m3，介质与单位各自正确，而不是一行 83 标成「电」
+    assert {(row["medium"], row["unit"]) for row in rows} == {
+        ("electricity", "kWh"),
+        ("water", "m3"),
+    }
+    usage = {row["medium"]: row["consumption"] for row in rows}
+    assert usage["electricity"] == "80.000000"
+    assert usage["water"] == "3.000000"
+    assert all(row["unit"] for row in rows)
+
+    monthly = ems_admin.get(REPORT_URL, {"period": "month"})
+    assert monthly.status_code == 200, monthly.content
+    month_rows = monthly.json()["rows"]
+    assert {(row["medium"], row["unit"]) for row in month_rows} == {
+        ("electricity", "kWh"),
+        ("water", "m3"),
+    }
+    month_usage = {row["medium"]: row["consumption"] for row in month_rows}
+    assert month_usage["electricity"] == "80.000000"
+    assert month_usage["water"] == "3.000000"

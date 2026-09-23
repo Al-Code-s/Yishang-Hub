@@ -24,9 +24,9 @@
 | 6 | CRM 深化、EHS、厂内物流、终端安全 | **部分完成**：EHS（安全 / 环保 / 消防 / 设备设施安全）与厂内物流已完成；**CRM 深化（投诉、产品评价）与终端安全未开始**（见 §二十八） |
 | 7 | 综合报表、基础成本、性能、安全、运维与恢复演练 | 未开始 |
 
-当前规模（统计自 `permissions_registry` 与开发库，2026-09-21 实测）：**310 个权限点 / 125 项菜单（105 个业务页面 + 20 个目录）/
-127 个数据模型**（`apps.get_models()` 全量，含 Django 框架自带模型）；数据库共 **135 张表**（其中框架表 13 张、业务表 122 张）；
-已提交迁移文件 **24 个**；前端 **106 个 `.vue` 视图**；内置角色 **17 个**（`bootstrap_system` 17 个，另有 `seed_demo` 演示角色）。
+当前规模（统计自 `permissions_registry` 与开发库，2026-09-22 实测）：**368 个权限点 / 144 项菜单（含目录）/
+146 个数据模型**（`apps.get_models()` 全量，含 Django 框架自带模型）；数据库共 **154 张表**（其中框架表 13 张、业务表 141 张）；
+已提交迁移文件 **30 个**；前端 **133 个 `.vue` 视图**；内置角色 **19 个**（`bootstrap_system` 19 个，另有 `seed_demo_xjys` 演示角色）。
 
 **使用说明**见 `docs/user-guide.md`（面向客户的业务操作手册，另有网页版 `docs/user-guide.html`）；
 文档同步的事实行在 `AGENTS.md` §九，由 `backend/tests/test_docs_sync.py` 与代码比对，防止文档静默过期。
@@ -794,8 +794,8 @@ cd frontend; npm run dev    # http://localhost:5173
 | 旧值 | 新值 | 出现位置 |
 | --- | --- | --- |
 | 弋尚集成平台 | 意尚智造集成平台 | 平台名（24 处） |
-| 弋尚服饰有限公司 | 意尚智造服饰有限公司 | 演示数据：租户企业（`seed_demo.COMPANY`） |
-| 弋尚服饰（`short_name`） | 意尚智造服饰 | 同上 |
+| 弋尚服饰有限公司 | 新疆意尚智造科技有限公司 | 演示数据：租户企业（`seed_demo_xjys.COMPANY`，见 §三十七） |
+| 弋尚服饰（`short_name`） | 新疆意尚智造 | 同上 |
 | 弋尚一号工厂 / 弋尚二号工厂 | 意尚智造一号工厂 / 意尚智造二号工厂 | 演示数据：工厂档案 |
 | 弋尚（款式/物料 `brand`） | 意尚智造 | 演示数据：6 个款式 + 物料默认品牌 |
 
@@ -821,11 +821,12 @@ cd frontend; npm run dev    # http://localhost:5173
 
 ### 9.3 数据同步与验证（真实输出）
 
-`seed_demo` 使用 `update_or_create`，重跑即把已存在记录的固定字段同步为新名称：
+`seed_demo`（现为 `seed_demo_xjys` 的兼容入口）使用 `update_or_create`，重跑即把已存在记录的固定字段同步为新名称。
+下面是本次改名的执行输出；其中的租户与 F01 / F02 工厂属旧演示数据，已在 §三十七 整体清理：
 
 ```text
 合计新建 0 条；其余演示对象已存在并已同步固定字段。
-公司: [('YS', '意尚智造服饰有限公司', '意尚智造服饰')]
+公司: [('XJYS', '新疆意尚智造科技有限公司', '新疆意尚智造')]
 工厂: [('F01', '意尚智造一号工厂'), ('F02', '意尚智造二号工厂')]
 款式品牌集合: ['意尚智造']   物料品牌集合: ['', '意尚智造']
 ```
@@ -1661,7 +1662,7 @@ npm run dev
 验证步骤：
 
 1. 浏览器打开 `http://127.0.0.1:5173/`，用 `admin` 登录（口令取自 `backend/.env` 的 `YISHANG_ADMIN_PASSWORD`）。
-2. 左侧「计划管理 → MRP 运算」→ 选择公司「意尚智造服饰有限公司」→ 需求区间默认今天起 90 天 → 点「运行 MRP」，
+2. 左侧「计划管理 → MRP 运算」→ 选择公司「新疆意尚智造科技有限公司」→ 需求区间默认今天起 90 天 → 点「运行 MRP」，
    列表出现新运行，`summary` 显示需求行 / 供给行 / 建议数。
 3. 打开该运行详情 → 三个页签可看到需求行（含来源路径）、供给行（可用库存 / 采购在途）、缺料建议。
 4. 左侧「计划管理 → 缺料与建议」→ 对一条**采购建议**点「转采购申请」→ 状态变「已转单」并显示申请号；
@@ -3441,3 +3442,248 @@ SKU / BOM / 后端校验 / 服务端判定」这类实现词汇。业务用户�
 | `docs/test-report.md` | 新增 §三十二 本轮复验记录 |
 | `docs/user-guide.md` + 网页版 | 能力表、未实现清单、菜单清单（144）与新增 §6.14 供应商评价 |
 | `frontend/src/views/system/ProgressView.vue` | 已完成 / 未完成清单补五维评价 |
+
+
+## 三十四、新疆意尚智造（XJYS）专项演示数据
+
+> 用户反馈「很多页面都是空的数据」，要求：为**新疆意尚智造科技有限公司**造一套演示数据，
+> 记录起始时间自 **2026 年 1 月** 起，并结合该公司自身情况（新疆作息、棉纺/成衣产线、两个生产基地）。
+> 本轮**不新增页面、接口与权限点**，只增加一条管理命令与数据。
+
+### 34.1 交付内容
+
+| 项目 | 内容 |
+| --- | --- |
+| 命令 | `python manage.py seed_demo_xjys`（`--yes` 非开发环境确认、`--skip-heavy` 跳过读数类大表） |
+| 实现位置 | `backend/apps/core/management/commands/seed_demo_xjys.py` |
+| 作用公司 | 新建 `XJYS`「新疆意尚智造科技有限公司」；**不触碰**既有 `YS` 公司数据 |
+| 时间口径 | 所有业务日期落在 `2026-01-01` ~ 执行当天（业务时区 UTC+8，落库 UTC） |
+| 幂等 | 重复执行「新建 0 条」；已存在的记录只回读不重建 |
+| 安全 | `DJANGO_ENV=production` 直接拒绝；非 development/test 需 `--yes`；不写真实个人信息 |
+
+命令自身口径：
+
+- **业务状态只由 Service 层推进**：保养/维修/点巡检/异常、能源报警、库存过账、采购审批、
+  销售发货、MES 下达与报工、QMS 判定、SRM 评价生效、EHS 整改与作业许可，全部调用
+  `apps.*/services.py`，没有直接改状态字段。`_stamp()` 只用于把时间字段对齐到 2026 区间。
+- **库存只能经统一库存服务**：期初、待检放行、移库、盘点、采购收货、销售发货、生产领料与完工入库
+  一律走 `apps.wms.services.stock.create_document → post_document → release_quality`。
+- **金额数量使用 Decimal**，不经 float。
+- 所有对象 `remark` 带 `演示数据（新疆意尚智造）` 前缀，便于与真实数据区分、便于整体清理。
+
+### 34.2 覆盖范围（实测行数，按公司 `XJYS` 统计）
+
+| 模块 | 主要数据 |
+| --- | --- |
+| 组织与主数据 | 公司 1、部门 14、工厂 2、车间 13、线体 13、工位 104、班次 3、班组 12、员工 20、物料 63、SKU 46、款式 4、颜色/尺码各 8、计量单位 15 |
+| 设备管理 | 设备类型 10、设备 22、备件 8、零部件 18、保养项目 10、点巡检项目 10、异常类型 6；保养计划 8 / 任务 59 / 记录 46、报修 11 / 维修任务 6 / 维修记录 4、点巡检任务 18 / 记录 70、异常任务 8 / 记录 5 |
+| 能源管理 | 区域 11、表计 14、价格 7、阈值 5、抄表 742、运行记录 23、报警 31 |
+| 设备数采 | 连接 3、网关 8、测点 16、报文 69、读数 158 |
+| 仓储（WMS） | 仓库 5、库存单据 23、库存流水 62、库存余额 36、占用 2 |
+| 采购 | 采购申请 3（含紧急采购）、采购订单 2、收货 2 |
+| 销售 | 订单 4、发货 2、退货 1 |
+| 计划与 MRP | BOM 4、工艺路线 4、MRP 运算 1（含建议转单） |
+| MES | 生产工单 6（草稿/已下达/生产中/完工/关闭/取消）、报工 11、领料与完工入库 |
+| 质量（QMS） | 检验项目 10、检验单 10、质量报警 2、质量问题知识库 1 |
+| 供应商（SRM） | 供应商 5、五维评价权重 1、评价单 5 |
+| 客户（CRM） | 客户 5、客户投诉 5、产品评价 6 |
+| 安全环保（EHS） | 制度 5、培训 6、隐患 6、应急预案 2、演练 3、事故 3、排污监测 6、固废/危废 5、合规检查 4、消防设施 9、作业许可 5、安全检查 4、特种设备检验 3、操作日志 33 |
+| 厂内物流 | 自动化设备 5（AGV / 穿梭车 / 堆垛机 / 码垛机器人）、任务 7、操作日志 32 |
+| 审批与审计 | 审批模板 6、审批实例 15、审计日志 223 |
+| 合计 | **2108 行**（该公司的全部业务表均非空） |
+
+### 34.3 本轮修复的三个真实缺陷
+
+1. **演示账号权限缓存陈旧**：命令在同一事务里反复 `bump_permission_version()`，
+   事务回滚时版本号不前进，`identity:user_perms:<pk>:<version>` 会一直命中旧值，
+   服务层 `require_codes` 误判「没有权限」。现在写入演示账号后主动清除该用户的权限缓存
+   （`_forget_permission_cache`）。
+2. **质检点检验单必须回读工序**：`mes.services.report_production` 内部重新取工序行，
+   质检单挂在那一份对象上；调用方持有的旧对象 `inspection_order_id` 为空，
+   导致完工时校验「质检点尚未判定合格」。现在报工后 `refresh_from_db` 再判定。
+3. **环保合规检查关闭前不能已是「已关闭」**：原先把演示数据直接建成「已关闭」再调
+   `close_compliance_check`，被状态机拒绝。现在先落「已整改」再由服务层关闭，状态推进与操作日志走同一路径。
+
+另外，`_demo_roles()` 只在缺失时补建 `demo_dept_manager` / `demo_gm` / `demo_finance`，
+避免把 `seed_demo` 建好的（属于另一家公司的）同名角色改到本公司。
+
+### 34.4 本轮执行的检查（真实输出）
+
+| 检查 | 结果 |
+| --- | --- |
+| `manage.py seed_demo_xjys` | 首次：各模块新建并打印清单；二次：**「新建 0 条」** |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **`493 passed`**（含新增 3 例：拒绝生产环境 / 非开发环境需 `--yes` / 各模块都有数据且幂等） |
+
+### 34.5 未完成事项（不要按「已实现」去承诺）
+
+1. **不新增任何页面与接口**：本轮只造数据；`docs/requirements-matrix.md` 中标注「未开始」的能力
+   （销售计划、分销商、市场预测、供应商寻源、跨系统数据交换中间件、工业终端安全、OEE、
+   职业健康、能源调度等）**不因本轮而有任何变化**。
+2. **设备数采仍是 HTTP 上报 + 内置模拟器**，没有真实设备 / MQTT / Modbus 联调，
+   演示读数与报文全部是构造数据。
+3. **演示账号口令**：优先取 `YISHANG_DEMO_PASSWORD`，未设置时随机生成并**只打印一次**；
+   重复执行不会重置已存在账号的口令。
+4. **浏览器观感未人工核对**：沙箱内不能启动 `runserver` / `vite dev` 与浏览器自动化，
+   数据只做了数据库层与自动化测试层验证。
+
+## 三十五、界面数值显示口径修复（最多 2 位小数）
+
+> 用户反馈：部分页面的数字小数点后超过 2 位，举例是**能源首页 → 本月各介质用量与费用**表的
+> 「用量」列显示成 `35497.730000`。本轮**只改显示口径**：接口精度、数据库精度、
+> 导出单元格里保存的数值一律不变。
+
+### 35.1 根因
+
+1. **渲染绕过统一格式化工具。** 统一口径在 `frontend/src/utils/decimal.ts`
+   （`formatNumber` / `formatDecimal` / `formatAmount` / `numberFormatter`，四舍五入到 2 位 + 千分位），
+   但若干页面把接口返回的字符串**直接插值**或直接放进 `el-table-column`，没走这些函数，
+   于是 `MeterReading.consumption`（`DecimalField(max_digits=20, decimal_places=6)`）
+   的原值 `35497.730000` 被原样打印。`ProTable` 默认列会自动格式化，
+   但**自定义 `#column-*` 插槽会绕过它**，这类列是排查重点。
+2. **数据本身没问题。** `ems.MeterReading.consumption` 写入时已 `quantize(Decimal("0.01"))`，
+   实测 742 条读数**全部 ≤ 2 位小数**；用户看到的多位小数是显示问题，不是数据问题。
+3. **Excel 导出单元格没有显示格式。** `apps/ems/views.py::_xlsx_response` 用 `float()` 写入
+   且未设 `number_format`，费用这类 4 位小数的值在 Excel 里会显示成 `356574.3758`。
+
+### 35.2 改动清单
+
+| 文件 | 改动 |
+| --- | --- |
+| `frontend/src/views/ems/EnergyHome.vue` | 介质表「用量 / 费用」走 `formatDecimal` / `formatAmount`；计量点「用量 / 费用」列补格式化；趋势图 tooltip 加 `valueFormatter` |
+| `frontend/src/views/ems/EnergyKanban.vue` | 饼图 / 柱状图 / 趋势图 tooltip 加 `valueFormatter` |
+| `frontend/src/views/ems/EnergyReport.vue` | 尖峰平谷图 tooltip 加 `valueFormatter` |
+| `frontend/src/components/EnergyStatisticsPanel.vue` | 同上（占比饼图 / 对比柱状图 / 趋势图） |
+| `frontend/src/views/iot/DeviceMonitor.vue` | 「报警下限 / 报警上限」列补 `numberFormatter` |
+| `frontend/src/views/procurement/PurchaseOrderList.vue` | 「已收」列补 `numberFormatter` |
+| `frontend/src/views/procurement/RequisitionList.vue` | 「已转数量」列补 `numberFormatter` |
+| `frontend/src/views/sales/SalesOrderList.vue` | 「已发货 / 已退货」列补 `numberFormatter` |
+| `frontend/src/views/sales/SalesReturnList.vue` | 「可退货」列补 `numberFormatter` |
+| `frontend/src/views/planning/MrpSuggestionList.vue` | MRP 分段净算「期初 / 供给 / 需求 / 净需求 / 期末」5 列补 `numberFormatter` |
+| `frontend/src/views/mes/ProductionOrderList.vue` | 数量、报工 / 合格、应领 / 已领改走 `formatDecimal` |
+| `frontend/src/views/equipment/InspectionItemList.vue` | 合格范围上下限走 `formatDecimal`（原来直接 `String(...)`） |
+| `frontend/src/views/qms/InspectionItemList.vue` | 标准上下限走 `formatDecimal` |
+| `frontend/src/views/qms/InspectionOrderList.vue` | 检验单明细「标准范围」走 `formatDecimal` |
+| `backend/apps/ems/views.py` | 能耗报表 Excel 导出：「用量 / 费用」两列设 `number_format = "0.00"` |
+| `frontend/tests/decimal.spec.ts` | 新增用例，把用户反馈的两个原值（`35497.730000` / `21724.6108`）锁进回归 |
+
+### 35.3 刻意不改的位置（避免过度格式化）
+
+- `srm/SupplierEvaluationList.vue` 的各分值列：模型是 `max_digits=5, decimal_places=2`，
+  接口实测返回 `"84.10"`、`"10.80"` 这类 2 位值，本身合规。
+- `factory/ShiftList.vue` 的 `duration_hours`：`ShiftSerializer.get_duration_hours`
+  已 `f"{worked / 60:.2f}"`。
+- `iot/PointList.vue` 的 `quantity`：是物理量枚举（`CharField`），不是数值。
+- `integration/OutboxList.vue`、`system/ProgressView.vue` 的计数：都是整数。
+- 统计类接口的 `avg_satisfaction` / `avg_score` / `good_rate` / `avg_total_score` / `missing_rate`：
+  接口实测已经是 `4.67` / `3.83` / `66.67` / `84.10` / `8.00`。
+- `formatNumber` 的**刻意例外**：非零值四舍五入后为 0 时保留真实精度（如 BOM 用量 `0.004`），
+  避免把「有」显示成「没有」。这不是缺陷。
+
+### 35.4 验证（实测结果）
+
+| 项目 | 结果 |
+| --- | --- |
+| `npm run typecheck`（vue-tsc） | 通过（无输出） |
+| `npm run test`（vitest） | **`258 passed`**（较上一轮 +1，新增显示口径回归用例） |
+| `npm run build`（vue-tsc + vite） | 通过（`built in 18.28s`） |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **`493 passed in 305.75s`** |
+
+### 35.5 未执行 / 未验证
+
+1. **浏览器内人工核对显示效果未执行**：本轮只跑了 `typecheck` / `vitest` / `build`，
+   并用 `django.test.Client` 实测了接口返回值与导出 xlsx 的单元格格式，没有在真实浏览器里逐页看图。
+2. **Playwright 端到端、性能压测、备份恢复、Docker Compose 验证**仍与 §三十四 一致，未执行。
+3. `docs/progress.md` §一 的「当前规模」数字（310 权限点 / 125 菜单 / 127 模型 / 24 迁移 / 17 角色）
+   与当前实际值（368 / 144 / 146 / 30 / 19，见 `AGENTS.md` 事实行）不一致，
+   属于**历史遗留的文档过期**，本轮未改，待后续统一以事实行为准刷新。
+
+## 三十六、能耗报表 / 能耗统计：时间维度按介质分行
+
+> 用户确认要修的问题：能耗报表在「全部介质」（默认）状态下数字会误导 ——
+> 同一段时间里水 / 电 / 气 / 液被合并成一行，「介质」列只标其中一种、单位列空着，
+> 用量却是各介质之和。**数字算对了，口径是错的。**
+
+### 36.1 根因
+
+`apps/ems/selectors.py::_period_rows` 的合并键只有时间桶（`merged.setdefault(row["bucket"], …)`）。
+`values(...)` 里虽然取了 `meter__medium` / `meter__unit`，但只用来当**首行**标签，
+同桶里其它介质的行全被加进同一个 bucket。于是：
+
+- 「介质」列显示的是该桶第一行的介质（取决于数据库返回顺序，看起来像随机的）；
+- 「单位」列是写死的空串；
+- 「用量」是该桶全部介质之和（kWh + m³ + t 相加）。
+
+实测（XJYS 演示数据，`period=month`）：2026-04 只有 1 行、标成「电」、单位空、用量 `149236.20`；
+而该月实际有电 / 气 / 液 / 水四种介质。
+
+### 36.2 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `backend/apps/ems/selectors.py` | `_period_rows` 合并键改为 `(时间桶, 介质, 单位)`；`unit` 取 `meter__unit`；补 docstring 说明为什么不能只按时间合并 |
+| `frontend/src/components/EnergyStatisticsPanel.vue` | 时间维度趋势图改为**每个介质一条线**（带单位后缀与图例），不再把多介质行铺在同一个 x 轴上 |
+| `backend/tests/test_ems_api.py` | 新增 `test_period_rows_split_by_medium` 回归用例 |
+
+每种介质一行之后，「单位」列不再为空，导出 Excel 的「介质 / 单位」两列也随之正确。
+「按介质过滤」的结果与改动前完全一致（不变）。
+
+### 36.3 验证（实测结果）
+
+| 项目 | 结果 |
+| --- | --- |
+| 回归用例反向验证 | 把合并键临时改回「仅时间桶」后 `test_period_rows_split_by_medium` **失败**（断言只剩 `('electricity', '')` 一行），改回后通过 —— 证明用例确实锁住了这个缺陷 |
+| 接口实测 `period=month`（XJYS） | 9 个月 × 4 介质 = **36 行**，单位分别为 kWh / m³ / t / t；2026-01 电 `182351.77` 与「按介质过滤」的结果一致（四介质相加 `201210.31` = 旧的合并值） |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **`494 passed in 324.79s`** |
+| `npm run typecheck` / `npm run test` / `npm run build` | 通过 / **`258 passed`** / 通过 |
+
+### 36.4 未执行 / 未验证
+
+1. **浏览器内人工核对未执行**：趋势图改成多介质多条线后，只过了 `vue-tsc` / `vitest` / `vite build`
+   三关以及接口实测，没有在浏览器里逐页看图。
+2. 多介质共用一条 y 轴（kWh 与 t 量级相差很大）时曲线可读性一般，属于可视化折中，
+   不是数据口径问题；需要分开看时把「介质」筛成一种即可。
+3. **「合计用量」卡片仍是跨介质相加**：`totals.consumption` 把 kWh / m³ / t 加在一起，
+   物理含义不成立（改动前也一样）。要做成按介质分别合计需要产品决策，本轮未动，已在客户说明中提示。
+
+## 三十七、单公司合并：下线旧演示公司，全平台只保留「新疆意尚智造科技有限公司」
+
+**背景。** 平台早期由 `seed_demo` 建了第二家演示公司（`YS`），
+与 `seed_demo_xjys` 建的「新疆意尚智造科技有限公司（`XJYS`）」并存；两套组织架构
+（部门 / 工厂 / 车间 / 工位 / 班次 / 员工）同名不同值，谁后执行谁覆盖谁。
+本平台只服务新疆意尚智造一家公司，因此旧公司及其演示数据整体下线。
+
+**数据清理（开发库实做，2026-09-22）。**
+
+- 先改挂权限与账号：16 个角色的 `company_id`、11 个账号的 `company_id` 由 `YS` 改为 `XJYS`；
+  10 个账号的 `department_id` 按部门编码改挂到 `XJYS` 同名部门，避免随旧部门一起被删。
+- 旧公司数据按依赖逆序清理，共删除 **808 行、覆盖 54 张表**：工厂 / 部门 / 员工 / 班组 /
+  物料 / 款式 / SKU / 条码 / 仓库 / 库位 / 库存单据与余额 / 客户 / 供应商 / 采购 /
+  销售 / BOM / 工艺路线 / MRP / 审批模板与实例 / 审计日志。
+- 清理后 `factory.Company` 只剩 1 行（`XJYS`）；`XJYS` 名下数据行数与清理前一致
+  （2137 → 2137），跨公司引用为 0；5 处非法枚举值（`SalesOrder.priority` 的 `low`/`high`、
+  `Equipment.status` 的 `fault`、`Warehouse.warehouse_type` 的 `accessory`/`spare_part`）
+  在**数据与种子代码**里一并改写为合法值（否则界面显示英文）。
+- 清理前用 `mysqldump` 备份开发库到 `.tmp/backup/`（本地临时文件，不提交）。
+
+**命令合并。** `seed_demo` 不再有独立实现：保留命令名作为**兼容入口**，实际调用
+`seed_demo_xjys`（生产环境仍被拒绝，非开发环境仍需 `--yes`）。演示角色定义 `DEMO_ROLES`
+与口令生成 `_generate_password` 随实现迁入 `seed_demo_xjys.py`。
+实测 `manage.py seed_demo` 重跑输出 `新疆意尚智造演示数据：新建 0 条。` 与
+`公司：新疆意尚智造科技有限公司（XJYS）`——幂等且只写一家公司。
+
+**回归。** `tests/test_management_commands.py` 的 `seed_demo` 用例收紧为
+「公司数 == 1 且 `code == "XJYS"`」；`tests/test_enum_labels.py`
+（执行 `seed_demo` 后全库扫非法枚举值）现在跑的是 XJYS 全套演示数据，
+上面 5 处非法枚举值正是它发现的。
+
+文档侧同步：`README.md`、`backend/README.md`、`docs/deployment.md`、
+`docs/user-guide.md`（客户手册）与 `docs/assumptions.md`。
