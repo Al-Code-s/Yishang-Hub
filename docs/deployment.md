@@ -27,7 +27,7 @@
 ### 前置条件
 
 - Python 3.12、Node.js ≥ 20.19（本项目实测 22.17.1 / npm 10.9.2）
-- MySQL 8（本轮实测 8.0.17）、Redis（本轮实测 3.2.100）
+- MySQL 8.0 系列（本轮实测 8.0.17；部署镜像 `mysql:8.0`）、Redis（本轮实测 3.2.100）
 
 ### 1. 环境变量
 
@@ -166,7 +166,7 @@ backend        Gunicorn 应用（非 root）
 worker         Celery Worker
 beat           Celery Beat（默认单实例）
 migrate        一次性发布步骤（不常驻）
-mysql          MySQL 8.4 LTS（不发布端口）
+mysql          MySQL 8.0 系列（镜像 `mysql:8.0`，不发布端口）
 redis          Redis（不发布端口）
 object-storage S3 兼容对象存储
 ```
@@ -181,6 +181,42 @@ docker compose up -d
 docker compose ps
 curl -f http://localhost/healthz
 ```
+
+> `.env` 必填项（缺任一项 Compose 直接拒绝启动）：`DJANGO_SECRET_KEY`、`DJANGO_ALLOWED_HOSTS`、
+> `DJANGO_CSRF_TRUSTED_ORIGINS`、`DB_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`OBJECT_STORAGE_SECRET_KEY`；
+> 空库首次安装还要提供 `YISHANG_ADMIN_PASSWORD`（见下一节）。
+
+### 首次安装（空库）必做步骤 【未执行 ⚠️】
+
+上面的 `migrate` 只建出**空表结构**。空库还必须补下面两步，否则**登录不进去、`/admin/` 样式 404**：
+
+```bash
+# 1) 权限点 / 菜单 / 内置角色 / 管理员账号（幂等，可重复执行）
+#    production 环境必须提供管理员口令，缺失时直接报错退出（不允许猜口令）
+docker compose run --rm -e YISHANG_ADMIN_PASSWORD='<强口令>' backend python manage.py bootstrap_system
+
+# 2) 把 Django Admin / DRF 的静态资源收集到 backend-static 卷（Nginx 的 /static/ 从该卷读取）
+#    前端页面是打进 Nginx 镜像的构建产物，不受这一步影响
+docker compose run --rm backend python manage.py collectstatic --noinput
+
+# 3) 重启一次，让新写入的菜单 / 权限生效
+docker compose up -d
+```
+
+- **客户机不要执行演示数据命令**：`seed_demo` 与 `seed_demo_xjys` 在 `DJANGO_ENV=production`
+  下**直接拒绝执行**，演示数据只用于本地开发。
+- 客户机是**全新空库**时，从零到能登录只需 `migrate` + `bootstrap_system`；
+  把已有数据搬到新机器请改用 `docs/backup-restore.md` §八 的导入流程，不要重新初始化。
+
+### 客户机（内网）落地注意事项 【未执行 ⚠️】
+
+| 项目 | 要求 |
+| --- | --- |
+| `DJANGO_ALLOWED_HOSTS` | 必须是客户机**实际访问地址**，如 `192.168.1.50,localhost` |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | 带协议的完整来源，如 `http://192.168.1.50`；不一致会导致登录报 CSRF 失败 |
+| `HTTP_PORT` | 前端对外端口，默认 `80`；被占用时改 `.env`（如 `HTTP_PORT=8080`） |
+| 定时任务 | 平台**没有内置调度器**，`ems_offline_check` / `iot_offline_check` 需用 Windows 计划任务或 Compose 的 `beat` 服务（见 §三之三、§三之四） |
+| HTTPS | `prod.py` 默认 `SECURE_SSL_REDIRECT=true`，纯 HTTP 访问会被 301 跳 https；内网无证书时设 `DJANGO_SECURE_SSL_REDIRECT=false`，但**纯 HTTP 下登录仍会失败**（详见 `docs/assumptions.md` 第 45 条） |
 
 ### 设计约束（已写入 `compose.yaml`）
 

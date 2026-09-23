@@ -8,7 +8,7 @@
 
 | 项 | 任务书要求 | 本机实际 | 影响 | 处理方式 |
 | --- | --- | --- | --- | --- |
-| MySQL | 8.4 LTS | 8.0.17 | 排序规则默认值、部分函数与 DDL 能力存在差异 | 代码不依赖 8.4 专属语法；`docs/data-model.md` 明确记录使用的排序规则；部署镜像固定 `mysql:8.4` |
+| MySQL | 8.4 LTS | 8.0.17 | 项目方已确认把版本基线由任务书的 8.4 LTS **调整为 8.0 系列**（与本机开发库同一主版本）；8.4 与 8.0 在排序规则默认值、部分函数与 DDL 能力上存在差异 | 代码不依赖 8.4 专属语法；`docs/data-model.md` 明确记录使用的排序规则；部署镜像改为 `mysql:8.0`（8.0 系列最新补丁，不钉死小版本） |
 | Redis | 未指定具体版本（建议 7.x） | 3.2 | 部分命令（如 `UNLINK`、Streams）在旧版本不可用 | 业务只把 Redis 当缓存与 Broker 使用，不作为业务状态唯一存储；不使用 Streams |
 | Python | 3.12 | 3.12.14 | 无 | 已满足 |
 | Node.js | 未指定 | 22.17.1 / npm 10.9.2 | 无 | 已满足 Vite 7 要求 |
@@ -332,3 +332,39 @@
     角色与账号改挂到该公司，员工编号 `E1xxx` 等旧档案不再存在。
     `seed_demo` 保留命令名但等价于 `seed_demo_xjys`。影响范围：开发库数据与演示命令；
     关闭条件：不再需要旧演示数据（如需回退，用 `.tmp/backup/` 的 `mysqldump` 备份恢复）。
+
+## 四之十一、生产安装与内网部署的假设（本轮新增）
+
+44. **首次安装必须显式初始化，`migrate` 不会建出可登录的系统。** 空库执行 `migrate` 只得到
+    空的表结构：权限点 / 菜单 / 内置角色 / 管理员账号由 `manage.py bootstrap_system` 建立
+    （幂等，可重复执行，生产环境必须有 `YISHANG_ADMIN_PASSWORD` 或 `--admin-password`），
+    Django Admin 与 DRF 的静态资源要先 `manage.py collectstatic` 收进 `backend-static` 卷，
+    Nginx 的 `/static/` 才命中。因此漏掉前者的现象是「登录不上」，漏掉后者的现象是
+    「主平台正常、`/admin/` 样式与脚本 404」（前端页面是打进 Nginx 镜像的构建产物，不受影响）。
+    演示数据命令 `seed_demo` / `seed_demo_xjys` 在 `DJANGO_ENV=production` 下**直接拒绝执行**，
+    **不得**用于客户机初始化。影响范围：生产首次安装流程；关闭条件：安装步骤不再需要人工执行。
+    步骤已写入 `docs/deployment.md` §三「首次安装（空库）必做步骤」。
+
+45. **内网纯 HTTP 部署当前不可用（已知限制，本版本未做环境开关）。** 生产配置
+    `backend/config/settings/prod.py` 把 `SESSION_COOKIE_SECURE` 与 `CSRF_COOKIE_SECURE` 硬编码为
+    `True`（只有 `SECURE_SSL_REDIRECT` 能通过 `DJANGO_SECURE_SSL_REDIRECT` 关闭）。因此在
+    「只能 HTTP 访问、没有证书」的客户内网机器上，关掉重定向后登录页能打开，但**浏览器不会在
+    HTTP 下回传会话 Cookie**，表现为「登录后立刻退回登录页」或 CSRF 校验失败。可行的落地方式两种：
+    ① 给 Nginx 配 TLS（自签证书或客户内网 CA），保持默认安全配置；
+    ② 把这两个开关改成环境变量驱动（默认仍为 `True`），仅在客户明确接受「纯内网 HTTP」风险时用 `false`。
+    **本版本只做了 ① 的判断依据，未实现 ②**，因此纯 HTTP 客户机需要先定方案再上线。
+    影响范围：生产部署方式；关闭条件：完成 ① 的 TLS 配置或 ② 的环境开关改造。
+
+46. **数据库版本基线由「MySQL 8.4 LTS」调整为「MySQL 8.0 系列」（项目方 2026-09-23 确认）。**
+    任务是让部署版本与本地开发库（8.0.17）落在同一主版本，减少「开发能跑、上线报错」的版本差异；
+    部署镜像相应改为 `mysql:8.0`（**8.0 系列最新补丁，不钉死小版本**），不使用任何 8.4 专属语法。
+    依据：代码与迁移里没有 8.0.17 之后才具备的特性（检索过 `JSON_VALUE` / `JSON_TABLE` /
+    `INTERSECT` / `EXCEPT` / `LATERAL` / `NOWAIT` / `SKIP LOCKED` 均无使用），
+    实际用到的能力下限是 `utf8mb4_0900_ai_ci`（8.0.0+）与 CHECK 约束（8.0.16+）；
+    测试强制跑在真实 MySQL 上（`config/settings/test.py`），本机 8.0.17 全量用例通过。
+    **两条运维约束**：① MySQL 8.0 不支持从 8.4 的数据目录降级启动，
+    已有 8.4 数据必须走 `mysqldump` 逻辑导出后再导入；② 8.0 系列的官方支持窗口到 2026-04 结束，
+    因此镜像取 8.0 系列最新补丁而非 8.0.17。影响范围：数据库版本口径与部署镜像；
+    关闭条件：项目方再次调整版本基线。同步更新了 `PROJECT_SPEC.md`、`README.md`、
+    `docs/deployment.md`、`docs/requirements-matrix.md`、`docs/progress.md`、`docs/test-report.md`、
+    `docs/acceptance.md` 与前端「进度说明」页的版本描述。

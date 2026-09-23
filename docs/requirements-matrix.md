@@ -527,7 +527,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-3.1-02 | 3.1 | Element Plus + Pinia + Vue Router | `frontend/src/{main.ts,stores,router}` | 已完成 | element-plus 2.9.1、pinia 2.3.0、vue-router 4.5.0 |
 | REQ-3.1-03 | 3.1 | ECharts | `views/workspace/Index.vue` | 已完成 | 发件箱状态柱状图，数据来自后端接口 |
 | REQ-3.1-04 | 3.1 | Python 3.12 + Django 5.2 LTS + DRF | `backend/`（Django 5.2.17） | 已完成 | `manage.py check` 通过 |
-| REQ-3.1-05 | 3.1 | MySQL 8.4 LTS + InnoDB + utf8mb4 + 严格模式 | `config/settings/base.py` | 部分完成 | 本机实际为 MySQL 8.0.17；字符集/排序规则/SQL 模式已按目标配置 |
+| REQ-3.1-05 | 3.1 | MySQL 8.4 LTS + InnoDB + utf8mb4 + 严格模式 | `config/settings/base.py` | 部分完成 | 版本基线经项目方确认调整为 MySQL 8.0 系列（部署镜像 `mysql:8.0`），本机 8.0.17 即目标主版本；字符集/排序规则/SQL 模式已按目标配置；容器镜像未实际验证 |
 | REQ-3.1-06 | 3.1 | 数据库驱动 mysqlclient（锁定版本） | `pyproject.toml`、`uv.lock` | 部分完成 | 开发机无 C 工具链，开发使用 PyMySQL（`DB_DRIVER`）；Docker 目标为 mysqlclient，未验证 |
 | REQ-3.1-07 | 3.1 | Django migrations | `backend/apps/*/migrations/` | 已完成 | `makemigrations --check` 无变更 |
 | REQ-3.1-08 | 3.1 | Redis 缓存 + Celery 异步 + Beat 调度 | `config/settings/base.py`、`config/celery.py` | 部分完成 | 配置就绪；worker/beat 未实际运行 |
@@ -566,7 +566,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 
 | 编号 | 来源 | 需求 | 实现位置 | 状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| REQ-5.1-01 | 5.1 | MySQL 8.4 / InnoDB / utf8mb4 / 严格模式 | `config/settings/base.py` | 部分完成 | 版本偏差见 `docs/assumptions.md` |
+| REQ-5.1-01 | 5.1 | MySQL 8.4 / InnoDB / utf8mb4 / 严格模式 | `config/settings/base.py` | 部分完成 | 版本基线调整为 8.0 系列，偏差说明见 `docs/assumptions.md` §一 |
 | REQ-5.1-02 | 5.1 | 排序规则明确并记录 | `utf8mb4_0900_ai_ci`（测试库显式配置），`docs/data-model.md` | 已完成 | 大小写敏感问题在序列化器层处理，不依赖排序规则 |
 | REQ-5.1-03 | 5.1 | 存储 UTC、`USE_TZ=True`、界面 Asia/Shanghai | `config/settings/base.py`、`frontend/src/utils/format.ts` | 已完成 | 跨日/跨月边界有单测（`format.spec.ts`） |
 | REQ-5.1-04 | 5.1 | 使用专用应用账号，不用 root | `.env.example`、本机 `yishang_app@localhost` | 已完成 | 生产由编排注入 |

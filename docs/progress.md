@@ -192,7 +192,7 @@ API 统一前缀 `/api/v1/`，清单与示例见 `docs/api-conventions.md`。
 
 | 项 | 说明 |
 | --- | --- |
-| 本机 MySQL | 实际为 MySQL 8.0.17，任务书要求 8.4 LTS；SQL 模式、字符集与排序规则已按目标配置，但版本差异未在 8.4 上验证 |
+| 本机 MySQL | 实际为 MySQL 8.0.17；项目方已确认版本基线由任务书的 8.4 LTS 调整为 MySQL 8.0 系列（部署镜像 `mysql:8.0`），与本机同一主版本；SQL 模式、字符集与排序规则按目标配置；容器镜像仍未实际启动验证 |
 | 本机 Redis | 实际为 Redis 3.2，任务书要求较新版本；生产编排使用官方 7.x 镜像（未启动验证） |
 | 数据库驱动 | Windows 开发机无 C 编译工具链，开发使用 PyMySQL；生产镜像目标为 mysqlclient，未验证 |
 | Docker | 未启动验证，编排文件属「已编写未验证」 |
@@ -3687,3 +3687,31 @@ SKU / BOM / 后端校验 / 服务端判定」这类实现词汇。业务用户�
 
 文档侧同步：`README.md`、`backend/README.md`、`docs/deployment.md`、
 `docs/user-guide.md`（客户手册）与 `docs/assumptions.md`。
+## 三十八、数据库版本基线调整：MySQL 8.4 LTS → MySQL 8.0 系列
+
+**背景。** 任务书要求 MySQL 8.4 LTS，而开发机实际是 MySQL 8.0.17，库里长期挂着这条版本偏差。
+项目方 2026-09-23 确认：把**部署版本与开发库统一到 MySQL 8.0 系列**，
+避免「开发能跑、上线报版本错」的差异。
+
+**改动。**
+
+- `compose.yaml` 的 mysql 服务镜像由 `mysql:8.4` 改为 `mysql:8.0`
+  （8.0 系列最新补丁，**不钉死小版本**）。`deploy/mysql/my.cnf` 与 compose 的 `command`
+  参数未改：`utf8mb4` / `utf8mb4_0900_ai_ci` / 严格 `sql_mode` / UTC 在 8.0 与 8.4 上写法一致。
+- **代码与迁移未改动**：检索确认没有使用 8.0.17 之后才具备的特性
+  （`JSON_VALUE` / `JSON_TABLE` / `INTERSECT` / `EXCEPT` / `LATERAL` / `NOWAIT` / `SKIP LOCKED`
+  均无使用），实际能力下限是 `utf8mb4_0900_ai_ci`（8.0.0+）与 CHECK 约束（8.0.16+）。
+- 版本口径同步更新：`PROJECT_SPEC.md`、`README.md`（环境要求 / 未执行清单 / 已知环境偏差）、
+  `docs/deployment.md`、`docs/requirements-matrix.md`（REQ-3.1-05、REQ-5.1-01）、
+  `docs/test-report.md`、`docs/acceptance.md`、`docs/assumptions.md` §一与第 46 条，
+  以及前端「进度说明」页（`frontend/src/views/system/ProgressView.vue`）的版本描述。
+
+**两条必须留意的运维约束（已写入 `docs/assumptions.md` 第 46 条）。**
+
+1. **不能降级复用数据目录**：已有 8.4 实例的数据文件无法直接给 8.0 启动，
+   必须 `mysqldump` 逻辑导出后重新导入（见 `docs/backup-restore.md`）。
+2. **8.0 系列的官方支持窗口到 2026-04 结束**，因此取 8.0 系列**最新补丁**而非 8.0.17。
+
+**回归。** `manage.py check` 无问题、`makemigrations --check --dry-run` 无变更、`ruff` 全过、
+`pytest tests/test_docs_sync.py` 7 passed、前端 `vue-tsc` 通过 / `vitest` 258 passed / `vite build` 通过。
+**未执行**：`docker compose build` 与 `mysql:8.0` 容器镜像的实际启动验证（本机 Docker 守护进程不可达）。

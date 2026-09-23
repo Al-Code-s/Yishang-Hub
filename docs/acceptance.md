@@ -188,7 +188,7 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
 
 **未执行的验证**：「同一范围唯一生效版本」**未做独立连接的真实并发用例**
 （当前靠服务层 `select_for_update` + 服务层校验，MySQL 无部分唯一索引）；Docker Compose、
-`mysqlclient` 生产驱动、Celery Worker/Beat、Playwright、MySQL 8.4、性能压测与备份恢复仍未执行
+`mysqlclient` 生产驱动、Celery Worker/Beat、Playwright、MySQL 容器镜像（`mysql:8.0`）、性能压测与备份恢复仍未执行
 （与第七节口径一致）。
 
 ## 五之四、阶段 3 第二步验收（MRP）
@@ -219,7 +219,7 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
 
 - 真实多连接的**"同一建议并发转单"压测未执行**（当前靠 `select_for_update` + 状态机 + 行号唯一约束）；
 - Outbox 事件仍为 `pending`（Celery Worker / Beat 未启动，**未执行**消费侧验证）；
-- Playwright、浏览器截图级校验、高性能压测、备份恢复、MySQL 8.4 与 `mysqlclient` 驱动均未执行（与第七节口径一致）。
+- Playwright、浏览器截图级校验、高性能压测、备份恢复、MySQL 容器镜像（`mysql:8.0`）与 `mysqlclient` 驱动均未执行（与第七节口径一致）。
 
 ## 五之五、阶段 3 第四步验收（质量管理 QMS 首块）
 

@@ -191,7 +191,7 @@ dist/assets/chart-Bb6yjXMn.js      1,034.91 kB │ gzip: 343.41 kB
 | Celery worker / beat 运行验证 | 同上；任务与调度配置已就绪但未运行 |
 | Playwright 端到端业务测试 | 未安装浏览器依赖，本轮未执行 |
 | ~~库存并发测试（负库存、余额行并发创建、死锁重试幂等）~~ | **已执行**（见 §8）；必测案例 6/7/8 已通过 |
-| MySQL 8.4 版本验证 | 本机为 MySQL 8.0.17 |
+| MySQL 容器镜像（`mysql:8.0`）验证 | 基线已调整为 8.0 系列；本机原生 8.0.17 与目标同一主版本，**容器镜像未验证** |
 | 生产部署与恢复演练（备份可恢复） | 阶段 7 必测 |
 | 性能测试（百万级库存流水、百万级采集读数、大文件导出） | 阶段 1 无对应数据量场景；测试机器配置与并发模型需在阶段 0 之后按实际资源确认 |
 | 硬件采集接入（模拟器 → HTTP 采集入口） | 阶段 5 实施 |
@@ -443,7 +443,7 @@ vitest 60 → **63**；权限点 117 → **124**；菜单 40 → **43**；业务
 
 - **跨仓调拨与在途状态**：功能未实现，必测案例 11 的跨仓部分**未执行**。
 - Docker Compose 启动、Celery worker/beat、Playwright E2E、备份恢复演练、
-  性能压测、MySQL 8.4 版本验证：状态与第五节一致，**仍未执行**。
+  性能压测、MySQL 容器镜像（`mysql:8.0`）验证：状态与第五节一致，**仍未执行**。
 
 
 ## 九、阶段 2 采购模块增量复验记录（本轮）
@@ -507,7 +507,7 @@ vitest 63 → **66**；权限点 124 → **139**；菜单 43 → **47**；业务
 ### 9.3 本轮仍未执行的测试
 
 - Docker Compose 启动、Celery worker/beat、Playwright E2E、备份恢复演练、性能压测、
-  MySQL 8.4 版本验证：状态与第五节一致，**仍未执行**。
+  MySQL 容器镜像（`mysql:8.0`）验证：状态与第五节一致，**仍未执行**。
 - 采购侧：询价比价、到货差异、退货、应付与付款登记**未实现**，因此**无可执行用例**（未执行不等于通过）。
 
 ## 十、阶段 2 第四步复验记录（销售模块增量，本轮）
@@ -588,7 +588,7 @@ vitest 63 → **66**；权限点 124 → **139**；菜单 43 → **47**；业务
 - **并发多连接实测未执行**：占用的并发保障是 `request_key` 单列唯一约束 + `select_for_update()`
   加锁顺序（余额 → 占用），但没有用真实多进程 / 多连接压测验证「同键并发占用只成功一次」，
   与第五节、§8.1 的口径一致，**不得据用例断言等同于并发压测通过**。
-- Docker Compose、Celery Worker/Beat、Playwright、备份恢复、性能压测、MySQL 8.4：
+- Docker Compose、Celery Worker/Beat、Playwright、备份恢复、性能压测、MySQL 容器镜像（`mysql:8.0`）：
   状态与第五节一致，**仍未执行**。
 - 销售侧未实现能力因此**无可执行用例**（未执行 ≠ 通过）：销售计划、颜色尺码矩阵批量录入、
   折扣、订单变更版本快照、分销商、基础预测、应收与收款登记、跨维度自动拆分占用、
@@ -962,7 +962,7 @@ GET /api/v1/schema/ -> 200（application/vnd.oai.openapi），planning 路径 14
 - **Docker Compose 未启动验证**（本机无 Docker）；`deploy/` 下的编排文件只做过结构检查。
 - **`mysqlclient` 生产驱动未验证**：本地用 `DB_DRIVER=pymysql`；`mysqlclient` 未安装/未编译验证。
 - **Celery Worker / Beat 未运行**：本轮无异步任务依赖（快照是同步计算）。
-- **MySQL 版本偏差**：本机为 MySQL 8.0.17，任务书要求 8.4 LTS，**未在 8.4 上验证**。
+- **MySQL 版本口径**：项目方确认基线由任务书的 8.4 LTS 调整为 8.0 系列，本机 8.0.17 与目标同一主版本；**`mysql:8.0` 容器镜像仍未验证**。
 - **Playwright 端到端未执行**：浏览器自动化被安全策略拒绝（自动审核失败，非人工拒绝），
   因此「登录 → 打开 BOM 页面 → 新建版本 → 提交审批」的全链路**未经浏览器实测**，
   仅以「真实 HTTP Client 调用 + 组件编译 + 生产构建」替代。
@@ -1123,7 +1123,7 @@ CSRF 校验是**新增的服务端强制项**，因此额外从「浏览器实�
 - **Docker Compose 未启动验证**（本机 Docker 守护进程不可达）。
 - **Celery Worker / Beat 未运行**：MRP 为**同步计算**，不依赖 worker；但 Outbox 事件仍为 `pending`，
   未验证消费副作用。
-- **MySQL 8.4 LTS 未验证**（本机为 8.0.17）、**`mysqlclient` 生产驱动未验证**（本地 `DB_DRIVER=pymysql`）。
+- **MySQL 容器镜像（`mysql:8.0`）未验证**（本机为原生 8.0.17）、**`mysqlclient` 生产驱动未验证**（本地 `DB_DRIVER=pymysql`）。
 - **并发 / 多连接压测未执行**：MRP 运算本身不修改库存，但"同一运行的建议并发转单"未做真实并发验证
   （当前靠 `select_for_update` + 建议状态唯一性 + 单据唯一约束保证）。
 - **Playwright 端到端未执行**；**浏览器截图级样式校验未执行**（本轮只能确认组件编译与构建产物）。
@@ -1193,7 +1193,7 @@ E       AssertionError: docs/user-guide.md 的事实行已过期：menus=99，�
 | Docker Compose 启动 | 本机 Docker 不可用，**未执行** |
 | Celery Worker / Beat | **未运行** |
 | Playwright 端到端 | **未执行** |
-| 备份 / 恢复演练、性能压测、MySQL 8.4 验证 | **未执行**（与 §16.7 口径一致） |
+| 备份 / 恢复演练、性能压测、MySQL 容器镜像（`mysql:8.0`）验证 | **未执行**（与 §16.7 口径一致） |
 | 浏览器截图级 UI 校验、≤768px 布局 | **未执行** |
 
 ## 十一、结论
@@ -2490,3 +2490,27 @@ SMOKE_EXIT=0
 
 **已知副作用（已告知）：** 旧公司名下的 130 条 `core.AuditLog`（旧租户的操作审计）随清理一并删除；
 登录审计 `identity.LoginAttempt` 不受影响（`admin` 保留 30 条记录）。
+## 三十七、数据库版本基线调整（MySQL 8.0 系列）的验证
+
+执行时间：2026-09-23。本轮只改版本口径（`compose.yaml` 镜像 tag + 文档 + 一处前端文案），
+**未改业务代码、模型与迁移**。
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests/test_docs_sync.py -q --reuse-db` | 7 passed |
+| `scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+| `npm run typecheck`（vue-tsc） | 通过 |
+| `npm run test`（vitest） | 258 passed（15 个文件） |
+| `npm run build`（vite） | 通过（`built in 14.11s`） |
+| 本机数据库版本 | `SELECT VERSION()` → `8.0.17`，与调整后的目标主版本一致 |
+| `pytest tests/test_wms_inventory.py tests/test_core_services.py -q --reuse-db` | 59 passed（约束 / 锁 / 并发语义最重的两个文件，实跑在 8.0.17 上） |
+
+**未执行：** `docker compose build` 与 `mysql:8.0` 容器镜像的启动验证（本机 Docker 守护进程不可达，
+口径与 §三、§16.7 一致）。因此本轮只证明「代码与迁移不依赖 8.4 专属能力」，
+**不证明容器镜像已可部署**。
+
+**结论：** 任务书原「MySQL 8.4 版本验证」项自本轮起改称「MySQL 容器镜像（`mysql:8.0`）验证」，
+状态仍为**未执行**。

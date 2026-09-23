@@ -74,7 +74,7 @@
 | --- | --- | --- |
 | Python | 3.12 | 本项目在 3.12.14 上验证 |
 | Node.js | ≥ 20.19 | 本项目在 22.17.1 / npm 10.9.2 上验证 |
-| MySQL | 8.4 LTS（目标） | 本地开发验证于 8.0.17，见偏差说明 |
+| MySQL | 8.0 系列（部署镜像 `mysql:8.0`） | 本地开发验证于 8.0.17，见偏差说明 |
 | Redis | 7.x（目标） | 本地开发验证于 3.2.100 |
 
 ## 快速开始
@@ -199,7 +199,7 @@ npm run build
 
 **未执行**（不得视为通过）：Docker Compose 构建与启动、`mysqlclient` 生产驱动验证、
 Celery Worker/Beat 实际运行（Outbox 事件仍为 `pending`）、Playwright 端到端测试、
-真实设备接入（只验证了 HTTP 上报入口与内置模拟器）、备份恢复演练、性能压测、MySQL 8.4 验证、并发转单压测。
+真实设备接入（只验证了 HTTP 上报入口与内置模拟器）、备份恢复演练、性能压测、MySQL 容器镜像（`mysql:8.0`）验证、并发转单压测。
 详见 `docs/test-report.md`。
 
 ## 文档地图
@@ -229,7 +229,7 @@ Celery Worker/Beat 实际运行（Outbox 事件仍为 `pending`）、Playwright 
 
 | 项 | 目标 | 实际 | 处理 |
 | --- | --- | --- | --- |
-| MySQL | 8.4 LTS | 8.0.17 | 不使用 8.4 专属语法；部署镜像固定 `mysql:8.4` |
+| MySQL | 8.0 系列 | 8.0.17 | 项目方确认版本基线由 8.4 LTS 调整为 8.0 系列；部署镜像固定 `mysql:8.0`；代码不依赖 8.4 专属语法 |
 | Redis | 7.x | 3.2.100 | 仅作缓存与 Broker，不使用新版本专属命令 |
 | 数据库驱动 | mysqlclient | 开发用 PyMySQL | Docker/Linux 使用 mysqlclient（**未验证**） |
 | Docker | Compose 部署 | 守护进程不可达 | 文件已编写，**未启动验证** |

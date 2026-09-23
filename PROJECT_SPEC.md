@@ -47,7 +47,7 @@
 | --- | --- |
 | 前端 | Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router + ECharts |
 | 后端 | Python 3.12 + Django 5.2 LTS + Django REST Framework |
-| 数据库 | MySQL 8.4 LTS（InnoDB、utf8mb4、严格模式），Django ORM + migrations |
+| 数据库 | MySQL 8.0 系列（部署镜像 `mysql:8.0`；InnoDB、utf8mb4、严格模式），Django ORM + migrations |
 | 驱动 | `mysqlclient`（生产，锁定版本）；Windows 本地开发用 PyMySQL |
 | 缓存/队列 | Redis + Celery + Celery Beat |
 | API 文档 | drf-spectacular（OpenAPI） |

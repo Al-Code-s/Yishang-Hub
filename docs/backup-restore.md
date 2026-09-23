@@ -74,3 +74,88 @@
 | B-05 | 备份加密与访问控制验证 | 待演练 |
 
 对应必测案例第 22 项「备份可以恢复」——**当前为未执行**。
+
+## 八、本机数据在哪里（开发机）与换电脑迁移
+
+> 本节面向**本地开发机**（Windows + 本机 MySQL / Redis）。生产备份与容灾见第一至七节。
+> **已执行**：旧机导出与导出文件的结构校验（2026-09-23）。**未执行**：新机完整恢复演练（见 §七）。
+
+### 8.1 数据分布（本机实测）
+
+| 内容 | 位置 | 换机是否必须带走 |
+| --- | --- | --- |
+| 业务数据（唯一事实来源） | MySQL 库 `yishang_platform`；物理文件在 `\<MySQL 安装目录>\data\yishang_platform\`（本机约 20 MB、154 张表） | **必须**，用 `mysqldump` 导出 |
+| 测试库 | `test_yishang_platform`（pytest 用，可自动重建） | 不需要 |
+| 附件上传 | `backend/media/`（当前为空，说明还没上传过附件；将来有附件则必须一起拷） | 有则必须 |
+| 配置与密钥 | `backend/.env`（DB 口令、`DJANGO_SECRET_KEY`、初始化口令） | **必须**（未纳入 Git） |
+| 本地脚本与备份 | `.tmp/`（含 `mysqldump` 备份、本地口令记录） | 视需要 |
+| 代码 | Git 仓库 | `git clone` 或整体复制 |
+| Redis | 仅作缓存与队列（`redis://127.0.0.1:6379/0`） | 不需要，重建即可 |
+
+> **不要直接拷贝 MySQL 的 `data\` 目录。** InnoDB 表空间与 MySQL 版本绑定，跨机直接拷贝容易起不来；
+> 统一用逻辑备份（`mysqldump`）+ 导入。
+
+### 8.2 旧机器：导出
+
+```powershell
+# 不加 --databases：备份里不含 CREATE DATABASE，导入时不会因应用账号没有建库权限而失败
+& '<MySQL 安装目录>\bin\mysqldump.exe' -h 127.0.0.1 -P 3306 -u yishang_app '-p<口令>' `
+    --single-transaction --default-character-set=utf8mb4 --routines --triggers `
+    yishang_platform > yishang_platform.sql
+```
+
+- 备份文件含业务数据：**不要**提交 Git、不要放公开网盘。
+- 同时把 `backend/.env` 一并带走（口令、`DJANGO_SECRET_KEY` 都在里面）。
+
+### 8.3 新机器：装环境 → 建库 → 导入
+
+1. 安装 MySQL 8（Windows 服务名默认 `MySQL80`，启动类型自动）、Redis、Python 3.12、Node.js 22。
+2. 用 **root** 建库与账号（应用账号只有两个库的权限，没有建库权限，实测 `SHOW GRANTS` 已确认）：
+
+```sql
+CREATE DATABASE yishang_platform CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'yishang_app'@'localhost' IDENTIFIED BY '<口令>';
+GRANT ALL PRIVILEGES ON yishang_platform.* TO 'yishang_app'@'localhost';
+GRANT ALL PRIVILEGES ON test_yishang_platform.* TO 'yishang_app'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+3. 导入：
+
+```powershell
+& '<MySQL 安装目录>\bin\mysql.exe' -h 127.0.0.1 -P 3306 -u yishang_app '-p<口令>' `
+    --default-character-set=utf8mb4 yishang_platform < yishang_platform.sql
+```
+
+4. 代码与后端依赖（Windows 本地用 `pymysql`，生产/Linux 用 `mysqlclient`；测试还需要 dev 依赖）：
+
+```powershell
+git clone <仓库地址> ; cd Yishang-Hub\backend
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -U pip
+.\.venv\Scripts\python.exe -m pip install ".[pymysql]"
+```
+
+5. 放回 `backend/.env`，然后按顺序确认（`migrate` 应显示无新迁移）：
+
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+```
+
+6. 前端：
+
+```powershell
+cd frontend
+npm install
+npm run dev -- --port 5173
+```
+
+### 8.4 迁移后核对
+
+- `factory.Company` 只有 1 行：`XJYS` / 新疆意尚智造科技有限公司；
+- 表数量为 **154**，与源库一致；
+- 抽查设备 / 能源 / 库存等表行数与源库一致（`SELECT COUNT(*)`）；
+- 管理员账号与 `xj_*` 账号能登录，菜单与列表有数据；
+- 有附件时核对 `core.attachment` 记录与 `backend/media/` 文件是否一一对应（见 §六）。

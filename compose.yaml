@@ -43,7 +43,8 @@ x-backend-env: &backend-env
 
 services:
   mysql:
-    image: mysql:8.4
+    # 版本基线：MySQL 8.0 系列（8.0 系列最新补丁，不钉死小版本）
+    image: mysql:8.0
     restart: unless-stopped
     command:
       - --character-set-server=utf8mb4
