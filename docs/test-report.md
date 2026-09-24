@@ -2490,6 +2490,7 @@ SMOKE_EXIT=0
 
 **已知副作用（已告知）：** 旧公司名下的 130 条 `core.AuditLog`（旧租户的操作审计）随清理一并删除；
 登录审计 `identity.LoginAttempt` 不受影响（`admin` 保留 30 条记录）。
+
 ## 三十七、数据库版本基线调整（MySQL 8.0 系列）的验证
 
 执行时间：2026-09-23。本轮只改版本口径（`compose.yaml` 镜像 tag + 文档 + 一处前端文案），
@@ -2514,3 +2515,55 @@ SMOKE_EXIT=0
 
 **结论：** 任务书原「MySQL 8.4 版本验证」项自本轮起改称「MySQL 容器镜像（`mysql:8.0`）验证」，
 状态仍为**未执行**。
+
+## 三十八、Docker 部署排障轮次的验证（2026-09-24）
+
+执行时间：2026-09-24。本轮把项目方在 Windows + Docker Desktop 上实际跑 Docker 部署暴露出的
+问题逐条修掉（`.env` 缺项、构建期 apt/npm 源、重复 build 目标、等库就绪、Nginx Host 端口、CSRF 白名单），
+并新增两个运维脚本、补齐换机与数据操作的文档。**所有 Docker 命令仍然由项目方执行**，
+本环境（沙箱）内 Docker 守护进程不可达，下面只列本环境真实执行过的部分。
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | **494 passed**（两次：`316.63s` 与 `346.91s`，与基线一致） |
+| `pytest tests/test_docs_sync.py -q` | 7 passed |
+| `scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+| `compose.yaml` YAML 解析校验 | 8 个服务；`object-storage.profiles == ['object-storage']`；**每个镜像 tag 恰好一个 build 目标**；mysql 命令含 binlog 三项；nginx 端口为 `${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:8080` |
+| `scripts/docker_network.ps1`（真实执行） | 识别本机 LAN IP `192.168.1.49`、选中空闲端口 `8080`、把 4 项写入根目录 `.env`；加 `-KeepPort` 重复执行后 `.env` 的 SHA256 **不变** |
+| `scripts/docker_db.ps1` | 语法解析（Windows PowerShell 5.1 与 7 均通过）+ 参数守卫（缺 `-File`、Docker 不可达时给出中文提示）；**真实导出 / 导入未执行** |
+| PowerShell 端口占用探测 | 80 / 443 / 3306 / 5173 / 6379 / 8000 / 8080 / 8081 / 9000 / 9001 / 9080 / 18080 在执行时刻均空闲 |
+| 开发库只读核对（`yishang_platform`） | 154 张表、139 张有数据；`identity_permission` 368 与注册表**集合完全一致**、`identity_menu` 144 亦一致 |
+| 快照文件核对（`db/yishang_platform_2026-09-24.sql`） | 154 个 `CREATE TABLE`、139 张表有 INSERT；`identity_user` 15 行、`ems_meterreading` 742 行、`masterdata_material` 63 行、`wms_location` 90 行 |
+
+**未执行（不得视为通过）：** 所有 Docker 命令（`build` / `up` / `ps` / `cp` / `exec`）在本环境不可达，
+因此「镜像能否一次构建成功、整套服务能否跑通、`migrate` 与 `collectstatic` 是否正常、
+登录与业务页面可用、端口映射与局域网访问、`scripts/docker_db.ps1` 的真实导出/导入」
+**全部未验证**。前端 `npm run typecheck` / `npm run test` / `npm run build` 本轮未改动前端源码
+（只重新生成了 `frontend/public/guide.html`），未执行。
+
+**第二轮（补齐「换电脑 / 数据怎么搬」文档后复跑，同日）：** 文档改动完成后重跑全量，
+`pytest tests -q --reuse-db` → **494 passed in `332.98s`**；`pytest tests/test_docs_sync.py -q` → 7 passed；
+`manage.py check` / `makemigrations --check --dry-run` / `ruff check` 与第一轮一致。
+同一轮还纠正了 5 处**与现状不符的说明**（详见 `docs/progress.md` §四十八）：
+`README.md`、`docs/deployment.md` §二、`backend/README.md` 原先都写
+`Copy-Item .env.example backend\.env`，与「`backend/.env` 与根目录 `.env` 都已入库」的现状矛盾；
+`docs/backup-restore.md` §8.1 的表又把 `backend/.env` 记成「**必须**（未纳入 Git）」；
+`docs/user-guide.md` 仍在教用户点「右上角个人中心」，而该入口已按项目方要求从顶栏移除
+（现为「用户名 → 修改密码 / 使用说明 / 退出登录」下拉菜单）。均已按实际改为现状口径，
+`scripts/build_user_guide.py` 已重新生成网页版（`docs/user-guide.html`、`frontend/public/guide.html`）。
+
+同一轮还用 `check_password` 核对了快照里的账号口令：`md_admin`（id=2）与 `backend/.env` 的
+`YISHANG_DEMO_PASSWORD` **匹配**，`admin`（id=1）与 `backend/.env`、根目录 `.env` 的
+`YISHANG_ADMIN_PASSWORD` **都不匹配** —— 即「快照里的管理员口令 ≠ 仓库里的该变量」。
+这条已写进 `docs/deployment.md` §三（含 `bootstrap_system --reset-admin-password` 的重设命令）
+与常见问题速查表。
+
+同轮静态核对容器入口的设置模块：`config/wsgi.py`、`config/asgi.py` 默认
+`config.settings.prod`，而 `manage.py`、`config/celery.py` 默认 `config.settings.dev`，
+且 `compose.yaml` 的 `x-backend-env` **没有** `DJANGO_SETTINGS_MODULE` —— 即容器里
+`migrate` / `collectstatic` / `bootstrap_system` 与 `worker` / `beat` 实际按 dev 口径运行。
+已知影响（`bootstrap_system` 会随机生成口令而非报错、`seed_demo` 的生产拦截不触发）
+已写入 `docs/deployment.md` §三 与 `docs/assumptions.md` 第 49 条，**本轮未修改 `compose.yaml`**。

@@ -401,3 +401,27 @@ BOM / 工艺 Excel 导入导出、BOM 成本卷算、工艺路线与设备 / 工
 10. **已完成（接线部分）**：MES 工单下达时把 `is_quality_gate` 工序标记为质检点，
     报满自动开 QMS 检验单，并作为工单完工的硬门。
     **仍待做**：与 `procurement.receipt.inspect` 的升级路径共用同一检验单实体。
+
+## 十、Docker 部署与换机可用性（2026-09-24 增量）
+
+**结论：部分通过（含明确未执行项），不得声称「Docker 部署已可交付」。**
+项目方在本机（Windows + Docker Desktop）实际执行了 `docker compose build`、`up -d mysql`、
+`cp` 快照并导入、`up -d`、`collectstatic`，逐轮暴露出 4 类阻塞问题，均已定位并修复：
+
+| 轮次 | 现象 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| 1 | `required variable MYSQL_ROOT_PASSWORD is missing a value` | `.env.example` 漏了必填项，模型化复制后为空 | 已修（`.env` 补齐；文档改为「不要覆盖 `.env`」） |
+| 2 | `apt-get update` 对官方源 502 → `failed to solve ... exit code: 100` | 构建期直连 `deb.debian.org` 不通 | 已修（`APT_MIRROR` 可配置，本机取 `mirrors.aliyun.com`） |
+| 3 | `failed to solve: image "...": already exists` | `migrate` 与 `backend` 两个 build 目标导出同一 tag | 已修（`migrate` 只声明 `image`，复用 `backend` 镜像） |
+| 4 | 登录报「CSRF 校验未通过」 | Nginx `$host` 丢了端口 → Django 同源校验失败；白名单缺 `localhost` 来源 | 已修（改 `$http_host`；白名单补齐 localhost / 127.0.0.1 / 本机 IP） |
+
+**已验证（项目方实跑）：** `mysql:8.0` 镜像可拉取、容器 `Up (healthy)`；`docker compose cp` 可用；
+页面能打开（说明前端静态资源与 Nginx 基本可用）。
+
+**未通过 / 未执行：** `backend` 与 `nginx` 镜像能否一次构建成功、`migrate`、`collectstatic`、
+整套服务启动、登录与业务页面可用、端口映射与局域网访问、容器数据导出/导入脚本的真实运行，
+**均未验证**（本环境 Docker 守护进程不可达，见 `docs/test-report.md` §三十八）。
+
+**本轮新增的运维脚本：** `scripts/docker_network.ps1`（端口 + 局域网白名单，已实跑并验证幂等）、
+`scripts/docker_db.ps1`（容器数据导出 / 导入，仅完成语法与参数守卫验证）。
+完整过程见 `docs/progress.md` §四十三～§四十七。

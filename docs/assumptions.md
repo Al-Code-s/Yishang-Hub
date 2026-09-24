@@ -377,12 +377,26 @@
 47. **开发库口令与数据快照改为随 Git 仓库走（项目方 2026-09-24 确认，有意偏离 AGENTS.md 第二条）。**
     项目方明确：本仓库是**单人私有仓库**，平台只服务一家公司、开发数据均为演示数据，
     不存在需要保护的第三方资料；为了让「换电脑 = `git clone`」成立，把 `backend/.env`
-    （开发库口令、`DJANGO_SECRET_KEY`、初始化口令）取消忽略并入库，并把 `mysqldump` 快照放进 `db/`。
+    （开发库口令、`DJANGO_SECRET_KEY`、初始化口令）与 Compose 用的根目录 `.env`
+    （容器 root 口令、`HTTP_PORT` 等）都取消忽略并入库，并把 `mysqldump` 快照放进 `db/`。
     AGENTS.md 第二条关于**生产**的要求不变：生产口令只从环境变量注入，
     `deploy/`、`compose.yaml` 与文档中不得出现任何真实生产口令。
     两条必须守住的约束：① 生产库口令**不得**与开发库口令相同；
     ② 一旦仓库转为公开或新增协作者，必须先 `git filter-repo` 把 `backend/.env` 从历史中移除并轮换口令。
     影响范围：仓库内容与本地开发配置；关闭条件：仓库公开化或加入协作者。
+
+49. **容器里「一次性命令」与「Web 进程」用的是两套设置（本版本未统一，已记录未改）。**
+    `config/wsgi.py`（gunicorn 的入口）默认 `config.settings.prod`，但 `manage.py` 与
+    `config/celery.py` 默认 `config.settings.dev`，而 `compose.yaml` 只注入 `DJANGO_ENV`、
+    **没有注入 `DJANGO_SETTINGS_MODULE`**。因此容器内 `migrate` / `collectstatic` /
+    `bootstrap_system` 等命令与 `worker` / `beat` 实际按 dev 口径运行：① `bootstrap_system`
+    不会因缺少 `YISHANG_ADMIN_PASSWORD` 而失败，而是**随机生成并打印一次**；②
+    `seed_demo` / `seed_demo_xjys` 的「生产环境直接拒绝」拦截不会触发（它判的是
+    `settings.DJANGO_ENV == "production"`）。**功能上不阻塞**（迁移与设置无关，Web 进程也不是 dev），
+    但「生产环境绝不自动生成口令」「生产环境拒绝演示数据」这两条保证在容器里要靠人工纪律。
+    影响范围：Docker 部署的一次性命令与后台任务；关闭条件：在 `x-backend-env` 里加
+    `DJANGO_SETTINGS_MODULE: config.settings.prod` 并复验（**本轮未改、未验证**，
+    已写入 `docs/deployment.md` §三「容器里的一次性命令用的是哪套设置」供项目方决定）。
 
 48. **国内网络下 Docker 构建与拉取需要「可配置的软件源」和「可用的镜像加速器」（环境相关，非代码缺陷）。**
     实测（2026-09-24，项目方 Windows + Docker Desktop）：`docker compose build` 的 `runtime` 阶段

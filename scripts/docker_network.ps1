@@ -55,7 +55,15 @@ function Test-PortFree([int]$Candidate) {
     if (Get-NetTCPConnection -State Listen -LocalPort $Candidate -ErrorAction SilentlyContinue) {
         return $false
     }
-    $hits = netstat -ano 2>$null | Select-String -Pattern (':{0}\s' -f $Candidate)
+    # PS 5.1 在 ErrorActionPreference=Stop 时会把外部命令的 stderr 警告当终止错误，这里临时放开
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $hits = netstat -ano 2>$null | Select-String -Pattern (':{0}\s' -f $Candidate)
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
     return -not $hits
 }
 

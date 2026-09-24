@@ -87,7 +87,7 @@
 | 业务数据（唯一事实来源） | MySQL 库 `yishang_platform`；物理文件在 `\<MySQL 安装目录>\data\yishang_platform\`（本机约 20 MB、154 张表） | **必须**，用 `mysqldump` 导出 |
 | 测试库 | `test_yishang_platform`（pytest 用，可自动重建） | 不需要 |
 | 附件上传 | `backend/media/`（当前为空，说明还没上传过附件；将来有附件则必须一起拷） | 有则必须 |
-| 配置与密钥 | `backend/.env`（DB 口令、`DJANGO_SECRET_KEY`、初始化口令） | **必须**（未纳入 Git） |
+| 配置与密钥 | `backend/.env`（DB 口令、`DJANGO_SECRET_KEY`、初始化口令）与根目录 `.env`（Compose 用） | **已随仓库入库**（第 47 条），换机不必手工拷 |
 | 本地脚本与备份 | `.tmp/`（含 `mysqldump` 备份、本地口令记录） | 视需要 |
 | 代码 | Git 仓库 | `git clone` 或整体复制 |
 | Redis | 仅作缓存与队列（`redis://127.0.0.1:6379/0`） | 不需要，重建即可 |
@@ -105,7 +105,8 @@
 ```
 
 - 备份文件含业务数据：**不要**提交 Git、不要放公开网盘。
-- 同时把 `backend/.env` 一并带走（口令、`DJANGO_SECRET_KEY` 都在里面）。
+- `backend/.env` 与根目录 `.env` 已随仓库入库（第 47 条），**不用**再单独带走；
+  手工导出 `.sql` 时仍按上一行处理（这条只针对快照文件）。
 
 ### 8.3 新机器：装环境 → 建库 → 导入
 
@@ -136,7 +137,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install ".[pymysql]"
 ```
 
-5. 放回 `backend/.env`，然后按顺序确认（`migrate` 应显示无新迁移）：
+5. 确认 `backend/.env`（已在仓库里；副本缺失时按 `docs/deployment.md` §二 重建），然后按顺序确认（`migrate` 应显示无新迁移）：
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py migrate
@@ -189,3 +190,28 @@ npm run dev -- --port 5173
   生产备份一律按本文第一至七节执行。
 - 快照**有时效性**：导入前先 `manage.py migrate` 对齐结构；若快照比代码旧，以代码迁移为准，
   不要为了省事把旧快照直接灌进新结构。
+
+### 8.6 Docker 部署（容器）里的数据：导出、导入、备份
+
+Docker 部署用的是**另一个独立的 MySQL 实例**（数据在 Docker 卷 `yishang-platform_mysql-data` 里），
+与 §8.1 的宿主开发库互不影响 —— 两边库名都叫 `yishang_platform`，但完全是两套，务必别搞混。
+
+| 想做的事 | 怎么做 |
+| --- | --- |
+| 把容器数据备份出来 | `powershell -ExecutionPolicy Bypass -File scripts\docker_db.ps1 -Action Export`（默认导出到 `db\yishang_platform_<日期>.sql`） |
+| 把快照导进容器 | `... -Action Import -File db\yishang_platform_2026-09-24.sql`（脚本会先等 MySQL `healthy`） |
+| 把容器数据带回开发库 | 先 `Export`，再按 §四 的恢复步骤导进宿主 MySQL |
+| 把开发库最新数据送进容器 | 先按 §8.2 在宿主导出，再 `-Action Import` |
+| 换一台机器用 Docker 部署 | 新机器 `git clone` → 按 `docs/deployment.md` §三「新电脑从零到能用」→ 需要旧数据就 `Import` 老机器导出的 `.sql` |
+
+**三条必须知道的事实：**
+
+- 容器数据**没有自动备份**：`docker compose down -v` 会删掉数据卷（业务数据与 Redis 数据全没），
+  日常 `docker compose down` / `restart` / `up -d` 都不会丢数据。
+- **附件不在 MySQL 里**：容器部署的附件在 Docker 卷 `yishang-platform_backend-media`。
+  只导 `.sql` 不会带走附件；要一起备份就执行（可选）：
+  ```powershell
+  docker run --rm -v yishang-platform_backend-media:/data -v "${PWD}:/backup" alpine tar czf /backup/media-<日期>.tar.gz -C /data .
+  ```
+- 本文第一至七节的保留策略、加密与恢复演练同样适用于容器数据，且**当前都没有执行过**
+  （见 `docs/test-report.md` 的「未执行」清单与 `docs/assumptions.md`）。

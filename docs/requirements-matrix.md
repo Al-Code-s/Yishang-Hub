@@ -548,7 +548,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-3.3-02 | 3.3 | Redis 不作为业务状态唯一存储 | 设计约定 | 已完成 | 仅用于缓存与任务消息；库存/审批/工单状态在 MySQL |
 | REQ-3.4-01 | 3.4 | 同一镜像承担 web/worker/beat | `compose.yaml` | 部分完成 | 未启动验证 |
 | REQ-3.4-02 | 3.4 | Beat 只运行一个调度实例 | `compose.yaml` | 部分完成 | 未启动验证 |
-| REQ-3.4-03 | 3.4 | MySQL/Redis 不暴露公网 | `compose.yaml`（仅 internal 网络，未映射宿主端口） | 部分完成 | 未启动验证 |
+| REQ-3.4-03 | 3.4 | MySQL/Redis 不暴露公网 | `compose.yaml`（仅 internal 网络，未映射宿主端口） | 部分完成 | 未启动验证；已实测 `docker compose ps`：mysql 容器为 `Up (healthy)` 且只显示容器内端口、无宿主映射 |
 | REQ-3.4-04 | 3.4 | 服务健康检查 | `/healthz`、`/readyz`、compose healthcheck | 已完成 | 应用侧已实测 |
 | REQ-3.4-05 | 3.4 | 数据持久化卷 | `compose.yaml`（named volumes） | 部分完成 | 未启动验证 |
 | REQ-3.4-06 | 3.4 | 迁移作为独立发布步骤，不由多 web 实例并发执行 | `compose.yaml` 的 `migrate` 一次性任务 | 部分完成 | 未启动验证 |
@@ -1188,7 +1188,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-16.2-01 | 16.2 | `DEBUG=False` | `prod.py` | 已完成 |
 | REQ-16.2-02 | 16.2 | 域名、CSRF 来源、HTTPS（缺失即启动失败） | `prod.py` 抛 `ImproperlyConfigured` | 已完成 |
 | REQ-16.2-03 | 16.2 | 非 root 容器 | `compose.yaml` / `deploy/docker/Dockerfile` | **未验证** |
-| REQ-16.2-04 | 16.2 | 不公开 MySQL、Redis 管理端口 | `compose.yaml`（不映射宿主端口） | **未验证** |
+| REQ-16.2-04 | 16.2 | 不公开 MySQL、Redis 管理端口 | `compose.yaml`（不映射宿主端口） | **未验证** | 已实测 `docker compose ps`：mysql 仅显示 `3306/tcp, 33060/tcp`（容器内），未发布到宿主 |
 | REQ-16.2-05 | 16.2 | 连接池或连接寿命合理配置 | `DB_CONN_MAX_AGE` | 已完成 |
 | REQ-16.2-06 | 16.2 | 上传文件与代码分离、日志轮转 | volume 分离 | **未验证** |
 | REQ-16.2-07 | 16.2 | 静态资源正确部署 | `deploy/nginx/` | **未验证** |

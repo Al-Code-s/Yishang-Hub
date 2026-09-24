@@ -65,8 +65,11 @@
 —— 见 `docs/requirements-matrix.md` 的阶段标注与各阶段增量清单（设备 / 能源 / 物流 / EHS 见 §一之十八，
 采集统计与客户服务统计见 §一之二十，生产执行见 §一之二十二）。
 
-> ⚠️ **Docker Compose 未实际启动验证**（开发机 Docker 守护进程不可达）。
-> 相关文件已编写，但**不声称"已验证可部署"**。详见 `docs/assumptions.md`。
+> ⚠️ **Docker Compose 尚未完整验证**：项目方已在 Windows + Docker Desktop 上实际跑过
+> `docker compose build` 与 `up -d mysql`（`mysql:8.0` 起得来且 `healthy`），但**整套服务跑通、
+> `migrate`、Nginx、登录流程仍未验证**。已修复 4 类实际踩到的阻塞点（构建期软件源、重复 build 目标、
+> 等数据库就绪、Nginx Host 端口），详见 `docs/progress.md` §四十三～§四十七。
+> 仍**不声称"已验证可部署"**；换机器部署请照抄 `docs/deployment.md` §三「新电脑从零到能用」。
 
 ## 环境要求
 
@@ -81,15 +84,22 @@
 
 ### 1. 配置环境变量
 
-```powershell
-Copy-Item .env.example backend\.env
-```
+仓库里**已经带好两份 `.env`**（本项目是单人私有仓库，取舍见 `docs/assumptions.md` 第 47 条），
+`git clone` 下来就能直接用，**正常不需要自己创建**：
 
-至少填写：`DJANGO_SECRET_KEY`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`。
-Windows 本地开发请设 `DB_DRIVER=pymysql`（无 C 编译工具链）；Docker/Linux 使用 `mysqlclient`。
+| 文件 | 谁读它 | 放什么 |
+| --- | --- | --- |
+| `backend/.env` | Django（`manage.py` / `runserver` / `pytest`） | 本地开发：`DB_DRIVER=pymysql`、`DB_NAME` / `DB_USER` / `DB_PASSWORD`、`DJANGO_SECRET_KEY`、初始化口令 |
+| `.env`（仓库根目录） | Docker Compose | 容器部署：`MYSQL_ROOT_PASSWORD`、`HTTP_PORT` / `HTTP_BIND`、`APT_MIRROR` / `NPM_REGISTRY`、`DJANGO_*` |
 
-> 数据库请使用**专用应用账号**，不要用 `root` 连接应用。
-> 密码不要写进代码或提交到仓库。
+两份都含本机演示库的真实口令，改动后按普通文件提交即可；文件丢失时要重建哪些键见
+`docs/deployment.md` §二。**不要**用 `Copy-Item .env.example .env` 去覆盖：示例文件里必填键是空的，
+覆盖后构建会直接报 `required variable ... is missing a value`。
+
+Windows 本地开发用 `DB_DRIVER=pymysql`（无 C 编译工具链）；Docker/Linux 用 `mysqlclient`。
+
+> 数据库请使用**专用应用账号** `yishang_app`，不要用 `root` 连接应用；
+> **生产**环境的真实口令只从环境变量注入，不写进代码，也不提交到仓库。
 
 ### 2. 启动后端
 
@@ -122,6 +132,28 @@ npm run dev
 
 前端通过 Vite 代理把 `/api`、`/admin`、`/static`、`/media`、`/healthz`、`/readyz`
 转发到 Django，保持与生产（Nginx 同域）一致的会话与 CSRF 行为。
+
+## Docker 部署（换电脑 / 给客户装）
+
+前提：装好并启动 **Docker Desktop**；仓库 `git clone` 下来就带着配置（`.env`）与数据快照（`db/*.sql`），
+不需要再手工传任何文件。下面命令**在仓库根目录**执行：
+
+```powershell
+cd <仓库目录>
+docker compose build                    # 构建 nginx + backend 两个镜像（首次 5~10 分钟）
+docker compose up -d --wait mysql       # 起数据库并等健康检查通过
+powershell -ExecutionPolicy Bypass -File scripts\docker_db.ps1 -Action Import -File db\yishang_platform_2026-09-24.sql
+docker compose up -d                    # 起其余服务（migrate 自动执行）
+docker compose exec backend python manage.py collectstatic --noinput
+docker compose ps                       # mysql/redis/backend/worker/beat/nginx 都应 Up，migrate 应为 Exited (0)
+```
+
+- **访问**：本机 `http://localhost:8080/`；局域网其他电脑 `http://<本机IP>:8080/`（端口取 `.env` 的 `HTTP_PORT`）。
+- **端口被占用 / 要让局域网访问**：`powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1`
+  （自动挑空闲端口 + 写白名单，改完 `docker compose up -d`）。
+- **容器数据备份 / 搬机器**：`powershell -ExecutionPolicy Bypass -File scripts\docker_db.ps1 -Action Export`。
+- 容器里的 MySQL 与宿主开发库是**两套独立实例**（同名 `yishang_platform` 但互不影响），见 `docs/backup-restore.md` §8.6。
+- 完整说明（逐条排错、数据在哪里、怎么彻底重来、为什么这么设计）见 **`docs/deployment.md` §三**。
 
 ## 访问地址
 
@@ -185,7 +217,7 @@ npm run build
 
 | 项目 | 命令 | 结果 |
 | --- | --- | --- |
-| 后端测试 | `pytest backend/tests -q --reuse-db` | **472 passed**（见 `docs/test-report.md` §三十一，MySQL 上运行，含文档同步、枚举标签与角色绑定用例） |
+| 后端测试 | `pytest backend/tests -q --reuse-db` | **494 passed**（2026-09-24 重跑，见 `docs/test-report.md` §三十八，MySQL 上运行，含文档同步、枚举标签与角色绑定用例） |
 | 后端检查 | `manage.py check` | 无问题 |
 | 迁移一致性 | `makemigrations --check --dry-run` | No changes detected |
 | 代码风格 | `ruff check apps config tests` | All checks passed |
@@ -197,9 +229,11 @@ npm run build
 补充：`scripts/smoke_check.ps1` 7 步全过；MRP 真实 HTTP 链路 29 项检查全部通过
 （对标运行中的开发服务器，见 `docs/test-report.md` §16.5）。
 
-**未执行**（不得视为通过）：Docker Compose 构建与启动、`mysqlclient` 生产驱动验证、
+**未执行**（不得视为通过）：`mysqlclient` 生产驱动验证（容器内 `pytest` 未跑）、
 Celery Worker/Beat 实际运行（Outbox 事件仍为 `pending`）、Playwright 端到端测试、
-真实设备接入（只验证了 HTTP 上报入口与内置模拟器）、备份恢复演练、性能压测、MySQL 容器镜像（`mysql:8.0`）验证、并发转单压测。
+真实设备接入（只验证了 HTTP 上报入口与内置模拟器）、备份恢复演练、性能压测、并发转单压测，
+以及 **Docker 整套服务跑通与登录流程验证**（`docker compose build` 与 `up -d mysql` 已由项目方实际执行，
+`mysql:8.0` 容器已起且 `healthy`；`backend`/`nginx`/`migrate`/登录仍未验证）。
 详见 `docs/test-report.md`。
 
 ## 文档地图
@@ -232,7 +266,7 @@ Celery Worker/Beat 实际运行（Outbox 事件仍为 `pending`）、Playwright 
 | MySQL | 8.0 系列 | 8.0.17 | 项目方确认版本基线由 8.4 LTS 调整为 8.0 系列；部署镜像固定 `mysql:8.0`；代码不依赖 8.4 专属语法 |
 | Redis | 7.x | 3.2.100 | 仅作缓存与 Broker，不使用新版本专属命令 |
 | 数据库驱动 | mysqlclient | 开发用 PyMySQL | Docker/Linux 使用 mysqlclient（**未验证**） |
-| Docker | Compose 部署 | 守护进程不可达 | 文件已编写，**未启动验证** |
+| Docker | Compose 部署 | 沙箱内守护进程不可达；项目方 Windows 机器上已部分实跑 | 文件已编写；已实跑 `build`（曾因 apt 源失败，已修）与 `up -d mysql`（`healthy`），**整套服务与登录仍未验证** |
 
 详见 `docs/assumptions.md`。
 

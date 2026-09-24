@@ -4052,3 +4052,99 @@ target backend: failed to solve: image "docker.io/library/yishang-platform-backe
 
 **未执行：** 登录是否恢复**未实测**（要在项目方的 Docker 环境里验证）；`nginx.conf` 改动需
 `docker compose build nginx` 后才会体现在容器里，本轮无法执行任何 Docker 命令。
+
+## 四十八、Docker 数据搬运脚本与「换电脑」文档补齐（本轮）
+
+**背景。** 项目方把平台跑进容器后提出两件事：① 容器里的数据怎么备份、怎么搬到别的电脑；
+② 文档要按「新电脑上跑哪些命令、数据怎么操作」补，并顺带把其他文档与最新代码对齐。
+
+**新增脚本 `scripts/docker_db.ps1`。** 容器里的 MySQL 是**独立实例**（数据在 Docker 卷
+`yishang-platform_mysql-data`），与宿主开发库互不影响；两边库名都叫 `yishang_platform`，很容易混。
+脚本提供两个动作：
+
+- `-Action Export`：容器内 `mysqldump`（`--single-transaction --routines --triggers`）→
+  `docker compose cp` 取回主机，默认落在 `db\yishang_platform_<今天>.sql`；同名文件已存在要加 `-Force`；
+  导出后校验文件大小（小于 1 KB 视为异常）并统计 `CREATE TABLE` 条数。
+- `-Action Import -File <sql>`：先 `docker compose up -d --wait mysql` 并**轮询 `ps` 里的 `healthy`**
+  再导入（不做这一步会撞上 `ERROR 2002 ... socket`），导入完成后打印核对用的 SQL。
+- 两个动作都先确认 Docker 可用、MySQL 在运行；外部命令统一走包装器，调用期间临时把
+  `$ErrorActionPreference` 置为 `Continue`，避免 PS 5.1 把 docker 的 stderr 警告当终止错误
+  （`docker_network.ps1` 的 `netstat` 探测同步加了这层保护）。脚本按仓库约定保存为**带 BOM 的 UTF-8 + LF**。
+
+**文档补齐。**
+
+| 文档 | 本轮新增 / 改动 |
+| --- | --- |
+| `docs/deployment.md` | §三 顶部「新电脑从零到能用（照抄这一段）」六步 + 访问地址表 + 核对 SQL + 空库分支；「容器数据怎么备份、怎么搬、怎么重来」（三份数据在哪的对照表）；「Docker 部署常见问题速查」13 行；「改端口 / 让局域网其他电脑访问」；设计约束补「同一个镜像 tag 只允许一个 `build` 目标」 |
+| `docs/backup-restore.md` | 新增 §8.6「Docker 部署（容器）里的数据：导出、导入、备份」，含附件卷（`yishang-platform_backend-media`）导出命令与 `down -v` 警告 |
+| `README.md` | 新增「Docker 部署（换电脑 / 给客户装）」章节；顶部 Docker 警告由「未启动验证」改为「部分实跑」；测试结果 472 → 494 passed |
+| `docs/acceptance.md` | 新增第十节「Docker 部署与换机可用性」（4 类阻塞问题表 + 已验证 / 未验证边界） |
+| `docs/requirements-matrix.md` | REQ-3.4-03 / REQ-16.2-04 备注补「已实测 mysql `Up (healthy)` 且未发布宿主端口」 |
+| `docs/assumptions.md` | 第 48 条（国内网络构建需换源）；第 47 条补上 Compose 用的根目录 `.env` |
+
+**纠正四处过时的 `.env` 指引。** 仓库现在**自带两份 `.env`**（`backend/.env` 给 Django、
+根目录 `.env` 给 Compose，决策见第 47 条），但多处文档还停在「从示例复制」的旧流程：
+
+- `README.md` §快速开始、`docs/deployment.md` §二、`backend/README.md` 的「环境变量」一节都写着
+  `Copy-Item .env.example backend\.env`。这句话现在**既多余又有害**：根目录 `.env.example` 是 Compose 的示例
+  （必填键为空，且 `REDIS_URL` 写的是容器内地址 `redis://redis:6379/0`），拷进 `backend/.env` 后
+  本机 `runserver` 连不上 Redis。三处都改为「仓库已带，正常不需要自己创建」，只保留重建时的键清单。
+- `docs/backup-restore.md` §8.1 的「配置与密钥」一行原写「**必须**（未纳入 Git）」，与 §8.5
+  「`backend/.env` 已入库」自相矛盾，改为「已随仓库入库，换机不必手工拷」。
+- `docs/deployment.md` §一 补一张「两份 `.env` 各管一边」的对照表，避免再混。
+
+**顺带纠正客户说明里过时的「个人中心」。** 顶栏上的「个人中心」入口此前已按项目方要求移除，
+现在右上角是「头像 + 姓名」的下拉菜单（只读显示所属公司与角色，操作为「修改密码 / 使用说明 /
+退出登录」），但 `docs/user-guide.md` 仍写着「右上角**个人中心 → 修改密码**」，客户照着点会找不到入口。
+已改 §2.1 表格、§3.3、§3.4（标题改为「右上角用户菜单与通知」，并把「使用说明」「刷新」「铃铛」三个图标
+一起写进表格）、§4.1 的界面结构描述，`scripts/build_user_guide.py` 重新生成了
+`docs/user-guide.html` 与 `frontend/public/guide.html`（「最后更新」日期同步为 2026-09-24）。
+
+**补一条「导入快照后登不进去」的排查。** 顺手核对快照里两个账号的口令哈希
+（`django.contrib.auth.hashers.check_password` 比对 `.env` 取值）：`md_admin`（id=2）与
+`backend/.env` 的 `YISHANG_DEMO_PASSWORD` **匹配**；而 `admin`（id=1）与 `backend/.env`、
+根目录 `.env` 里的 `YISHANG_ADMIN_PASSWORD` **都不匹配**——说明「快照里的管理员口令」是制作快照那一刻
+开发库里的口令，与仓库里的该变量是两回事（后者只在**空库**跑 `bootstrap_system` 时生效）。
+这正是项目方导入后最容易卡住的地方，已写进文档：
+
+- `docs/deployment.md` 「新电脑从零到能用」的登录说明改为「口令不一定等于 `.env`」，
+  并给出重设命令 `docker compose run --rm backend python manage.py bootstrap_system
+  --reset-admin-password --admin-password '<新口令>'`（只重设口令与权限属性，不动业务数据）。
+- 同一节的「常见问题速查」增加对应行。
+
+**又发现一处「文档说生产、容器其实按开发跑」的落差。** 通读容器入口时确认：`config/wsgi.py`
+（gunicorn 用的入口）默认 `config.settings.prod`，但 **`manage.py` 与 `config/celery.py`
+默认 `config.settings.dev`**，而 `compose.yaml` 只注入 `DJANGO_ENV`、**没有注入
+`DJANGO_SETTINGS_MODULE`** —— 所以容器里的 `migrate` / `collectstatic` / `bootstrap_system`
+与 `worker` / `beat` 实际都是 dev 口径。两个可观察的后果：
+
+- `bootstrap_system` 在容器里**不会**因缺少 `YISHANG_ADMIN_PASSWORD` 而报错，而是**随机生成一个口令并打印**；
+  → 文档改为「务必显式传口令」，并给出两种写法。
+- `seed_demo` / `seed_demo_xjys` 的「生产直接拒绝」拦截**不会触发**（拒绝逻辑判的是
+  `settings.DJANGO_ENV == "production"`）；→ 文档明确「只能靠自己不执行」。
+
+**本轮没有改 `compose.yaml`**（用户当前的容器已经跑起来，改设置需要重新 `up -d` 并复验，
+不宜在他排障的中途动），而是把事实、影响与「加一行 `DJANGO_SETTINGS_MODULE: config.settings.prod`」
+的建议一起写进 `docs/deployment.md` §三 新增小节「容器里的一次性命令用的是哪套设置」，
+并在 `docs/assumptions.md` 记为第 49 条（关闭条件：加上该变量并复验）。
+
+**本轮执行的检查。**
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| `pytest tests -q --reuse-db` | **494 passed in `332.98s`**（文档改动后复跑，与基线一致） |
+| `pytest tests/test_docs_sync.py -q` | 7 passed |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+| `docs/permission-matrix.md` 与注册表逐项比对 | 20 个模块的条数与注册表**完全一致**（合计 368），菜单树小节标注 144 项 |
+| 文档里出现的 `manage.py <命令>` 与实际命令清单比对 | 全部存在（`bootstrap_system` / `seed_demo` / `seed_demo_xjys` / `ems_offline_check` / `iot_offline_check` / `iot_simulate`） |
+| `scripts/docker_db.ps1` | PowerShell 语法解析通过；**真实导出 / 导入未执行**（沙箱内 Docker 守护进程不可达） |
+| 快照 `identity_user` 口令核对 | 用 `check_password` 比对：`md_admin` 与 `YISHANG_DEMO_PASSWORD` 匹配；`admin` 与两处 `YISHANG_ADMIN_PASSWORD` **均不匹配**（已转为文档里的重设步骤） |
+| `scripts/build_user_guide.py` / `--check` | 改完 `docs/user-guide.md` 后重新生成，两份产物一致（`使用说明网页版是最新的。`） |
+| 容器入口的设置模块（静态核对代码） | `config/wsgi.py`、`config/asgi.py` → `config.settings.prod`；`manage.py`、`config/celery.py` → `config.settings.dev`；`rg DJANGO_SETTINGS_MODULE` 全仓库仅此 4 处 + `pyproject.toml` 的 pytest 配置 |
+| `compose.yaml` 是否注入 `DJANGO_SETTINGS_MODULE` | **没有**（`x-backend-env` 里只有 `DJANGO_ENV`），故结论成立 |
+
+**未执行：** 所有 Docker 命令；`scripts/docker_db.ps1` 的真实导出与导入。上面「新电脑从零到能用」六步
+是按 `compose.yaml` 与脚本语义写的，**没有在全新机器上跑过**，仍属「未验证」。

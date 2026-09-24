@@ -20,7 +20,15 @@
 | `staging` | 预发布 | `config/settings/prod.py` + 独立变量 | 与生产同构，数据脱敏 |
 | `production` | 生产 | `config/settings/prod.py` | 强制 `DEBUG=False`、HTTPS、严谨来源校验 |
 
-配置**全部由环境变量注入**，`.env.example` 只放示例，**不含真实密钥**。
+配置**全部由环境变量注入**。仓库里有两份 `.env`，各管一边（本项目是单人私有仓库，
+两份都随仓库入库，取舍见 `docs/assumptions.md` 第 47 条）：
+
+| 文件 | 谁读它 | 用途 |
+| --- | --- | --- |
+| `backend/.env` | Django（`manage.py` / `runserver` / `pytest`） | 本地开发：`DB_DRIVER=pymysql`、`DB_*`、`DJANGO_*`、初始化口令 |
+| `.env`（仓库根目录） | Docker Compose | 容器部署：`MYSQL_ROOT_PASSWORD`、`HTTP_PORT` / `HTTP_BIND`、`APT_MIRROR` / `NPM_REGISTRY`、注入容器的 `DJANGO_*` |
+
+`.env.example` 只放示例，**不含真实密钥**；**生产**环境的真实口令只从环境变量注入，不进仓库。
 
 ## 二、本地开发启动（本轮已实际验证 ✅）
 
@@ -61,11 +69,9 @@
 
 ### 1. 环境变量
 
-```powershell
-Copy-Item .env.example backend\.env   # 然后填写 DB_PASSWORD 等，不要提交
-```
-
-必须设置：
+**`backend/.env` 已随仓库入库**（单人私有仓库的取舍，见 `docs/assumptions.md` 第 47 条）：
+`git clone` 下来就带着本地开发的全部连线信息，正常**不需要自己创建或修改**。
+只有在文件丢失、或要在新机器上重建一份时才手工写，键如下：
 
 ```text
 DJANGO_ENV=development
@@ -74,7 +80,18 @@ DB_DRIVER=pymysql          # Windows 本地开发；Docker/Linux 用 mysqlclient
 DB_NAME=yishang_platform
 DB_USER=yishang_app
 DB_PASSWORD=<应用账号密码，不要用 root>
+DB_HOST=127.0.0.1
+DB_PORT=3306
+REDIS_URL=redis://127.0.0.1:6379/0
+CELERY_BROKER_URL=redis://127.0.0.1:6379/1
+YISHANG_ADMIN_PASSWORD=<初始化管理员口令>
+YISHANG_DEMO_PASSWORD=<演示账号口令>
 ```
+
+> **不要**用 `Copy-Item .env.example backend\.env` 覆盖它：根目录 `.env.example` 是 **Compose** 的示例
+> （放的是 `MYSQL_ROOT_PASSWORD` / `HTTP_PORT` 那一套，且必填键为空），拷过来既不合适、又会把
+> `REDIS_URL` 写成容器内的 `redis://redis:6379/0`，本机 `runserver` 连不上 Redis。
+> 容器侧的变量见 §三「启动流程」与 `.env.example` 的注释。
 
 ### 2. 后端
 
@@ -188,6 +205,58 @@ mysql -h 127.0.0.1 -P 3306 -u yishang_app -p yishang_platform
 
 ## 三、Docker Compose 部署 【未执行 ⚠️】
 
+### 新电脑从零到能用（照抄这一段）【未执行 ⚠️】
+
+前提：装好并启动 **Docker Desktop**；仓库已 `git clone` 到本机（`.env` 与数据快照都在仓库里，
+所以**不需要**手工传任何配置或数据文件）。下面命令**在仓库根目录**执行。
+
+```powershell
+cd <仓库目录>                          # 例如 E:\github\Yishang-Hub
+
+docker compose build                   # ① 构建 nginx + backend 两个镜像（首次 5~10 分钟）
+
+docker compose up -d --wait mysql      # ② 起数据库并等健康检查通过（必须看到 healthy 再往下走）
+
+# ③ 把数据带进容器：只有【首次部署】或【想覆盖成这份快照】时才做
+powershell -ExecutionPolicy Bypass -File scripts\docker_db.ps1 -Action Import -File db\yishang_platform_2026-09-24.sql
+
+docker compose up -d                   # ④ 起其余服务：migrate 自动跑完，再起 backend / worker / beat / nginx
+docker compose exec backend python manage.py collectstatic --noinput   # ⑤ 静态资源进卷
+docker compose ps                      # ⑥ 看状态
+```
+
+第 ⑥ 步期望：`mysql` / `redis` / `backend` / `worker` / `beat` / `nginx` 都是 `Up`（`mysql` 为 `healthy`），
+`migrate` 是 `Exited (0)`。随后浏览器打开：
+
+| 谁访问 | 地址 | 说明 |
+| --- | --- | --- |
+| 本机 | `http://localhost:8080/` | 端口取 `.env` 的 `HTTP_PORT`；等于 80 时可省略 `:80` |
+| 局域网其他电脑 | `http://192.168.1.49:8080/` | 地址 = `http://` + 本机 IP + `:` + `HTTP_PORT`；无客户端、开浏览器即可 |
+
+登录账号用快照里带过来的那套：管理员 `admin`。快照里存的是口令**哈希**，对应的是
+**「制作快照那一刻开发库的口令」**，
+它**不一定**等于 `.env` 里的 `YISHANG_ADMIN_PASSWORD`（那一项只在**空库**执行 `bootstrap_system` 时生效）。
+口令不确定或忘了，就用下面这条重设（幂等：只重设口令与管理员权限属性，**不动业务数据**）：
+
+```powershell
+docker compose run --rm backend python manage.py bootstrap_system --reset-admin-password --admin-password '<新口令>'
+```
+
+> 重设后首次登录，页面顶部会提示尽快修改口令。演示账号（如 `md_admin`）的口令来自
+> `YISHANG_DEMO_PASSWORD`，同样可以在 `backend/.env` 里查到。
+
+**核对「数据确实进去了」**（期望 `users=15`、`tables_=154`）：
+
+```powershell
+docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot yishang_platform -e "select (select count(*) from identity_user) users, (select count(*) from information_schema.tables where table_schema=database()) tables_"'
+```
+
+**客户机是全新空库（不带演示数据）**：跳过 ③，改成在 ④ 之后执行
+`docker compose run --rm -e YISHANG_ADMIN_PASSWORD='<强口令>' backend python manage.py bootstrap_system`
+（见下面「首次安装（空库）必做步骤」）。
+
+下面各小节是逐项细节与「为什么」，排障时按需查阅。
+
 ### 服务清单
 
 ```text
@@ -272,8 +341,42 @@ docker compose up -d
 
 - **客户机不要执行演示数据命令**：`seed_demo` 与 `seed_demo_xjys` 在 `DJANGO_ENV=production`
   下**直接拒绝执行**，演示数据只用于本地开发。
+  ⚠️ 注意：**容器里 `manage.py` 走的是 dev 设置**，这条拦截**不会**生效，只能靠自己不执行 ——
+  原因与建议见下面「容器里的一次性命令用的是哪套设置」。
 - 客户机是**全新空库**时，从零到能登录只需 `migrate` + `bootstrap_system`；
   把已有数据搬到新机器请改用 `docs/backup-restore.md` §八 的导入流程，不要重新初始化。
+
+### 容器里的一次性命令用的是哪套设置（重要）【未验证 ⚠️】
+
+`config/wsgi.py` 默认加载 `config.settings.prod`，而 **`manage.py` 与 `config/celery.py` 默认加载
+`config.settings.dev`**；`compose.yaml` 只注入了 `DJANGO_ENV`，**没有注入 `DJANGO_SETTINGS_MODULE`**。
+于是容器里各角色的实际口径是：
+
+| 容器内角色 | 入口 | 实际生效的设置 |
+| --- | --- | --- |
+| `backend`（gunicorn） | `config.wsgi` | `config.settings.prod`（`DEBUG=False`、来源校验、Cookie 安全标记） |
+| `migrate` 服务 | `manage.py migrate` | `config.settings.dev` |
+| `worker` / `beat` | `celery -A config` | `config.settings.dev` |
+| `collectstatic` / `bootstrap_system` 等手工命令 | `manage.py …` | `config.settings.dev` |
+
+**因此有两条与上面「生产口径」描述不同的地方，必须知道：**
+
+- `bootstrap_system` 在容器里**不会**按「生产必须提供口令」拦你：dev 口径下缺失口令会
+  **随机生成并打印一次**。所以务必显式给口令（`-e YISHANG_ADMIN_PASSWORD='<强口令>'`
+  或 `--admin-password '<强口令>'`），否则你会拿到一个随手生成的临时口令。
+- `seed_demo` / `seed_demo_xjys` 在容器里**不会**被拒绝（拒绝逻辑判的是 `DJANGO_ENV=production`），
+  **只能靠自己不执行**。
+
+**想让所有角色统一按生产口径跑**，在 `compose.yaml` 的 `x-backend-env` 里加一行即可：
+
+```yaml
+  DJANGO_SETTINGS_MODULE: config.settings.prod
+```
+
+> **本轮没有加这一行、也没有验证过**：切换后 `migrate` / `worker` / `beat` 会一起使用 prod 设置
+> （需要 `DJANGO_ALLOWED_HOSTS`、`DJANGO_CSRF_TRUSTED_ORIGINS`、`DB_PASSWORD` 齐全，
+> 本仓库根目录 `.env` 已满足；`DEBUG` 仍由 compose 强制 `false`）。是否切换、何时切换由项目方决定，
+> 切完要重新 `docker compose up -d` 并复验一遍。
 
 ### 把数据带进容器（开发库快照）【未执行 ⚠️】
 
@@ -351,6 +454,35 @@ MySQL 官方镜像会在**数据卷为空时**自动执行 `/docker-entrypoint-i
 
 > 注意：该机制**只在数据卷为空的首次启动执行**，已有卷不会重跑（想重来要 `docker compose down -v`，
 > 那会**删掉全部数据**）；而且它会把演示数据带进该环境，客户机生产库建议仍用上面的手工导入，便于确认。
+
+### 容器数据怎么备份、怎么搬、怎么重来 【未执行 ⚠️】
+
+**先分清三份数据分别在哪**（名字都叫 `yishang_platform`，很容易混）：
+
+| 位置 | 是什么 | 谁在用 |
+| --- | --- | --- |
+| 宿主 MySQL（本机服务） | 开发库，物理文件在 `C:\ProgramData\MySQL\...\Data\` | 本地 `runserver` + `npm run dev` |
+| Docker 卷 `yishang-platform_mysql-data` | 容器里的库 | 浏览器经 Nginx 访问的那套部署 |
+| `db/yishang_platform_<日期>.sql` | 某个时间点的**逻辑快照**文件 | 用来初始化容器 / 搬到另一台机器 |
+
+两边**不互通**：容器里录的单据不会回到开发库，开发库改的也不会自动进容器。
+
+```powershell
+# 容器 → 文件（备份 / 搬到别的机器 / 带回开发库）：默认导出到 db\yishang_platform_<今天>.sql
+powershell -ExecutionPolicy Bypass -File scripts\docker_db.ps1 -Action Export
+
+# 文件 → 容器（先等 MySQL healthy 再导入；快照自带 DROP TABLE IF EXISTS，会覆盖同名表的数据）
+powershell -ExecutionPolicy Bypass -File scripts\docker_db.ps1 -Action Import -File db\yishang_platform_2026-09-24.sql
+```
+
+- **给容器数据做备份**：跑一次 `Export`，把生成的 `db\*.sql` 复制到别处（U 盘 / 内网文件服务器）。
+  容器数据**不会自动备份**，删了卷就没了。
+- **换电脑 / 搬到客户机**：老机器 `Export`（若数据在容器里）→ 新机器 `git clone` → 按「新电脑从零到能用」跑一遍
+  → 用 `Import` 导入那份 `.sql`。
+- **开发库的数据搬进容器**：用 `docs/backup-restore.md` §8.2 的命令在宿主上导出，再 `Import`。
+- **更新到新版本代码**：`git pull` → `docker compose build` → `docker compose up -d`（`migrate` 会自动执行迁移）。
+- **彻底重来（危险）**：`docker compose down -v` 会**删掉数据卷**（容器数据 + Redis 数据全没），
+  只在确认可以丢数据时用。日常重启用 `docker compose down` / `docker compose restart` / `docker compose up -d` 都不会丢数据。
 
 ### 客户机（内网）落地注意事项 【未执行 ⚠️】
 
@@ -468,6 +600,28 @@ curl.exe -f http://127.0.0.1:8080/healthz              # 本机自测，能返�
 `mysqlclient` 驱动、数据导入与「表数 = 154」的核对；端口映射与局域网访问同样未验证。
 
 在上述项目实际通过前，**不得将 Compose 描述为"已验证可部署"**。
+
+### Docker 部署常见问题速查（本仓库实际踩过的坑）【未执行 ⚠️】
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `required variable MYSQL_ROOT_PASSWORD is missing a value` | `.env` 缺必填项（被旧的 `.env.example` 覆盖过） | 不要再 `cp .env.example .env`；仓库里的 `.env` 已填好全部必填项 |
+| `apt-get update ... 502 Bad Gateway`、`failed to solve ... exit code: 100` | 构建期直连 `deb.debian.org` 不通 | `.env` 里 `APT_MIRROR=mirrors.aliyun.com`，重新 `docker compose build` |
+| 构建时 `npm ci` 很慢或失败 | 前端镜像构建走的是 npm 官方源 | `.env` 里 `NPM_REGISTRY=https://registry.npmmirror.com` |
+| `failed to resolve reference ... registry.docker-cn.com ... EOF` | Docker Desktop 里配了已下线的镜像加速器 | 删掉 Settings → Docker Engine 里的 `registry-mirrors` 后重试 |
+| `failed to solve: image "...": already exists` | 同一个镜像 tag 被两个 `build` 目标并发导出 | 已修（`migrate` 不再单独 build）；兜底三招见「设计约束」小节 |
+| `ERROR 2002 (HY000): Can't connect ... socket (2)` | MySQL 还没初始化完就导入 | 用 `scripts\docker_db.ps1 -Action Import`（会先等 healthy），或先 `docker compose ps mysql` 看到 `(healthy)` |
+| `service "backend" is not running` | 镜像没构建成功 / 服务没起来 | 先 `docker compose build` 再 `docker compose up -d`，用 `docker compose ps` 确认 |
+| `port is already allocated` | 宿主端口与其他服务冲突 | `scripts\docker_network.ps1 -Port <空闲端口>` → `docker compose up -d` |
+| 打开页面报 400 `DisallowedHost` | `DJANGO_ALLOWED_HOSTS` 里没有这个地址 | 跑 `scripts\docker_network.ps1`（会写入本机 IP），或手工加进 `.env` |
+| 页面能打开但**登录报 CSRF 校验未通过** | 该地址不在 `CSRF_TRUSTED_ORIGINS`；或反向代理丢了 Host 里的端口 | 跑 `scripts\docker_network.ps1`（写入三种来源）；`nginx.conf` 已改用 `$http_host`，改过它要 `docker compose build nginx` |
+| 局域网其他电脑打不开 | Windows 防火墙没放行该端口 | 管理员 PowerShell：`New-NetFirewallRule -DisplayName "Yishang Platform HTTP" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow` |
+| 登录成功又被踢回登录页 | HTTP 部署下 Cookie 带了 `Secure` 标记 | `.env` 里 `DJANGO_SECURE_SSL_REDIRECT=false` 且 `DJANGO_COOKIE_SECURE=false` |
+| `up -d` 时无谓地拉 `minio/minio` | 旧版本 `object-storage` 没有 profile | 已改为默认不启动；要用对象存储才加 `--profile object-storage` |
+| 导入快照后 `admin` 登不进去 / 口令想不起来 | 快照里是**制作快照时开发库的口令**，与 `.env` 的 `YISHANG_ADMIN_PASSWORD` 不一定相同 | `docker compose run --rm backend python manage.py bootstrap_system --reset-admin-password --admin-password '<新口令>'` |
+| 容器里 `bootstrap_system` 没按生产口径要求口令，反而打印了一个随机口令 | 容器内 `manage.py` 走 dev 设置，不触发「生产必须提供口令」的校验 | 显式传 `-e YISHANG_ADMIN_PASSWORD='<强口令>'` 或 `--admin-password '<强口令>'`；原因见「容器里的一次性命令用的是哪套设置」 |
+
+> 每一条的详细现象、根因与改动记录见 `docs/progress.md` §四十三～§四十八。
 
 ## 三之三、能源离线报警定时任务（本轮新增）
 

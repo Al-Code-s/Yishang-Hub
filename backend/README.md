@@ -44,7 +44,8 @@ $env:PYTHONIOENCODING='utf-8'
 
 ## 环境变量
 
-见仓库根目录 `.env.example`。关键项：
+本地开发读 `backend/.env`（已随仓库入库）；要重建时键的清单见 `docs/deployment.md` §二，
+Compose 用的示例见仓库根目录 `.env.example`。关键项：
 
 - `DJANGO_ENV`（development/test/staging/production）、`DJANGO_SECRET_KEY`
 - `DB_DRIVER`（`mysqlclient` 生产 / `pymysql` Windows 本地）、`DB_*`
