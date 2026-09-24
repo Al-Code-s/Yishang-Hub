@@ -3979,3 +3979,33 @@ Windows 上绑定挂载的 `deploy/mysql/my.cnf` 被判定为 `0777`（world-wri
 
 **未执行：** 端口映射实际生效与**局域网另一台电脑的访问未实测**（本机 Docker 守护进程在沙箱内不可达），
 `HTTP_BIND` 的两种取值、防火墙放行是否必需，都需在部署机上验证。
+## 四十六、构建第三次失败：同一个镜像 tag 被两个 build 目标并发导出
+
+**现象。** 修好 apt / npm 源之后重跑 `docker compose build`：构建本身跑完了
+（`backend` 310.0s、`nginx` 303.1s，已进入 `exporting to image`），但最后报
+
+```text
+target backend: failed to solve: image "docker.io/library/yishang-platform-backend:local": already exists
+```
+
+随后 `docker compose exec backend python manage.py collectstatic --noinput` 报
+`service "backend" is not running`（构建没成功，容器自然没起）。
+
+**根因。** `compose.yaml` 里 `migrate` 和 `backend` **都写了 `build:`，且 `image:` 是同一个 tag**
+（`yishang-platform-backend:local`）。Compose 会把每个带 `build` 的服务各生成一个构建目标，
+两个目标导出同一个镜像名 —— buildx bake 并发导出时后一个就会因「同名镜像已存在」失败。
+第一次构建日志里也能看到同一份 Dockerfile 被 `[backend ...]` 和 `[migrate ...]` 各构建了一遍
+（两套 `builder/runtime` 步骤），既是报错来源，也让构建时间翻倍。
+
+**修复。** `migrate` 去掉 `build:`，只保留 `image:`，改为复用 `backend` 构建出的镜像 ——
+与 `worker` / `beat` 的现有写法一致；运行顺序仍由 `depends_on`
+（`backend` 等 `migrate` 以 `service_completed_successfully` 结束）保证。
+现在 `docker compose build` 只构建 `nginx` + `backend` 两个镜像，**同一个 tag 只有一个构建目标**。
+
+- `compose.yaml`：`migrate` 服务只声明 `image: yishang-platform-backend:local`，并加注释说明原因。
+- `docs/deployment.md`：§三 启动流程注明「构建 nginx + backend 两个镜像」；
+  「设计约束」新增「同一个镜像 tag 只允许一个 `build` 目标」，把这条报错原文写进去；
+  未验证小节补上本轮两次实际执行的记录。
+
+**未执行：** 去掉重复目标后 `build` 能否一次成功，**未复测**（本机 Docker 守护进程在沙箱内不可达）；
+本轮只做了 `compose.yaml` 的 YAML 解析校验，没有实际构建。

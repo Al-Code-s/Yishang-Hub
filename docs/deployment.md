@@ -214,6 +214,7 @@ object-storage S3 兼容对象存储（**默认不启动**，见下）
 # 根目录 .env 已随仓库提交并填好 6 个强制项，正常情况不需要再动它。
 # ⚠️ 不要再用 `cp .env.example .env` 覆盖：示例文件里这些键是空值，
 #    覆盖后会立刻回到 `required variable ... is missing a value` 而构建失败。
+# 构建 nginx + backend 两个镜像；migrate / worker / beat 复用 backend 的镜像，不重复构建
 docker compose build
 docker compose run --rm migrate      # 迁移作为独立发布步骤，单独执行
 docker compose up -d
@@ -411,6 +412,13 @@ curl.exe -f http://127.0.0.1:8080/healthz              # 本机自测，能返�
 ### 设计约束（已写入 `compose.yaml`）
 
 - **同一后端镜像**承担 Web / Worker / Beat 三种角色，仅启动命令不同。
+- **同一个镜像 tag 只允许一个 `build` 目标**：`backend` 负责构建 `yishang-platform-backend:local`，
+  `migrate` / `worker` / `beat` 只声明 `image` 复用；若两个服务都写 `build`，buildx bake 会并发导出
+  同名镜像并报 `failed to solve: image "docker.io/library/yishang-platform-backend:local": already exists`。
+- **如果仍报同名镜像已存在**（例如手工改回了两个 `build` 块），按顺序试：
+  ① 只构建这两个镜像：`docker compose build backend nginx`；
+  ② 关掉 buildx bake，改用经典构建器：`$env:COMPOSE_BAKE='false'; docker compose build`；
+  ③ 删掉旧 tag 再重来：`docker image rm yishang-platform-backend:local yishang-platform-nginx:local`。
 - **Beat 默认只运行一个调度实例**，避免重复生成业务单据。
 - **MySQL、Redis 不发布端口到宿主机**，只在内部网络可达。
 - 所有服务配置**健康检查**；数据使用**持久化卷**。
@@ -444,10 +452,11 @@ curl.exe -f http://127.0.0.1:8080/healthz              # 本机自测，能返�
 | `docker compose cp db\...sql mysql:/tmp/snapshot.sql` | ✅ 成功 |
 | 在 `(healthy)` 之前就 `docker compose exec mysql ... < /tmp/snapshot.sql` | ❌ `ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)` → 已补「先等 `(healthy)`」步骤 |
 | `docker compose up -d` | ❌ 失败：Docker Desktop 内配的加速器 `registry.docker-cn.com` 已下线，本地镜像 `yishang-platform-nginx:local` 被当远端拉取报 `EOF`；同时无谓拉取 `minio/minio:latest` 也失败 → 前者需使用者自行删除加速器，后者已改为默认不启动 |
-| `collectstatic` | ⛔ 未执行：`service "backend" is not running`（因上一步失败） |
+| `collectstatic` | ⛔ 未执行：`service "backend" is not running`（因构建失败，容器未起） |
+| `docker compose build`（修完 apt/npm 源后重跑） | ❌ 走到了 `exporting to image`（`backend` 310.0s / `nginx` 303.1s），但报 `target backend: failed to solve: image "docker.io/library/yishang-platform-backend:local": already exists` → `migrate` 与 `backend` 两个 build 目标导出同一个 tag，已让 `migrate` 只声明 `image` 复用（本轮改，**未复测**） |
 
-因此**仍未验证**的是：换源后 `build` 能否成功、镜像能否启动、`migrate`、Nginx 配置、`mysqlclient` 驱动、
-数据导入与「表数 = 154」的核对。
+因此**仍未验证**的是：去掉重复 build 目标后 `build` 能否成功、镜像能否启动、`migrate`、Nginx 配置、
+`mysqlclient` 驱动、数据导入与「表数 = 154」的核对；端口映射与局域网访问同样未验证。
 
 在上述项目实际通过前，**不得将 Compose 描述为"已验证可部署"**。
 
