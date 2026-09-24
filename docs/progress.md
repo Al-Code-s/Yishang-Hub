@@ -4009,3 +4009,46 @@ target backend: failed to solve: image "docker.io/library/yishang-platform-backe
 
 **未执行：** 去掉重复目标后 `build` 能否一次成功，**未复测**（本机 Docker 守护进程在沙箱内不可达）；
 本轮只做了 `compose.yaml` 的 YAML 解析校验，没有实际构建。
+## 四十七、Docker 部署登录报「CSRF 校验未通过」：nginx 透传 Host 丢了端口
+
+**现象。** 镜像构建成功后浏览器能打开页面，但登录报「CSRF 校验未通过，请刷新页面后重试。」
+（后端 `apps.core.views.csrf_failure` 返回 `CSRF_FAILED`，说明是**服务端**校验失败，不是没带令牌）。
+
+**排查过程。** 先排除「前端拿不到令牌」这一类：`CSRF_COOKIE_NAME=yishang_csrftoken`、
+`CSRF_COOKIE_HTTPONLY=False`（前端要读 Cookie 回填 `X-CSRFToken`，不能是 HttpOnly）、
+`CSRF_COOKIE_SECURE=False`（HTTP 下也下发）、登录页先 `GET /api/v1/identity/auth/csrf/` 再 POST，
+链路本身没有问题。真正的原因在 Django 的 **Origin 同源校验**：
+
+`deploy/nginx/nginx.conf` 用的是 `proxy_set_header Host $host;`，而 **nginx 的 `$host` 不含端口**，
+于是 Django 的 `request.get_host()` 是 `localhost`，拼出的 `good_origin` 是 `http://localhost`，
+浏览器发来的 `Origin` 却是 `http://localhost:8080` —— 两者不相等，且 `http://localhost:8080`
+不在 `DJANGO_CSRF_TRUSTED_ORIGINS` 里（原值只有 `192.168.1.49:8080` 与两条 5173 开发来源），
+于是被判为跨站 → `CSRF_FAILED`。用 `http://192.168.1.49:8080` 访问反而能登录，正是这个差别的佐证。
+（开发环境一直没暴露这个问题：Vite 代理是 `changeOrigin: false`，Host 原样带端口。）
+
+**修复（两层）。**
+
+- `deploy/nginx/nginx.conf`：4 处 `proxy_set_header Host $host;` 全部改为 `$http_host`
+  （保留客户端原始 Host，含端口），并在 `server_name` 后写明原因。
+  **`nginx.conf` 是打进镜像的**，改完必须 `docker compose build nginx` 才生效（不用重建后端）。
+- `.env`：`DJANGO_CSRF_TRUSTED_ORIGINS` 补齐 `http://localhost:8080`、`http://127.0.0.1:8080`
+  （这一项只改 `.env`，`docker compose up -d backend` 重建容器即生效，**不需要重新构建镜像**，
+  可先用它救急）。
+- `scripts/docker_network.ps1`：以后会一并写入 `localhost` / `127.0.0.1` / 本机 IP 三种带端口来源，
+  避免「换了访问地址就登录不了」；另新增 `-KeepPort` 开关——平台自己的 nginx 已占着该端口时，
+  用它只刷新 IP 与白名单、不改端口（否则脚本会把「自己占用的端口」当成冲突而换一个）。
+- `docs/deployment.md`：改端口小节补「登录报 CSRF 的两种原因」；设计约束新增
+  「反向代理必须透传带端口的 Host」。
+
+**本轮执行的检查。**
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| `nginx.conf` 的 Host 透传 | 4 处均为 `$http_host`，并带原因注释 |
+| `scripts\docker_network.ps1 -KeepPort` | 端口保持 `8080`，`.env` 写入后 **SHA256 不变**（幂等） |
+| PowerShell 语法解析（`[Parser]::ParseFile`） | 无错误 |
+| `manage.py check` / `ruff check` | `no issues` / `All checks passed!` |
+| `pytest tests/test_docs_sync.py` | `7 passed` |
+
+**未执行：** 登录是否恢复**未实测**（要在项目方的 Docker 环境里验证）；`nginx.conf` 改动需
+`docker compose build nginx` 后才会体现在容器里，本轮无法执行任何 Docker 命令。

@@ -405,6 +405,12 @@ Get-NetTCPConnection -State Listen -LocalPort 8080     # 有输出 = 该端口�
 curl.exe -f http://127.0.0.1:8080/healthz              # 本机自测，能返回即服务正常
 ```
 
+> **改端口 / 换地址后登录报「CSRF 校验未通过」？** 两个原因，通常一起出现：
+> ① `.env` 的 `DJANGO_CSRF_TRUSTED_ORIGINS` 没写全——浏览器地址栏里的那个地址必须**原样**在列表里
+> （如用 `http://localhost:8080` 访问就要有这一条）；② 反向代理把 Host 里的端口丢了。
+> 本仓库的 `deploy/nginx/nginx.conf` 已用 `$http_host`（保留端口），所以一般只需把 ① 写全；
+> 注意 `nginx.conf` 是**打进镜像**的，改它之后要 `docker compose build nginx` 才生效。
+>
 > 局域网其他电脑用 `http://<本机IP>:<HTTP_PORT>/` 打开即可，**不需要装任何客户端**。
 > 本机 IP 由路由器 DHCP 分配、换网络会变；变了就重跑一次上面的脚本。
 > 仓库当前 `.env`：`HTTP_PORT=8080`、`HTTP_BIND=0.0.0.0`，本机局域网 IP 已写入白名单。
@@ -419,6 +425,9 @@ curl.exe -f http://127.0.0.1:8080/healthz              # 本机自测，能返�
   ① 只构建这两个镜像：`docker compose build backend nginx`；
   ② 关掉 buildx bake，改用经典构建器：`$env:COMPOSE_BAKE='false'; docker compose build`；
   ③ 删掉旧 tag 再重来：`docker image rm yishang-platform-backend:local yishang-platform-nginx:local`。
+- **反向代理必须透传带端口的 Host**（`proxy_set_header Host $http_host`）：nginx 的 `$host` 会丢掉端口，
+  而浏览器发来的 `Origin` 带端口，Django 的 CSRF 同源校验会因此判为跨站，
+  表现为「页面能打开，但登录报 `CSRF 校验未通过`」（见 `docs/progress.md` 第 47 节）。
 - **Beat 默认只运行一个调度实例**，避免重复生成业务单据。
 - **MySQL、Redis 不发布端口到宿主机**，只在内部网络可达。
 - 所有服务配置**健康检查**；数据使用**持久化卷**。

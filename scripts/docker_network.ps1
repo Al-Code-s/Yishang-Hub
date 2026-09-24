@@ -9,13 +9,16 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1 -Port 18080
 #   powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1 -Ip 192.168.1.50 -Port 8080
+#   powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1 -KeepPort   # 平台已在运行，只更新 IP / 白名单
 #
 # 改完必须重建容器才生效：docker compose up -d
 
 [CmdletBinding()]
 param(
     [int]$Port = 0,
-    [string]$Ip = ''
+    [string]$Ip = '',
+    # 不改端口：只刷新 IP 与白名单（平台自己的 nginx 已占着该端口时用这个）
+    [switch]$KeepPort
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,8 +81,13 @@ if ($Port -gt 0) {
 }
 
 $chosen = 0
-foreach ($candidate in $candidates) {
-    if (Test-PortFree $candidate) { $chosen = $candidate; break }
+if ($KeepPort) {
+    if (-not $current) { throw '-KeepPort 需要 .env 里已经有 HTTP_PORT；请先不带该参数跑一次。' }
+    $chosen = [int]$current
+} else {
+    foreach ($candidate in $candidates) {
+        if (Test-PortFree $candidate) { $chosen = $candidate; break }
+    }
 }
 
 if ($chosen -eq 0) {
@@ -94,7 +102,7 @@ $origins = @('http://localhost:5173', 'http://127.0.0.1:5173')
 if ($chosen -eq 80) {
     $origins += @('http://localhost', 'http://127.0.0.1', "http://$Ip")
 } else {
-    $origins += @("http://$Ip`:$chosen")
+    $origins += @("http://localhost`:$chosen", "http://127.0.0.1`:$chosen", "http://$Ip`:$chosen")
 }
 $origins = $origins -join ','
 
