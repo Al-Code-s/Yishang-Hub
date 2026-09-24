@@ -3772,3 +3772,21 @@ SKU / BOM / 后端校验 / 服务端判定」这类实现词汇。业务用户�
 （`masterdata_material` 63/63、`factory_employee` 20/20 带「演示数据（新疆意尚智造）」），
 而 35 张表的行级明细与系统表（编码规则、字典、角色、账号、工单用料行等）**不带该标记**，
 无法据此证明「全部可由种子重建」——因此按保守做法带上快照，而不是只依赖种子命令。
+## 四十一、双平台开发机说明入库（Windows / macOS）
+
+**背景。** 换机流程（`docs/backup-restore.md` §八、§8.5）此前只有 Windows 口径，
+macOS 的差异（MySQL 版本、驱动、PowerShell 脚本、虚拟环境路径）只存在于对话里。
+本轮把它写进正式文档。
+
+**改动。** `docs/deployment.md` §二 新增「双平台（Windows / macOS）环境对照」：
+- 组件对照表：Python / Node / MySQL / Redis 的安装方式、驱动选择（两平台统一 `pymysql`）、
+  虚拟环境路径（`.venv\Scripts\python.exe` vs `.venv/bin/python`）、
+  启动脚本（`scripts/*.ps1` 仅 Windows；`scripts/*.sh` 亦可用于 Mac）、换行（`.gitattributes` 统一）；
+- macOS 关键点：**必须 `brew install mysql@8.0`**（brew 的 `mysql` 公式当前指向 9.x，
+  与项目 8.0 基线不符）；`scripts/*.ps1` 属于 PowerShell，Mac 上用原生命令；
+- 一致点：`migrate` 建结构 + `db/*.sql` 导数据；快照按 `-text` 原样保存，`mysql < 文件` 跨平台可直接导入；
+  `lower_case_table_names` 默认值差异不影响（表名全小写）；`node_modules/` 不跨平台拷贝。
+- `docs/backup-restore.md` §8.5 增加指向该小节的交叉引用。
+
+**未执行：** macOS 路径未在真实 Mac 上实测（本机只有 Windows），已在文档中标注为「未执行/推断」，
+不写作通过。

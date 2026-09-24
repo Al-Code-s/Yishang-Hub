@@ -29,6 +29,36 @@
 - Python 3.12、Node.js ≥ 20.19（本项目实测 22.17.1 / npm 10.9.2）
 - MySQL 8.0 系列（本轮实测 8.0.17；部署镜像 `mysql:8.0`）、Redis（本轮实测 3.2.100）
 
+### 双平台（Windows / macOS）环境对照
+
+开发会在 Windows 与 macOS 两台机器上进行。**代码与数据都不再手工拷贝**：
+`backend/.env`（开发库口令与配置）与开发库快照 `db/*.sql` 已随仓库入库，
+新机器只要 `git clone` 就有这些文件，换机步骤见 `docs/backup-restore.md` §8.5。
+两平台的差异如下：
+
+| 组件 | Windows | macOS |
+| --- | --- | --- |
+| Python 3.12 | 官方安装包（`py -3.12`） | `brew install python@3.12` |
+| Node.js 22 | 官方安装包 | `brew install node@22` |
+| MySQL | 本机服务名 `MySQL80`，实测 8.0.17 | **`brew install mysql@8.0`**（brew 的 `mysql` 公式当前指向 9.x，不是 8.0），再 `brew services start mysql@8.0` |
+| Redis | 本机已装（实测 3.2.100） | `brew install redis`，再 `brew services start redis` |
+| 数据库驱动 | `DB_DRIVER=pymysql` + `pip install ".[pymysql]"` | 同左：用 `pymysql` 可以省掉 `mysqlclient` 的编译依赖，与 Windows 保持一致 |
+| 虚拟环境路径 | `.\.venv\Scripts\python.exe` | `.venv/bin/python` |
+| 启动脚本 | `scripts/*.ps1`（`dev_backend.ps1` / `dev_frontend.ps1` / `smoke_check.ps1`） | **PowerShell 脚本不能直接运行**，用原生命令 `manage.py runserver` + `npm run dev`；`scripts/*.sh`（备份 / 恢复）是 bash，可在 Mac 使用 |
+| 换行 | 由 `.gitattributes` 统一（仓库内 LF，`*.ps1` 固定 CRLF） | 同左，Mac 检出为 LF，不会带 `\r` |
+
+两平台一致的部分：
+
+- 表结构由 `manage.py migrate` 建，数据从 `db/yishang_platform_<日期>.sql` 导入。
+  MySQL 的 `lower_case_table_names` 默认值各平台不同，但本平台表名全小写，**跨平台导入不受影响**；
+  快照在 `.gitattributes` 中标记为 `-text`（保持原样，不做换行转换），`mysql < 文件` 两平台都能直接导入。
+- Apple Silicon 上 `mysql@8.0` / `python@3.12` / `node@22` 均有 arm64 包；
+  若安装不顺，可退回官方 dmg，或直接用 `compose.yaml` 只起 MySQL / Redis 容器、后端跑在宿主。
+- 前端依赖用 `npm install` 在新机器上重装（`node_modules/` 不要跨平台拷贝）。
+
+> **未执行**：上面 macOS 路径**未在真实 Mac 上实测**（本机只有 Windows），
+> 属按 `.gitattributes` 与 brew 包语义推断；Windows 路径见本节其余各处（已实测）。
+
 ### 1. 环境变量
 
 ```powershell
