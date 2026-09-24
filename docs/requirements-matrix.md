@@ -537,7 +537,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-3.1-12 | 3.1 | uv 包管理 + 锁定文件 | `backend/pyproject.toml`、`uv.lock` | 已完成 | 锁文件已提交 |
 | REQ-3.1-13 | 3.1 | Ruff + 类型检查 | `ruff` 配置、`vue-tsc` | 已完成 | 均通过 |
 | REQ-3.1-14 | 3.1 | pytest / Vitest / Playwright | `backend/tests`、`frontend/tests` | 部分完成 | 后端与前端已执行；Playwright 未执行 |
-| REQ-3.1-15 | 3.1 | Gunicorn + Nginx + Docker Compose | `deploy/`、`compose.yaml` | 部分完成 | 文件已编写，未启动验证 |
+| REQ-3.1-15 | 3.1 | Gunicorn + Nginx + Docker Compose | `deploy/`、`compose.yaml` | 部分完成 | 文件已编写；2026-09-24 项目方实跑：`mysql:8.0` 已拉取并 healthy，后端镜像构建因 apt `502 Bad Gateway` 失败（已改为 `APT_MIRROR` 可配置），其余仍未验证 |
 | REQ-3.1-16 | 3.1 | 第一版看板用可配置轮询，不引入复杂实时设施 | `views/workspace/Index.vue` | 已完成 | 手动/定时刷新，未使用 WebSocket |
 
 ## 三、架构与代码组织（任务书 3.3、4）
@@ -1197,7 +1197,7 @@ Element Plus 的 `el-form-item` 在 jsdom 下不注册 field，`validate()` 直�
 | REQ-16.3-02 | 16.3 | Worker 状态、任务积压、Outbox 失败数量 | `integration/outbox-events/health/` | 部分完成（Outbox 健康接口已实测；Worker 未运行） |
 | REQ-16.3-03 | 16.3 | 采集离线、磁盘与备份状态、接口错误率 | — | 未开始（阶段 5/7） |
 | REQ-16.3-04 | 16.3 | 日志带 `request_id`，任务带任务 ID 与事件 ID | `core/middleware.py`、`core/logging.py` | 已完成 |
-| REQ-16.4-01 | 16.4 | MySQL 定时备份、binlog、附件备份、加密与访问控制、保留周期 | `docs/backup-restore.md` | 设计已完成，**未执行** |
+| REQ-16.4-01 | 16.4 | MySQL 定时备份、binlog、附件备份、加密与访问控制、保留周期 | `docs/backup-restore.md` | 设计已完成，**未执行** | binlog 参数已同时写进 compose 的 mysql `command`（Windows 宿主会忽略挂载的 `my.cnf`，见 `docs/progress.md` 第 44 节） |
 | REQ-16.4-02 | 16.4 | 定期恢复演练、记录 RPO/RTO | 同上（RPO/RTO 待项目方确认） | **未执行** |
 | REQ-16.4-03 | 16.4 | 数据库与附件恢复需核对引用一致性 | 同上第六节 | 设计已完成 |
 | REQ-16.5-01 | 16.5 | 发布前测试迁移、备份、兼容性迁移优先 | `docs/deployment.md` 第六节 | 设计已完成 |

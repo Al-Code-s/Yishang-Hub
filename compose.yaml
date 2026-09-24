@@ -19,6 +19,8 @@ x-backend-env: &backend-env
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?生产环境必须设置 DJANGO_ALLOWED_HOSTS}
   DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:?生产环境必须设置 DJANGO_CSRF_TRUSTED_ORIGINS}
   DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-true}
+  # 内网纯 HTTP 部署（无证书）时可设 false；默认保持 true
+  DJANGO_COOKIE_SECURE: ${DJANGO_COOKIE_SECURE:-true}
   DJANGO_SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-2592000}
   DJANGO_USE_X_FORWARDED_FOR: "true"
   DB_DRIVER: mysqlclient
@@ -51,6 +53,12 @@ services:
       - --collation-server=utf8mb4_0900_ai_ci
       - --default-time-zone=+00:00
       - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+      # 下面三项与 deploy/mysql/my.cnf 对应：Windows 上宿主绑定挂载的配置文件被识别为
+      # 0777（world-writable），MySQL 会打印 "World-writable config file ... is ignored" 并忽略它，
+      # 因此容器内的权威配置是这里的 command 参数（my.cnf 在 Linux/macOS 宿主上仍会生效）。
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-expire-logs-seconds=604800
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?必须设置 MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME:-yishang_platform}
@@ -83,6 +91,9 @@ services:
       retries: 10
 
   object-storage:
+    # 默认【不启动】：OBJECT_STORAGE_BUCKET 为空时附件走本地文件系统（backend-media 卷）。
+    # 需要 S3 兼容对象存储时才启用：docker compose --profile object-storage up -d
+    profiles: ["object-storage"]
     image: minio/minio:latest
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
@@ -103,6 +114,8 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.backend
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
     image: yishang-platform-backend:local
     restart: "no"
     environment: *backend-env
@@ -116,6 +129,8 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.backend
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
     image: yishang-platform-backend:local
     restart: unless-stopped
     environment: *backend-env
@@ -186,10 +201,14 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.frontend
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
     image: yishang-platform-nginx:local
     restart: unless-stopped
     ports:
-      - "${HTTP_PORT:-80}:8080"
+      # 宿主端口与监听地址都可配置（见 .env 的「对外访问」段）：
+      # HTTP_BIND=0.0.0.0 表示局域网也能访问；改成 127.0.0.1 就只有本机能访问
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:8080"
     volumes:
       - backend-media:/var/www/media:ro
       - backend-static:/var/www/static:ro

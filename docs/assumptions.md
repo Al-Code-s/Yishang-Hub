@@ -354,6 +354,12 @@
     ② 把这两个开关改成环境变量驱动（默认仍为 `True`），仅在客户明确接受「纯内网 HTTP」风险时用 `false`。
     **本版本只做了 ① 的判断依据，未实现 ②**，因此纯 HTTP 客户机需要先定方案再上线。
     影响范围：生产部署方式；关闭条件：完成 ① 的 TLS 配置或 ② 的环境开关改造。
+    **2026-09-24 更新**：已实现方式 ②——`prod.py` 增加 `DJANGO_COOKIE_SECURE` 开关（**默认仍为 `True`**，
+    不改变任何现有安全默认值），`SESSION_COOKIE_SECURE` 与 `CSRF_COOKIE_SECURE` 都由它控制，
+    并已在 `compose.yaml` 透传。因此纯内网 HTTP 部署只需在根目录 `.env` 里把
+    `DJANGO_SECURE_SSL_REDIRECT=false` 与 `DJANGO_COOKIE_SECURE=false` 一起设置即可登录。
+    风险不变：关闭后 HTTP 上的会话不再有 Secure 保护，**仅限内网、且需项目方明确接受**；
+    仍是 ①（配 TLS）更安全。
 
 46. **数据库版本基线由「MySQL 8.4 LTS」调整为「MySQL 8.0 系列」（项目方 2026-09-23 确认）。**
     任务是让部署版本与本地开发库（8.0.17）落在同一主版本，减少「开发能跑、上线报错」的版本差异；
@@ -377,3 +383,18 @@
     两条必须守住的约束：① 生产库口令**不得**与开发库口令相同；
     ② 一旦仓库转为公开或新增协作者，必须先 `git filter-repo` 把 `backend/.env` 从历史中移除并轮换口令。
     影响范围：仓库内容与本地开发配置；关闭条件：仓库公开化或加入协作者。
+
+48. **国内网络下 Docker 构建与拉取需要「可配置的软件源」和「可用的镜像加速器」（环境相关，非代码缺陷）。**
+    实测（2026-09-24，项目方 Windows + Docker Desktop）：`docker compose build` 的 `runtime` 阶段
+    `apt-get update` 对官方源 `deb.debian.org` 间歇性返回 `502 Bad Gateway`（同一时刻 `builder`
+    阶段的同一条命令却成功），导致 `target backend: failed to solve ... exit code: 100`；
+    Docker Desktop 里配置的 `registry.docker-cn.com` 加速器已停止服务，
+    使本地镜像 `yishang-platform-*:local` 也被当成远端拉取而报 `EOF`。
+    处理：`deploy/docker/Dockerfile.backend` 的 apt 源改为构建参数 `APT_MIRROR`（默认官方源，
+    根目录 `.env` 可改成国内镜像）；镜像加速器**必须由使用者在 Docker Desktop 里自行删除**，
+    仓库无法代改。同一类问题在前端镜像里也存在：`Dockerfile.frontend` 的 `npm ci` 发生在
+    `frontend/.npmrc` 被复制进镜像之前，走的是 npm 官方源，因此增加 `NPM_REGISTRY` 构建参数
+    （默认空 = 官方源，行为不变）。本条的假设仍是「构建机 / 部署机能访问所选软件源与镜像仓库」，
+    只是不再假定官方源直连可用；关闭条件：网络环境改善，或把 `APT_MIRROR` 改回 `deb.debian.org`。
+    影响范围：Docker 构建与拉取；同步更新了 `compose.yaml`、`deploy/docker/Dockerfile.backend`、
+    `.env.example`、`docs/deployment.md`、`docs/progress.md`。

@@ -198,23 +198,59 @@ beat           Celery Beat（默认单实例）
 migrate        一次性发布步骤（不常驻）
 mysql          MySQL 8.0 系列（镜像 `mysql:8.0`，不发布端口）
 redis          Redis（不发布端口）
-object-storage S3 兼容对象存储
+object-storage S3 兼容对象存储（**默认不启动**，见下）
 ```
+
+> **`object-storage`（MinIO）默认不启动。** 附件默认落在本机文件系统（`backend-media` 卷），
+> `OBJECT_STORAGE_BUCKET` 留空即代表「不用对象存储」，此时 `docker compose up -d` **不会去拉
+> `minio/minio` 镜像**。确实要用 S3 兼容对象存储时才执行
+> `docker compose --profile object-storage up -d`（`compose.yaml` 里该服务已加
+> `profiles: ["object-storage"]`），并在 `.env` 里填好 `OBJECT_STORAGE_*`。
+> 早前版本没有这个 profile，容器每次 `up` 都会被拉起；国内网络下拉取失败会让整个 `up` 直接报错退出。
 
 ### 启动流程
 
 ```bash
-cp .env.example .env      # 填写真实值，不提交
+# 根目录 .env 已随仓库提交并填好 6 个强制项，正常情况不需要再动它。
+# ⚠️ 不要再用 `cp .env.example .env` 覆盖：示例文件里这些键是空值，
+#    覆盖后会立刻回到 `required variable ... is missing a value` 而构建失败。
 docker compose build
 docker compose run --rm migrate      # 迁移作为独立发布步骤，单独执行
 docker compose up -d
 docker compose ps
+# 访问入口：HTTP_PORT 是 80 时用 http://localhost/，否则要带端口（如 http://localhost:8080/）
 curl -f http://localhost/healthz
 ```
 
 > `.env` 必填项（缺任一项 Compose 直接拒绝启动）：`DJANGO_SECRET_KEY`、`DJANGO_ALLOWED_HOSTS`、
 > `DJANGO_CSRF_TRUSTED_ORIGINS`、`DB_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`OBJECT_STORAGE_SECRET_KEY`；
 > 空库首次安装还要提供 `YISHANG_ADMIN_PASSWORD`（见下一节）。
+
+> **根目录 `.env` 已随仓库提交**（含随机生成的口令，与 `backend/.env` 同属「单人私有仓库」的取舍，
+> 见 `docs/assumptions.md` 第 47 条），所以 clone 之后可以直接 `docker compose build`。
+> **换环境时必须检查这几项**：`DJANGO_ALLOWED_HOSTS`、`DJANGO_CSRF_TRUSTED_ORIGINS`
+> （要与实际访问方式完全一致，如内网 IP）、`HTTP_PORT`、
+> 以及下面两个 HTTPS/Cookie 开关。
+>
+> 早前 `.env.example` 里**漏了 `MYSQL_ROOT_PASSWORD`**，直接复制会得到
+> `required variable MYSQL_ROOT_PASSWORD is missing a value` 并使 `docker compose build` 直接失败
+> （compose 在解析阶段就会校验这些变量，所以连构建都过不去）。该变量已在示例中补上。
+
+> **构建期网络：国内环境必看。** `docker compose build` 会在容器里跑 `apt-get`，默认走官方源
+> `deb.debian.org`；实测国内直连会间歇性返回 `502 Bad Gateway`，报错形如
+> `E: The repository 'http://deb.debian.org/debian trixie-updates InRelease' is no longer signed.`，
+> 最后以 `target backend: failed to solve ... exit code: 100` 结束（连构建都过不去）。
+> 处理：在根目录 `.env` 里把 `APT_MIRROR` 改成国内镜像（**本仓库当前值 `mirrors.aliyun.com`**，
+> 也可用 `mirrors.tuna.tsinghua.edu.cn` / `mirrors.ustc.edu.cn`），再重新 `docker compose build`。
+> 换到别的网络后如果直连正常，把该值改回 `deb.debian.org` 即可。
+> 同理，前端镜像构建里的 `npm ci` 若因网络失败，可在 `.env` 里设
+> `NPM_REGISTRY=https://registry.npmmirror.com`（默认空 = npm 官方源，行为不变）。
+>
+> **镜像加速器同理。** 如果 Docker Desktop 里配了 `registry.docker-cn.com` 这类**已下线**的加速器，
+> `docker compose up -d` 会把本地镜像 `yishang-platform-nginx:local` 也当成远端去拉，报
+> `failed to resolve reference "docker.io/library/yishang-platform-nginx:local" ... EOF`。
+> 该设置在 Docker Desktop → Settings → Docker Engine（配置文件见 `%APPDATA%\Docker\settings-store.json`），
+> 仓库改不了，**必须由使用者删除该 mirror 后重试**。
 
 ### 首次安装（空库）必做步骤 【未执行 ⚠️】
 
@@ -244,9 +280,9 @@ docker compose up -d
 按下面的顺序灌进容器 MySQL 即完成「代码 + 数据」一起部署。
 
 ```bash
-# 1) 先只起数据库，等健康检查通过（MySQL/Redis 不对宿主发布端口，只能经 compose 操作）
-docker compose up -d mysql
-docker compose ps mysql
+# 1) 先只起数据库，并【等健康检查通过】再加数据（MySQL/Redis 不对宿主发布端口，只能经 compose 操作）
+docker compose up -d --wait mysql      # --wait：等到 mysql 的 healthcheck 变成 healthy 才返回
+docker compose ps mysql                # 必须看到 (healthy)；只显示 Up / Created 还不够
 
 # 2) 导入快照（Linux / macOS / CI 的 bash 可直接重定向）
 docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot yishang_platform' \
@@ -264,13 +300,26 @@ curl -f http://localhost/healthz
 **Windows PowerShell 不支持 `<` 重定向**，且用管道传中文有二次编码风险，改成「先拷进容器再导入」：
 
 ```powershell
-docker compose up -d mysql
+# 1) 起数据库，并等健康检查通过：显示 (healthy) 才算就绪
+docker compose up -d --wait mysql
+docker compose ps mysql
+
+# 2) 拷进容器再导入（PowerShell 不支持 `<` 重定向，管道传中文有二次编码风险）
 docker compose cp db\yishang_platform_2026-09-24.sql mysql:/tmp/snapshot.sql
 docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot yishang_platform < /tmp/snapshot.sql'
+
+# 3) 清掉临时文件，再起其余服务并收静态资源
 docker compose exec mysql rm -f /tmp/snapshot.sql
 docker compose up -d
 docker compose exec backend python manage.py collectstatic --noinput
+docker compose ps
 ```
+
+> **先等 `(healthy)` 再导入，这一步不能省。** 实测在 `docker compose up -d mysql` 之后立刻导入会得到
+> `ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)`
+> —— 容器虽然已经是 `Created` / `Up`，但 `mysqld` 还在初始化，socket 文件尚未创建，
+> **与快照、口令、配置都无关**。用 `docker compose up -d --wait mysql`，或先 `docker compose ps mysql`
+> 确认显示 `(healthy)` 再执行导入即可；已经报了 2002 也没关系，等健康后把导入那条命令重跑一次就行。
 
 **关于快照与初始化的四点事实：**
 
@@ -306,11 +355,58 @@ MySQL 官方镜像会在**数据卷为空时**自动执行 `/docker-entrypoint-i
 
 | 项目 | 要求 |
 | --- | --- |
-| `DJANGO_ALLOWED_HOSTS` | 必须是客户机**实际访问地址**，如 `192.168.1.50,localhost` |
+| `DJANGO_ALLOWED_HOSTS` | 必须是客户机**实际访问地址**，如 `192.168.1.50,localhost`（写 IP，不带端口） |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | 带协议的完整来源，如 `http://192.168.1.50`；不一致会导致登录报 CSRF 失败 |
-| `HTTP_PORT` | 前端对外端口，默认 `80`；被占用时改 `.env`（如 `HTTP_PORT=8080`） |
+| `HTTP_PORT` | 前端对外端口，默认 `80`；被同一台机器上**其他 Docker 服务**占用时改成别的（如 `HTTP_PORT=8080`），改完 `docker compose up -d` 重建 nginx 容器才生效 |
 | 定时任务 | 平台**没有内置调度器**，`ems_offline_check` / `iot_offline_check` 需用 Windows 计划任务或 Compose 的 `beat` 服务（见 §三之三、§三之四） |
-| HTTPS | `prod.py` 默认 `SECURE_SSL_REDIRECT=true`，纯 HTTP 访问会被 301 跳 https；内网无证书时设 `DJANGO_SECURE_SSL_REDIRECT=false`，但**纯 HTTP 下登录仍会失败**（详见 `docs/assumptions.md` 第 45 条） |
+| HTTPS / Cookie | 走 HTTPS：`DJANGO_SECURE_SSL_REDIRECT=true` + `DJANGO_COOKIE_SECURE=true`（默认值，推荐）。纯内网 HTTP（无证书）：两项都要设 `false`——只关 `DJANGO_SECURE_SSL_REDIRECT` 的话页面能打开，但浏览器不会在 HTTP 下回传会话 Cookie，**登录后会被立刻踢回登录页**（见 `docs/assumptions.md` 第 45 条） |
+| `APT_MIRROR` | 构建后端镜像时的 Debian 软件源。国内网络直连 `deb.debian.org` 报 `502 Bad Gateway`、构建以 `exit code: 100` 失败时，改成 `mirrors.aliyun.com`（见 `docs/assumptions.md` 第 48 条） |
+| `NPM_REGISTRY` | 前端镜像构建用的 npm 源；默认空 = npm 官方源，国内网络不稳时设 `https://registry.npmmirror.com` |
+| Docker 镜像加速器 | Docker Desktop 里若配了 `registry.docker-cn.com` 等**已下线**的加速器必须删除，否则本地镜像 `yishang-platform-*:local` 会被当成远端拉取并报 `EOF`；**仓库无法代改** |
+| 对象存储 | `object-storage`（MinIO）默认不启动，附件走本地卷；要用 S3 兼容存储才 `docker compose --profile object-storage up -d` |
+| 端口与局域网 | 见下一小节「改端口 / 让局域网其他电脑访问」：`HTTP_PORT` / `HTTP_BIND` 与两项主机白名单必须一致 |
+
+### 改端口 / 让局域网其他电脑访问 【未执行 ⚠️】
+
+平台对外**只有一个端口**（Nginx；容器内固定 8080），宿主端口由 `.env` 的 `HTTP_PORT` 决定；
+MySQL / Redis / MinIO **都不发布宿主端口**，不用为它们的端口冲突担心。
+
+**一键配置（推荐）**：在仓库根目录执行，脚本会自动挑一个空闲端口、识别本机局域网 IP，
+并把这 4 项写进 `.env`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1               # 自动选空闲端口 + 自动识别本机 IP
+powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1 -Port 18080   # 指定端口（被占用会直接报错）
+powershell -ExecutionPolicy Bypass -File scripts\docker_network.ps1 -Ip 192.168.1.50
+docker compose up -d      # 重建 nginx 容器，端口映射才会生效
+```
+
+| `.env` 项 | 作用 | 写错的后果 |
+| --- | --- | --- |
+| `HTTP_PORT` | 宿主端口（`HTTP_PORT=8080` → 访问 `http://<IP>:8080/`） | 端口被占用时 `docker compose up -d` 报 `port is already allocated` |
+| `HTTP_BIND` | `0.0.0.0`（默认）= 本机与局域网都能访问；`127.0.0.1` = 只有本机能访问 | 只能本机访问，或对外暴露过多 |
+| `DJANGO_ALLOWED_HOSTS` | 必须含**本机局域网 IP（不含端口）** | 局域网访问报 `400 Bad Request (DisallowedHost)` |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | 必须含 `http://<本机IP>:<HTTP_PORT>` | 页面能打开，但**登录报 CSRF 失败** |
+
+**手工改法**：直接编辑根目录 `.env` 的这 4 项 → `docker compose up -d`。
+
+**Windows 防火墙**：首次发布端口时 Docker Desktop 会弹窗，选「允许访问」；若局域网电脑仍打不开，
+用**管理员** PowerShell 放行（端口换成 `HTTP_PORT`）：
+
+```powershell
+New-NetFirewallRule -DisplayName "Yishang Platform HTTP" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+```
+
+**排查用**：
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 8080     # 有输出 = 该端口已被别的程序占用
+curl.exe -f http://127.0.0.1:8080/healthz              # 本机自测，能返回即服务正常
+```
+
+> 局域网其他电脑用 `http://<本机IP>:<HTTP_PORT>/` 打开即可，**不需要装任何客户端**。
+> 本机 IP 由路由器 DHCP 分配、换网络会变；变了就重跑一次上面的脚本。
+> 仓库当前 `.env`：`HTTP_PORT=8080`、`HTTP_BIND=0.0.0.0`，本机局域网 IP 已写入白名单。
 
 ### 设计约束（已写入 `compose.yaml`）
 
@@ -338,6 +434,20 @@ MySQL 官方镜像会在**数据卷为空时**自动执行 `/docker-entrypoint-i
 | `migrate` 一次性任务 | 未验证并发/失败处理 | 空库与已有数据两种场景都跑 |
 | Nginx 配置 | 路径、代理头、静态资源未验证 | 用 `nginx -t` 校验后灰度 |
 | `mysqlclient` 路径 | 本地用的是 PyMySQL，**生产驱动未验证** | 构建后在容器内跑全量 `pytest` |
+
+**2026-09-24 项目方在本机（Windows + Docker Desktop）实际执行的记录**（由使用者执行，属真实执行结果）：
+
+| 实测项 | 结果 |
+| --- | --- |
+| `docker compose build` | ❌ 失败：`runtime` 阶段 `apt-get update` 对 `deb.debian.org` 返回 `502 Bad Gateway`，`target backend: failed to solve ... exit code: 100` → 已改为 `APT_MIRROR` 可配置（本轮改动，**未复测**） |
+| `docker compose up -d mysql` | ✅ 成功：`mysql:8.0` 拉取完成，容器 `Up (healthy)` |
+| `docker compose cp db\...sql mysql:/tmp/snapshot.sql` | ✅ 成功 |
+| 在 `(healthy)` 之前就 `docker compose exec mysql ... < /tmp/snapshot.sql` | ❌ `ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)` → 已补「先等 `(healthy)`」步骤 |
+| `docker compose up -d` | ❌ 失败：Docker Desktop 内配的加速器 `registry.docker-cn.com` 已下线，本地镜像 `yishang-platform-nginx:local` 被当远端拉取报 `EOF`；同时无谓拉取 `minio/minio:latest` 也失败 → 前者需使用者自行删除加速器，后者已改为默认不启动 |
+| `collectstatic` | ⛔ 未执行：`service "backend" is not running`（因上一步失败） |
+
+因此**仍未验证**的是：换源后 `build` 能否成功、镜像能否启动、`migrate`、Nginx 配置、`mysqlclient` 驱动、
+数据导入与「表数 = 154」的核对。
 
 在上述项目实际通过前，**不得将 Compose 描述为"已验证可部署"**。
 

@@ -3826,3 +3826,156 @@ macOS 的差异（MySQL 版本、驱动、PowerShell 脚本、虚拟环境路径
 **未执行：** 上述 Docker 流程**仍未在本机执行**（Docker 守护进程在沙箱内不可达，
 `docker` / `docker compose` 命令均未运行），也未在任何真实 Docker 环境验证；
 `compose.yaml`、两个 Dockerfile、`deploy/nginx/nginx.conf` 的「未验证」状态不变。
+## 四十三、Docker 首次启动的两处拦路问题：`.env` 缺项与 HTTP 下的 Cookie 限制
+
+**背景。** 项目方执行 `docker compose build` 时报
+`required variable MYSQL_ROOT_PASSWORD is missing a value`。排查确认是两个叠加的问题。
+
+**问题一：`.env.example` 漏了 `MYSQL_ROOT_PASSWORD`。**
+`compose.yaml` 用 `${MYSQL_ROOT_PASSWORD:?必须设置 MYSQL_ROOT_PASSWORD}` 强制要求该变量，
+但示例文件里只有本地初始化用的 `MYSQL_ADMIN_*`，没有它；项目方按老文档 `cp .env.example .env` 后
+该变量**不存在**（不是空值而是没有这一行）。compose 在**解析阶段**就对整个文件做变量插值，
+所以缺变量会让 `build` 也直接失败（连**其他服务**的构建都跑不了）。
+
+- `.env.example` 补上 `MYSQL_ROOT_PASSWORD=`（附注释：容器内 root 口令，仅编排使用）。
+- 根目录 `.env` 补齐全部 6 个强制项（`DJANGO_SECRET_KEY`、`DJANGO_ALLOWED_HOSTS`、
+  `DJANGO_CSRF_TRUSTED_ORIGINS`、`DB_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`OBJECT_STORAGE_SECRET_KEY`），
+  口令与密钥用 `secrets` 随机生成；`DJANGO_CSRF_TRUSTED_ORIGINS` 同时保留 Vite 的 5173
+  与 Nginx 的 80 端口来源。
+- `.gitignore` 加 `!.env` 例外：根目录 `.env` 与 `backend/.env` 采用同一决策（单人私有仓库随仓库走，
+  见第 47 条），换机 clone 后可直接 `docker compose build`。
+
+**问题二：纯 HTTP 访问必然登录失败（assumptions 第 45 条的方式 ②）。**
+`prod.py` 原本把 `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` 硬编码为 `True`，
+即使关掉 `SECURE_SSL_REDIRECT`，浏览器也不会在 HTTP 下回传会话 Cookie——表现为
+「登录成功后立刻被踢回登录页」，Docker 内网部署几乎必然踩到。
+
+- `backend/config/settings/prod.py`：两项 Cookie 标记改为由 `DJANGO_COOKIE_SECURE` 控制，
+  **默认仍为 `True`**（现有安全默认值不变，HTTPS 部署行为完全不变）。
+- `compose.yaml`：透传 `DJANGO_COOKIE_SECURE`（默认 `true`）。
+- `.env.example` 与根目录 `.env` 增加该变量；根目录 `.env` 因当前是本机/内网 HTTP 场景设为 `false`，
+  并在文件中标注「对外 HTTPS 服务必须改回 true」。
+
+**本轮执行的检查。**
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| 根目录 `.env` 的 6 个强制项 | 全部已填值（不再是缺失/空值） |
+| 生产设置默认加载 | `SESSION_COOKIE_SECURE=True`、`CSRF_COOKIE_SECURE=True`、`SECURE_SSL_REDIRECT=True`（默认不变） |
+| 生产设置显式关闭 | `DJANGO_COOKIE_SECURE=false` 且 `DJANGO_SECURE_SSL_REDIRECT=false` 时三项均为 `False` |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+
+**未执行：** `docker compose build` / `up` 仍未在任何环境实际运行（本机 Docker 守护进程在沙箱内不可达），
+因此「补上变量后构建即可通过」是按 compose 的校验规则推断，**未实测**。
+## 四十四、Docker 首次实际构建 / 启动暴露的四个失败点与修复
+
+**背景。** 项目方按 `docs/deployment.md` §三 在 Windows + Docker Desktop 上依次执行
+`docker compose build` / `up -d mysql` / 导入快照 / `up -d` / `collectstatic`，**没有一次全部跑通**。
+四类失败彼此独立，逐条定位并修复如下。（本机 Docker 守护进程在沙箱内仍不可达，**所有 Docker 命令
+都是项目方执行的**；本轮改动属按 apt / compose 语义推断，**未复测**。）
+
+**问题一：构建期 apt 直连 `deb.debian.org` 返回 502。**
+`runtime` 阶段 `apt-get update` 报 `502 Bad Gateway [IP: 146.75.114.132 80]`，随后
+`E: The repository 'http://deb.debian.org/debian trixie-updates InRelease' is no longer signed.`，
+以 `target backend: failed to solve: ... exit code: 100` 结束。同一时刻 `builder` 阶段的同一条命令
+却成功（随后被 CANCELED），说明这是**国内网络对官方源的间歇性失败**，不是配置写错。
+
+- `deploy/docker/Dockerfile.backend`：两个阶段各加 `ARG APT_MIRROR=deb.debian.org`，
+  apt 之前用 `sed` 把源里的 `deb.debian.org` 换成 `$APT_MIRROR`（同时处理 `/etc/apt/sources.list`
+  与 Debian 13 用的 `/etc/apt/sources.list.d/debian.sources`），并给 `update` 加
+  `-o Acquire::Retries=3`。
+- 顺带**删掉 runtime 阶段没用到的 `curl`**（健康检查走 Python `urllib`；`rg curl` 确认全仓库无其他依赖）。
+- `compose.yaml` 的 `backend` / `migrate` 两个 build 都传 `args.APT_MIRROR`；
+  `.env.example` 增加该项说明，根目录 `.env` 取值 `mirrors.aliyun.com`。
+
+- 同类问题（一并处理）：前端镜像构建阶段执行 `npm ci` 时**还没有 `frontend/.npmrc`**
+  （该文件在 `npm ci` 之后才 `COPY` 进镜像），因此走的是 npm 官方源。
+  `deploy/docker/Dockerfile.frontend` 增加 `ARG NPM_REGISTRY`（**默认空 = 官方源，行为不变**），
+  `compose.yaml` 的 `nginx` build 透传该参数，根目录 `.env` 取 `https://registry.npmmirror.com`
+  （与开发端 `frontend/.npmrc` 的淘宝源口径一致）。
+
+**问题二：MySQL 还没就绪就导入，`ERROR 2002 ... socket (2)`。**
+`docker compose up -d mysql` 打印的是 `Container ... Created`（镜像拉取花了 100 秒），项目方紧接着
+就 `cp` + `exec ... < snapshot.sql`，此时 `mysqld` 仍在初始化、socket 文件尚未创建。
+**容器「Up」不等于数据库能连**——这是操作时序问题，与快照、口令、配置都无关。
+
+- `docs/deployment.md` §三：导入前加「等健康检查」步骤（`docker compose up -d --wait mysql`，
+  或先 `docker compose ps mysql` 看到 `(healthy)`），bash 与 PowerShell 两段命令都补，
+  并把这条报错原文写进文档，避免以后重复排查。
+
+**问题三：Docker Desktop 里配的镜像加速器已下线。**
+`docker compose up -d` 报 `failed to resolve reference
+"docker.io/library/yishang-platform-nginx:local": ... Head "https://registry.docker-cn.com/v2/...": EOF`。
+`registry.docker-cn.com`（Docker 中国官方加速器）早已停止服务，Docker Desktop 仍把它当 mirror，
+于是**连本地镜像也被当成远端去拉**，必然 EOF。
+
+- 该配置在 Docker Desktop 里（`%APPDATA%\Docker\settings-store.json`），**仓库无法代改**，
+  需使用者自行删除该 mirror 后重试；已在 `docs/deployment.md` §三 写明现象与处理位置。
+
+**问题四：`minio` 没有任何依赖却被拉起。**
+`object-storage` 在 `compose.yaml` 里没有 `depends_on`，所以每次 `up -d` 都会拉
+`minio/minio:latest`；而 `OBJECT_STORAGE_BUCKET` 为空时**附件本来就走本地文件系统**，
+这个容器纯属多余，且拉取失败会让整个 `up` 报错退出。
+
+- `compose.yaml`：`object-storage` 加 `profiles: ["object-storage"]`，**默认不启动**；
+  需要 S3 兼容存储时用 `docker compose --profile object-storage up -d`。
+- `docs/deployment.md` §三 的服务清单与「客户机（内网）落地注意事项」同步更新。
+
+**顺带修正（同属「宿主差异」问题）：MySQL 的 binlog 在 Windows 宿主上其实没开。**
+Windows 上绑定挂载的 `deploy/mysql/my.cnf` 被判定为 `0777`（world-writable），MySQL 会打印
+`World-writable config file '/etc/mysql/conf.d/yishang.cnf' is ignored` 并**忽略整个文件**，
+因此 `docs/backup-restore.md` 与 REQ-16.4-01 承诺的 binlog / PITR 能力在 Windows 上并未生效。
+`compose.yaml` 的 mysql `command` 补上 `--server-id` / `--log-bin` / `--binlog-expire-logs-seconds`
+（与 `deploy/mysql/my.cnf` 一致），这几项不再依赖宿主是否加载 my.cnf。
+`my.cnf` 里的 `[client]`、`max_connections`、`innodb_buffer_pool_size` 等仍只在 Linux/macOS 宿主生效，已知。
+
+**本轮执行的检查（沙箱内执行，不含 Docker）。**
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| `manage.py check` | `System check identified no issues (0 silenced).` |
+| `manage.py makemigrations --check --dry-run` | `No changes detected` |
+| `ruff check --no-cache apps config tests` | `All checks passed!` |
+| `pytest tests -q --reuse-db` | `494 passed in 316.63s` |
+| `scripts/build_user_guide.py --check` | `使用说明网页版是最新的。` |
+| `compose.yaml` YAML 解析（`yaml.safe_load`） | 8 个服务；`object-storage.profiles == ['object-storage']`；mysql `command` 末三项为新增 binlog 参数；`backend.build.args == {'APT_MIRROR': '${APT_MIRROR:-deb.debian.org}'}` |
+| `rg curl` | `curl` 只出现在 Dockerfile 自身与文档，删掉后无其他依赖 |
+
+**未执行：** 修复后的 `docker compose build` / `up` 仍未实际运行（本机 Docker 守护进程在沙箱内不可达），
+「换 apt 源即可构建成功」「不启动 minio 就不会被拉取」「设了 `NPM_REGISTRY` 前端就能装上依赖」
+都是按 apt / compose / npm 语义推断，**未复测**。
+## 四十五、对外端口可指定 + 支持局域网访问（配置项与脚本）
+
+**背景。** 项目方同一台 Windows 机器上还跑着其他 Docker 服务，需求两条：
+① 平台对外端口可指定，避免被别的服务占用；② 局域网内其他电脑也能访问。
+
+**现状与缺口。** `compose.yaml` 里本来就是 `"${HTTP_PORT:-80}:8080"`，宿主端口**已经**可配，
+但 `HTTP_PORT` **既不在 `.env` 也不在 `.env.example`**（只能靠猜变量名），而且局域网访问还有两个
+隐式前提没写下来：`DJANGO_ALLOWED_HOSTS` 必须含本机局域网 IP（否则 `400 DisallowedHost`）、
+`DJANGO_CSRF_TRUSTED_ORIGINS` 必须含 `http://<IP>:<端口>`（否则页面能开、**登录却报 CSRF 失败**）。
+
+- `compose.yaml`：端口映射改为 `"${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:8080"`，
+  多出**监听地址**这一维（`0.0.0.0` 允许局域网、`127.0.0.1` 只允许本机）。
+- `.env` / `.env.example`：新增「对外访问（端口 / 局域网）」段，含 `HTTP_PORT`、`HTTP_BIND` 与说明。
+- 新增 `scripts/docker_network.ps1`（UTF-8 带 BOM，符合 AGENTS.md §七）：
+  自动识别本机局域网 IP（UDP 路由探测，避免误取 WSL / Hyper-V / VMware 虚拟网卡），
+  自动挑空闲端口（候选 `8080 / 8081 / 8088 / 9080 / 18080 / 28080 / 80`，`-Port` 可指定、被占用直接报错），
+  就地更新 `.env` 的上述 4 项并打印访问地址与防火墙放行命令；**幂等**，改端口 / 换网络后重跑即可。
+- 文档：`docs/deployment.md` §三 新增「改端口 / 让局域网其他电脑访问」（一键脚本、手工改法、
+  4 个变量写错的后果对照、防火墙放行、排查命令），并更新客户机注意事项表；
+  `docs/user-guide.md` §3.1 / §3.2 补了面向使用者的说明（局域网电脑用同一地址即可、不需装客户端、
+  打不开怎么办），网页版说明已按 §九 重新生成。
+
+**本机实际执行结果（沙箱内真实运行，非 Docker）。**
+
+| 命令 / 检查 | 结果 |
+| --- | --- |
+| `powershell -File scripts\docker_network.ps1` | 识别本机 IP `192.168.1.49`（WLAN），选中空闲端口 `8080`，写入 `.env` 4 项 |
+| 同一脚本重复执行 | 结果一致：`HTTP_PORT=8080`、`HTTP_BIND=0.0.0.0`，各键**无重复**，段落注释不重复插入 |
+| 端口占用探测 | `Get-NetTCPConnection` 逐个检查 80/443/3306/5173/6379/8000/8080/8081/9000/9001/9080/18080，当前均空闲 |
+| PowerShell 语法解析 | `[Parser]::ParseFile` 无错误；文件为 UTF-8 带 BOM |
+| `.env` 文件格式 | LF、无 BOM、无重复键 |
+
+**未执行：** 端口映射实际生效与**局域网另一台电脑的访问未实测**（本机 Docker 守护进程在沙箱内不可达），
+`HTTP_BIND` 的两种取值、防火墙放行是否必需，都需在部署机上验证。

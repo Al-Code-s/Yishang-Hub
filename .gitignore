@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# 例外：根目录 .env（compose 用的编排变量）同样随仓库走，换电脑 clone 后可直接 build
+!.env
 *.pem
 *.key
 
