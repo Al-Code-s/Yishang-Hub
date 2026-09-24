@@ -3790,3 +3790,39 @@ macOS 的差异（MySQL 版本、驱动、PowerShell 脚本、虚拟环境路径
 
 **未执行：** macOS 路径未在真实 Mac 上实测（本机只有 Windows），已在文档中标注为「未执行/推断」，
 不写作通过。
+## 四十二、Docker 部署自检：新增 `.dockerignore`，并补「数据一起部署」流程
+
+**背景。** 项目方要在 Docker 环境里部署，且要求**数据一起部署**。检查部署资产时发现两个此前遗漏的问题：
+
+1. **仓库没有 `.dockerignore`**：两个镜像的构建上下文都是仓库根目录，
+   本机实测 `frontend/node_modules` 216 MB、`backend/.venv` 158 MB、`.tmp` 243 MB、`.git` 4.7 MB，
+   合计约 620 MB 会在每次 `docker compose build` 时传给 Docker 守护进程；
+   更严重的是 `Dockerfile.frontend` 的 `COPY frontend/ ./` 会把 **Windows 宿主机上的 `node_modules`**
+   复制进 Linux 构建阶段，平台不匹配的原生模块会污染前端构建。
+2. **`backend/.env` 会被打进镜像**（`Dockerfile.backend` 复制整个 `backend/`）。
+   实测确认 `backend/config/settings/base.py` 用的是 `load_dotenv(BASE_DIR / ".env")`，
+   `python-dotenv` 默认 `override=False`，即**编排注入的环境变量优先**，
+   所以不会造成「开发库口令覆盖生产库口令」的错连；但开发密钥与初始化口令会随镜像扩散。
+
+**改动。**
+
+- 新增根目录 `.dockerignore`：排除 `.git` / `.gitattributes` / `.tmp/`、Python 依赖与缓存
+  （`**/.venv`、`**/__pycache__`、`.pytest_cache`、`.ruff_cache`…）、前端依赖与产物
+  （`**/node_modules`、`**/dist`、`**/.vite`、`**/*.tsbuildinfo`）、本机配置与数据
+  （`.env`、`.env.*`、`backend/.env`、`db/`、`backend/media`、`backend/staticfiles`）、
+  `docs/` 与编辑器 / 系统文件。
+- `docs/deployment.md` §三 新增「把数据带进容器（开发库快照）」：先起 `mysql` → 导入
+  `db/yishang_platform_<日期>.sql` → `docker compose up -d` → `collectstatic` → 健康检查；
+  另给 **Windows PowerShell 专用写法**（PowerShell 不支持 `<` 重定向，改用 `docker compose cp` + 容器内重定向，
+  避免管道对 UTF-8 中文二次编码），以及可选的 `/docker-entrypoint-initdb.d/` 自动导入方案。
+- `docs/deployment.md` §三「设计约束」补两条：构建上下文由 `.dockerignore` 收窄；镜像内不含 `backend/.env`，
+  容器配置只来自编排注入（并说明 `load_dotenv` 的 `override=False` 语义）。
+
+**关于「导入快照后还要不要跑 `bootstrap_system`」的结论（读代码确认）：**
+该命令在管理员已存在且未加 `--reset-admin-password` 时**保留原口令**、只同步权限属性与角色，
+并补齐权限点 / 菜单 / 编码规则 / 字典，因此用快照导入后重复执行是安全的；
+只有**空库**首次安装才必须提供 `YISHANG_ADMIN_PASSWORD`（生产缺口令会直接报错）。
+
+**未执行：** 上述 Docker 流程**仍未在本机执行**（Docker 守护进程在沙箱内不可达，
+`docker` / `docker compose` 命令均未运行），也未在任何真实 Docker 环境验证；
+`compose.yaml`、两个 Dockerfile、`deploy/nginx/nginx.conf` 的「未验证」状态不变。

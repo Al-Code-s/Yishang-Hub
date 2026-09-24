@@ -238,6 +238,70 @@ docker compose up -d
 - 客户机是**全新空库**时，从零到能登录只需 `migrate` + `bootstrap_system`；
   把已有数据搬到新机器请改用 `docs/backup-restore.md` §八 的导入流程，不要重新初始化。
 
+### 把数据带进容器（开发库快照）【未执行 ⚠️】
+
+仓库里的 `db/yishang_platform_<日期>.sql` 是开发库的逻辑快照（154 张表，含业务数据），
+按下面的顺序灌进容器 MySQL 即完成「代码 + 数据」一起部署。
+
+```bash
+# 1) 先只起数据库，等健康检查通过（MySQL/Redis 不对宿主发布端口，只能经 compose 操作）
+docker compose up -d mysql
+docker compose ps mysql
+
+# 2) 导入快照（Linux / macOS / CI 的 bash 可直接重定向）
+docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot yishang_platform' \
+    < db/yishang_platform_2026-09-24.sql
+
+# 3) 再起其余服务：migrate 自动执行，随后 backend / worker / beat / nginx
+docker compose up -d
+
+# 4) 静态资源进卷（Nginx 的 /static/ 从该卷读取），然后看健康状态
+docker compose exec backend python manage.py collectstatic --noinput
+docker compose ps
+curl -f http://localhost/healthz
+```
+
+**Windows PowerShell 不支持 `<` 重定向**，且用管道传中文有二次编码风险，改成「先拷进容器再导入」：
+
+```powershell
+docker compose up -d mysql
+docker compose cp db\yishang_platform_2026-09-24.sql mysql:/tmp/snapshot.sql
+docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot yishang_platform < /tmp/snapshot.sql'
+docker compose exec mysql rm -f /tmp/snapshot.sql
+docker compose up -d
+docker compose exec backend python manage.py collectstatic --noinput
+```
+
+**关于快照与初始化的四点事实：**
+
+- 快照**不含 `CREATE DATABASE`**（导入不需要建库权限）；库由容器启动时的 `MYSQL_DATABASE`
+  自动建好，用户由 `MYSQL_USER` / `MYSQL_PASSWORD` 建好，所以上面直接指定库名即可导入。
+- 快照自带 `DROP TABLE IF EXISTS`，**重复导入会覆盖同名表的数据**，可放心重跑，但会丢掉导入后新录的数据。
+- **用快照导入时，`bootstrap_system` 是可选的**：快照里已含权限点、菜单、内置角色与管理员账号，
+  重复执行只会补齐缺失项；已存在的管理员**保留原口令**（只有显式加 `--reset-admin-password` 才会改）。
+  只有**空库**首次安装才必须跑它并提供 `YISHANG_ADMIN_PASSWORD`。
+- 导入后 `docker compose run --rm migrate` / `migrate` 服务应显示**没有需要应用的迁移**；
+  若有新迁移，正常执行即可（不会动已有数据）。
+
+**核对导入结果**（期望 `154`）：
+
+```bash
+docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot yishang_platform -N \
+    -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()"'
+```
+
+**想让「首次启动自动带数据」**（可选）：在 `compose.yaml` 的 `mysql` 服务里加一行挂载，
+MySQL 官方镜像会在**数据卷为空时**自动执行 `/docker-entrypoint-initdb.d/` 下的 `.sql`：
+
+```yaml
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db/yishang_platform_2026-09-24.sql:/docker-entrypoint-initdb.d/10-snapshot.sql:ro
+```
+
+> 注意：该机制**只在数据卷为空的首次启动执行**，已有卷不会重跑（想重来要 `docker compose down -v`，
+> 那会**删掉全部数据**）；而且它会把演示数据带进该环境，客户机生产库建议仍用上面的手工导入，便于确认。
+
 ### 客户机（内网）落地注意事项 【未执行 ⚠️】
 
 | 项目 | 要求 |
@@ -257,6 +321,11 @@ docker compose up -d
 - **数据库迁移作为独立发布步骤执行**，不由多个 Web 实例同时执行。
 - 容器**非 root 用户**运行；上传文件与代码分离。
 - 生产使用 **Gunicorn**，不使用 `runserver` 对外提供服务。
+- 构建上下文由根目录 `.dockerignore` 收窄：排除 `.git`、`**/node_modules`、`**/.venv`、`.tmp/`、`db/`、
+  `backend/.env`、`backend/media`、`docs/` 等（本机实测这些目录合计约 620 MB），
+  既避免把宿主机依赖复制进 Linux 镜像，也避免开发库口令进镜像。
+- **镜像内不含 `backend/.env`**：容器配置只来自编排注入。Django 侧 `load_dotenv(BASE_DIR / ".env")`
+  默认 `override=False`，即便镜像里存在 `.env`，**编排注入的环境变量优先**。
 
 ### ⚠️ 本轮未验证的原因与风险
 
