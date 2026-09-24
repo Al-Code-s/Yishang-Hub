@@ -368,3 +368,12 @@
     关闭条件：项目方再次调整版本基线。同步更新了 `PROJECT_SPEC.md`、`README.md`、
     `docs/deployment.md`、`docs/requirements-matrix.md`、`docs/progress.md`、`docs/test-report.md`、
     `docs/acceptance.md` 与前端「进度说明」页的版本描述。
+47. **开发库口令与数据快照改为随 Git 仓库走（项目方 2026-09-24 确认，有意偏离 AGENTS.md 第二条）。**
+    项目方明确：本仓库是**单人私有仓库**，平台只服务一家公司、开发数据均为演示数据，
+    不存在需要保护的第三方资料；为了让「换电脑 = `git clone`」成立，把 `backend/.env`
+    （开发库口令、`DJANGO_SECRET_KEY`、初始化口令）取消忽略并入库，并把 `mysqldump` 快照放进 `db/`。
+    AGENTS.md 第二条关于**生产**的要求不变：生产口令只从环境变量注入，
+    `deploy/`、`compose.yaml` 与文档中不得出现任何真实生产口令。
+    两条必须守住的约束：① 生产库口令**不得**与开发库口令相同；
+    ② 一旦仓库转为公开或新增协作者，必须先 `git filter-repo` 把 `backend/.env` 从历史中移除并轮换口令。
+    影响范围：仓库内容与本地开发配置；关闭条件：仓库公开化或加入协作者。

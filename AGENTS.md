@@ -17,6 +17,7 @@
 backend/    Django 5.2 + DRF（config/ 工程配置，apps/ 业务模块，tests/ 集成测试）
 frontend/   Vue 3 + TS + Vite（src/{api,components,layouts,router,stores,views,types,utils}）
 deploy/     nginx/ docker/ mysql/
+db/         开发库 mysqldump 快照（换机导入用，非生产备份）
 scripts/    本地开发与运维脚本
 docs/       全部设计与过程文档（见下）
 compose.yaml  Docker Compose 编排
@@ -28,6 +29,9 @@ compose.yaml  Docker Compose 编排
 1. **不覆盖已有有效代码。** 修改前先读文件；不确定就跑测试确认现状。
 2. **不提交生产密钥、密码、真实个人资料。** 密码只从环境变量读取；
    本地开发密码放 `.tmp/`（已在 `.gitignore` 中忽略）。
+   唯一例外：**本机开发库**的 `backend/.env` 已按项目方要求入库（单人私有仓库，
+   换机只做 `git clone`），理由与关闭条件见 `docs/assumptions.md` 第 47 条；
+   **生产口令永不入库**，`deploy/`、`compose.yaml` 与文档里不得出现。
 3. **不伪造结果。** 未执行的测试写"未执行"，不写"通过"；
    不伪造构建、部署、设备接入结果。
 4. **业务状态只能由 Service 层修改。** View 只做鉴权 + 参数装配 + 调用服务；

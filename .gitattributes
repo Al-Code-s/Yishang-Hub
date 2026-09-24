@@ -77,3 +77,6 @@ backend/uv.lock            text eol=lf
 *.exe   binary
 *.dll   binary
 *.pyd   binary
+
+# ---- 开发库快照：原样保存，不做换行转换 ----
+db/*.sql -text

@@ -25,6 +25,9 @@ coverage.xml
 backend/media/
 backend/staticfiles/
 backend/.env
+# 例外：本机开发库口令与调试配置随仓库走（单人私有仓库，见 docs/assumptions.md 第 47 条），
+# 换电脑 clone 后无需再手工补 .env。生产口令仍只从环境变量注入，不入库。
+!backend/.env
 
 # ---- Node / 前端 ----
 node_modules/

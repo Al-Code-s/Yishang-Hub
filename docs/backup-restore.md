@@ -159,3 +159,32 @@ npm run dev -- --port 5173
 - 抽查设备 / 能源 / 库存等表行数与源库一致（`SELECT COUNT(*)`）；
 - 管理员账号与 `xj_*` 账号能登录，菜单与列表有数据；
 - 有附件时核对 `core.attachment` 记录与 `backend/media/` 文件是否一一对应（见 §六）。
+
+### 8.5 换机不必手工传文件（本仓库的取舍）
+
+项目方 2026-09-24 确认：本仓库为**单人私有仓库**，开发库配置与数据快照直接随仓库走，
+换电脑只需要 `git clone`，不必再手工拷贝任何文件。
+
+| 内容 | 仓库内位置 | 说明 |
+| --- | --- | --- |
+| 开发库配置与口令 | `backend/.env`（**已入库**） | `.gitignore` 里加了 `!backend/.env` 例外；改动后按普通文件提交即可 |
+| 开发库数据快照 | `db/yishang_platform_<日期>.sql`（**已入库**） | `mysqldump` 逻辑导出，154 张表 |
+
+新机器落地顺序：`git clone` → 用 root 建库建账号（§8.3 第 2 步）→ 导入 `db/` 下快照 →
+建 venv 装依赖 → `backend/.env` 已在仓库里 → `manage.py migrate`（应显示无新迁移）→
+`manage.py check` → 起服务 → `cd frontend && npm install && npm run dev`。
+
+**刷新快照**（数据有变化时，导出成新日期文件并提交）：
+
+```powershell
+& '<MySQL 安装目录>\bin\mysqldump.exe' -h 127.0.0.1 -P 3306 -u yishang_app '-p<口令>' `
+    --single-transaction --default-character-set=utf8mb4 --routines --triggers `
+    yishang_platform > db\yishang_platform_<日期>.sql
+```
+
+**两条警告：**
+
+- `db/` 下的是**开发库快照，不是生产备份**：没有加密、没有保留策略、也没有恢复演练记录，
+  生产备份一律按本文第一至七节执行。
+- 快照**有时效性**：导入前先 `manage.py migrate` 对齐结构；若快照比代码旧，以代码迁移为准，
+  不要为了省事把旧快照直接灌进新结构。
